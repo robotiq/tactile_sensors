@@ -18,7 +18,7 @@ The TSF-85 provides per-finger data at 1 kHz over USB:
 
 ### [sdk_cpp](sdk_cpp/)
 
-Lightweight C++ library with a threaded, callback-based API. Includes a terminal visualizer (`Quick_start.cpp`) and diagnostic tools. See [sdk_cpp/README.md](sdk_cpp/README.md).
+Lightweight C++ library with a threaded, callback-based API. A good starting point for developing with the tactile sensors. Includes a terminal visualizer (`Quick_start.cpp`) and diagnostic tools. See [sdk_cpp/README.md](sdk_cpp/README.md).
 
 ```bash
 cd sdk_cpp
