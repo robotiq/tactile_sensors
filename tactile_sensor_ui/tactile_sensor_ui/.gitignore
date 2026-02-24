@@ -1,0 +1,17 @@
+*.swp
+*.o
+*.exe
+tactile_sensor_ui
+*.dll
+*.pro.*
+Makefile*
+[dD]ebug/
+[rR]elease/
+*.Debug
+*.Release
+*~
+*.csv
+ui_*.*
+moc_*.*
+qrc_*.*
+build/

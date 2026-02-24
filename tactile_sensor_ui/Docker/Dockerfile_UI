@@ -1,0 +1,34 @@
+FROM ubuntu:24.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
+
+# Base tools, CMake, and Qt5 + required libraries
+RUN apt-get update && apt-get install -y \
+    tzdata \
+    build-essential \
+    git \
+    cmake \
+    qtbase5-dev \
+    qtbase5-dev-tools \
+    libqt5serialport5-dev \
+    mesa-common-dev \
+    libmgl-dev \
+    libfftw3-dev \
+    libxcb-xinerama0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the tactile_sensor_ui sources into the image
+RUN mkdir -p /opt/tactile_sensor_ui
+COPY tactile_sensor_ui /opt/tactile_sensor_ui
+
+WORKDIR /opt/tactile_sensor_ui
+
+# Configure and build the Qt project via CMake
+RUN /bin/bash -lc "set -euo pipefail; \
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build build -j\$(nproc)"
+
+# Default command: launch the UI binary.
+# Adjust path/name if the build outputs elsewhere.
+CMD ["/opt/tactile_sensor_ui/build/tactile_sensor_ui"]
