@@ -1,0 +1,27 @@
+# PyInstaller build artifacts
+build/
+dist/
+# Keep the custom spec file
+!simple_sensor_check.spec
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+.venv/
+.venvSimpleCheck/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

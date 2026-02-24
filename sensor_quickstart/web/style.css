@@ -1,0 +1,118 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    background: #1a1a2e;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+header {
+    background: #16213e;
+    padding: 12px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #0f3460;
+}
+
+header h1 {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+#status-bar {
+    display: flex;
+    gap: 20px;
+    font-size: 13px;
+}
+
+.status-connected { color: #4caf50; }
+.status-disconnected { color: #f44336; }
+
+/* Tabs */
+.tabs {
+    display: flex;
+    background: #0f3460;
+}
+
+.tab {
+    padding: 10px 28px;
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: #8899aa;
+    font-size: 14px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.tab:hover { color: #ccc; }
+.tab.active { color: #fff; border-bottom-color: #e94560; }
+
+/* Tab content */
+.tab-content { display: none; padding: 16px 24px; }
+.tab-content.active { display: block; }
+
+.tab-content h2 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 12px 0 8px;
+    color: #aab;
+}
+
+.tab-content h3 {
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 4px;
+    color: #99a;
+}
+
+/* Controls */
+.controls {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.controls button {
+    padding: 6px 16px;
+    background: #0f3460;
+    color: #e0e0e0;
+    border: 1px solid #1a4a8a;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.controls button:hover { background: #1a4a8a; }
+
+.controls label {
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Chart layout */
+.chart-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 12px;
+}
+
+.chart-container {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Make Plotly charts fill their containers */
+.chart-container > div {
+    width: 100% !important;
+    height: 350px;
+}
+
+/* Smaller charts for dynamic FFT and IMU (4 charts visible at once) */
+#tab-dynamic .chart-container > div { height: 280px; }
+#tab-imu .chart-container > div { height: 260px; }

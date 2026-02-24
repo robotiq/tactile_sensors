@@ -1,0 +1,4 @@
+SUBSYSTEM=="tty", \
+ATTRS{idVendor}=="04b4", \
+ATTRS{idProduct}=="f232", \
+SYMLINK+="rq_tsf85_%n"

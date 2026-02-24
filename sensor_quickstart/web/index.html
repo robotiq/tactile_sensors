@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robotiq Tactile Sensor Viewer</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Robotiq Tactile Sensor Viewer</h1>
+        <div id="status-bar">
+            <span id="connection-status" class="status-disconnected">Disconnected</span>
+            <span id="sample-count">Samples: 0</span>
+        </div>
+    </header>
+
+    <nav class="tabs">
+        <button class="tab active" data-tab="static">Static Sensors</button>
+        <button class="tab" data-tab="dynamic">Dynamic Sensors</button>
+        <button class="tab" data-tab="imu">IMU</button>
+    </nav>
+
+    <main>
+        <!-- Static Sensors Tab -->
+        <section id="tab-static" class="tab-content active">
+            <div class="controls">
+                <button id="reset-baseline">Reset Baseline</button>
+                <label><input type="checkbox" id="raw-values"> Raw Values</label>
+                <label><input type="checkbox" id="adaptive-range" checked> Adaptive Scale</label>
+            </div>
+            <div class="chart-row">
+                <div class="chart-container">
+                    <h3>Finger 0</h3>
+                    <div id="static-finger-0"></div>
+                </div>
+                <div class="chart-container">
+                    <h3>Finger 1</h3>
+                    <div id="static-finger-1"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Dynamic Sensors Tab -->
+        <section id="tab-dynamic" class="tab-content">
+            <div class="chart-row">
+                <div class="chart-container">
+                    <h3>Finger 0 - Time Domain</h3>
+                    <div id="dynamic-time-0"></div>
+                </div>
+                <div class="chart-container">
+                    <h3>Finger 1 - Time Domain</h3>
+                    <div id="dynamic-time-1"></div>
+                </div>
+            </div>
+            <div class="chart-row">
+                <div class="chart-container">
+                    <h3>Finger 0 - FFT</h3>
+                    <div id="dynamic-fft-0"></div>
+                </div>
+                <div class="chart-container">
+                    <h3>Finger 1 - FFT</h3>
+                    <div id="dynamic-fft-1"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- IMU Tab -->
+        <section id="tab-imu" class="tab-content">
+            <div class="controls">
+                <button id="reset-imu-axes">Reset Y Axes</button>
+            </div>
+            <h2>Accelerometer</h2>
+            <div class="chart-row">
+                <div class="chart-container">
+                    <h3>Finger 0</h3>
+                    <div id="imu-accel-0"></div>
+                </div>
+                <div class="chart-container">
+                    <h3>Finger 1</h3>
+                    <div id="imu-accel-1"></div>
+                </div>
+            </div>
+            <h2>Gyroscope</h2>
+            <div class="chart-row">
+                <div class="chart-container">
+                    <h3>Finger 0</h3>
+                    <div id="imu-gyro-0"></div>
+                </div>
+                <div class="chart-container">
+                    <h3>Finger 1</h3>
+                    <div id="imu-gyro-1"></div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
