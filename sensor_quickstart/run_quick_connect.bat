@@ -173,7 +173,7 @@ rem ==========================================
 rem Step 6: Find Sensor
 rem ==========================================
 echo [6/6] Looking for tactile sensor...
-python -c "import serial.tools.list_ports; sensor = next((p for p in serial.tools.list_ports.comports() if 'Robotiq' in (p.description or '') or 'Cypress' in (p.description or '') or (p.vid == 0x04b4 and p.pid == 0xf232)), None); print(f'[OK] Found sensor at {sensor.device}' if sensor else '[WARNING] Sensor not found - make sure it is plugged in')"
+python -c "import serial.tools.list_ports; sensor = next((p for p in serial.tools.list_ports.comports() if 'Robotiq' in (p.description or '') or 'Cypress' in (p.description or '') or (p.vid == 0x16d0 and p.pid == 0x14cc) or (p.vid == 0x04b4 and p.pid == 0xf232)), None); print(f'[OK] Found sensor at {sensor.device}' if sensor else '[WARNING] Sensor not found - make sure it is plugged in')"
 echo.
 
 echo ==========================================

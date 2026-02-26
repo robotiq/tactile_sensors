@@ -143,7 +143,7 @@ Press Ctrl+C to exit
 
 - **Baud rate**: 115200
 - **Format**: 8N1 (8 data bits, no parity, 1 stop bit)
-- **USB VID:PID**: `04b4:f232` (Cypress)
+- **USB VID:PID**: `16d0:14cc` (Robotiq) or `04b4:f232` (Cypress, older units)
 - **Data**: 28 tactile sensors per finger (7×4 grid) + IMU + dynamic sensor
 
 ---
