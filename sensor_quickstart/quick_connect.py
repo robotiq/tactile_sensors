@@ -28,9 +28,12 @@ PARITY = 'N'
 STOP_BITS = 1
 TIMEOUT = 0.1  # 100ms timeout for reads
 
-# Tactile sensor USB identifiers (Cypress)
-SENSOR_VID = 0x04B4
-SENSOR_PID = 0xF232
+# Tactile sensor USB identifiers
+# Newer production units use 0x16D0:0x14CC, older units use Cypress default 0x04B4:0xF232
+SENSOR_VID_PID_PAIRS = [
+    (0x16D0, 0x14CC),  # Robotiq (new)
+    (0x04B4, 0xF232),  # Cypress default (old)
+]
 
 # Display configuration
 NUM_FINGERS = 2  # Currently 2 fingers
@@ -78,12 +81,13 @@ class SensorMonitor:
                 print(f"Found sensor via udev symlink: {symlink}")
                 return symlink
 
-        # 2. Fallback: match by USB VID:PID
+        # 2. Fallback: match by USB VID:PID (try each known pair)
         for p in serial.tools.list_ports.comports():
-            if p.vid == SENSOR_VID and p.pid == SENSOR_PID:
-                print(f"Found sensor via VID:PID match: {p.device}")
-                print(f"  (No udev symlink found — this is normal on Windows)")
-                return p.device
+            for vid, pid in SENSOR_VID_PID_PAIRS:
+                if p.vid == vid and p.pid == pid:
+                    print(f"Found sensor via VID:PID match: {p.device}")
+                    print(f"  (No udev symlink found — this is normal on Windows)")
+                    return p.device
 
         return None
 

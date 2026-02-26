@@ -1,4 +1,11 @@
+# Cypress default VID:PID (older units)
 SUBSYSTEM=="tty", \
 ATTRS{idVendor}=="04b4", \
 ATTRS{idProduct}=="f232", \
+SYMLINK+="rq_tsf85_%n"
+
+# Robotiq VID:PID (newer units)
+SUBSYSTEM=="tty", \
+ATTRS{idVendor}=="16d0", \
+ATTRS{idProduct}=="14cc", \
 SYMLINK+="rq_tsf85_%n"
