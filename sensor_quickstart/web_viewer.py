@@ -46,7 +46,13 @@ class SensorDataBuffer:
                 self.default_range = 1200.0
             for f in range(NUM_FINGERS):
                 finger = sensor_data.fingers[f]
-                self.static_tactile[f] = list(finger.static_tactile)
+                st = list(finger.static_tactile)
+                if len(st) != 28:
+                    print(f"[warn] finger {f} static_tactile has {len(st)} "
+                          f"elements (expected 28), skipping frame",
+                          file=sys.stderr)
+                    continue
+                self.static_tactile[f] = st
                 self.dynamic_tactile[f].append(finger.dynamic_tactile)
                 self.accelerometer[f].append(list(finger.accelerometer))
                 self.gyroscope[f].append(list(finger.gyroscope))
@@ -57,6 +63,9 @@ class SensorDataBuffer:
             for f in range(NUM_FINGERS):
                 raw = self.static_tactile[f]
                 if raw is None:
+                    result.append([0] * 28)
+                    continue
+                if len(raw) != 28:
                     result.append([0] * 28)
                     continue
                 if self.use_baseline:
@@ -247,50 +256,56 @@ class WebViewer:
                 busy.discard(client)
 
         while True:
-            now = time.monotonic()
-            if now - last_diag >= 5.0:
-                last_diag = now
-                b = self.buffer
-                with b._lock:
-                    dyn_sizes = [len(b.dynamic_tactile[f]) for f in range(NUM_FINGERS)]
-                    acc_sizes = [len(b.accelerometer[f]) for f in range(NUM_FINGERS)]
-                    gyr_sizes = [len(b.gyroscope[f]) for f in range(NUM_FINGERS)]
-                print(f"[diag] tab={self.active_tab}  clients={len(self.clients)}  "
-                      f"dyn={dyn_sizes}  accel={acc_sizes}  gyro={gyr_sizes}")
-            if self.clients:
-                tab = self.active_tab
-                msg = {"type": "data", "tab": tab}
+            try:
+                now = time.monotonic()
+                if now - last_diag >= 5.0:
+                    last_diag = now
+                    b = self.buffer
+                    with b._lock:
+                        dyn_sizes = [len(b.dynamic_tactile[f]) for f in range(NUM_FINGERS)]
+                        acc_sizes = [len(b.accelerometer[f]) for f in range(NUM_FINGERS)]
+                        gyr_sizes = [len(b.gyroscope[f]) for f in range(NUM_FINGERS)]
+                    print(f"[diag] tab={self.active_tab}  clients={len(self.clients)}  "
+                          f"dyn={dyn_sizes}  accel={acc_sizes}  gyro={gyr_sizes}")
+                if self.clients:
+                    tab = self.active_tab
+                    msg = {"type": "data", "tab": tab}
 
-                if tab == "static":
-                    values, max_ranges = self.buffer.get_static_snapshot()
-                    msg["static"] = values
-                    msg["maxRange"] = max_ranges
-                elif tab == "dynamic":
-                    msg["dynamic"] = self.buffer.get_dynamic_snapshot()
-                elif tab == "imu":
-                    acc, gyr = self.buffer.get_imu_snapshot()
-                    msg["accel"] = acc
-                    msg["gyro"] = gyr
+                    if tab == "static":
+                        values, max_ranges = self.buffer.get_static_snapshot()
+                        msg["static"] = values
+                        msg["maxRange"] = max_ranges
+                    elif tab == "dynamic":
+                        msg["dynamic"] = self.buffer.get_dynamic_snapshot()
+                    elif tab == "imu":
+                        acc, gyr = self.buffer.get_imu_snapshot()
+                        msg["accel"] = acc
+                        msg["gyro"] = gyr
 
-                payload = json.dumps(msg)
-                for client in self.clients.copy():
-                    if client not in busy:
-                        busy.add(client)
-                        asyncio.ensure_future(_send(client, payload))
-                    # else: client is still sending previous frame, drop this one
+                    payload = json.dumps(msg)
+                    for client in self.clients.copy():
+                        if client not in busy:
+                            busy.add(client)
+                            asyncio.ensure_future(_send(client, payload))
+                        # else: client is still sending previous frame, drop this one
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
             await asyncio.sleep(interval)
 
     async def fft_loop(self):
         """Compute FFT at 1Hz and broadcast directly to clients."""
         loop = asyncio.get_event_loop()
         while True:
-            fft_result = await loop.run_in_executor(None, self.buffer.compute_fft)
-            if self.clients and self.active_tab == "dynamic":
-                payload = json.dumps({"type": "fft", "fft": fft_result})
-                await asyncio.gather(
-                    *[c.send(payload) for c in self.clients.copy()],
-                    return_exceptions=True
-                )
+            try:
+                fft_result = await loop.run_in_executor(None, self.buffer.compute_fft)
+                if self.clients and self.active_tab == "dynamic":
+                    payload = json.dumps({"type": "fft", "fft": fft_result})
+                    await asyncio.gather(
+                        *[c.send(payload) for c in self.clients.copy()],
+                        return_exceptions=True
+                    )
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
             await asyncio.sleep(1.0)
 
     async def run_server(self):

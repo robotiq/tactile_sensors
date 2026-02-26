@@ -245,6 +245,11 @@ class UsbPacketParser:
                     finger.timestamp = values[0]
                 idx += bytes_consumed
 
+            else:
+                # Unknown sensor type — can't safely continue parsing
+                # this packet (matches C++ SDK behaviour).
+                break
+
         return received_dynamic
 
     def _extract_uint16_array(self, data: bytes, count: int) -> Tuple[List[int], int]:
