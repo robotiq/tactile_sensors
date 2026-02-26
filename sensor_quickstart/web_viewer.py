@@ -20,8 +20,7 @@ from pathlib import Path
 
 import websockets
 
-
-NUM_FINGERS = 2
+from protocol import NUM_FINGERS
 DISPLAY_POINTS = 500  # max points sent to browser for time-series
 BROADCAST_HZ = 5      # display refresh rate
 

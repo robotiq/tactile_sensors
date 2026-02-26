@@ -19,7 +19,7 @@ except ImportError:
     print("Please install with: pip install pyserial")
     sys.exit(1)
 
-from protocol import UsbPacketParser, SensorData, FingerData
+from protocol import UsbPacketParser, SensorData, FingerData, NUM_FINGERS
 
 # Serial port configuration
 BAUD_RATE = 115200
@@ -36,7 +36,6 @@ SENSOR_VID_PID_PAIRS = [
 ]
 
 # Display configuration
-NUM_FINGERS = 2  # Currently 2 fingers
 REFRESH_RATE_WINDOW = 1.0  # Calculate refresh rate over 1 second
 
 
@@ -143,6 +142,48 @@ class SensorMonitor:
         time.sleep(0.2)  # Give sensor time to start
         print("Autosend command sent")
         return True
+
+    def connect_to_sensor(self, period_ms: int = 1) -> bool:
+        """Find, connect, and start streaming from the sensor.
+
+        Returns True if successful, False otherwise.
+        """
+        port = self.find_sensor()
+        if not port:
+            print("\nError: Tactile sensor not found!")
+            print("\nAvailable ports:")
+            for p in serial.tools.list_ports.comports():
+                vid = f"{p.vid:04X}" if p.vid is not None else "----"
+                pid = f"{p.pid:04X}" if p.pid is not None else "----"
+                print(f"  {p.device}: {p.description} (VID:PID={vid}:{pid})")
+            return False
+
+        if not self.connect(port):
+            return False
+
+        self.parser.print_firmware_version(self.serial_port)
+
+        if not self.start_autosend(period_ms=period_ms):
+            self.cleanup()
+            return False
+
+        return True
+
+    def poll_data(self) -> list:
+        """Read available serial data and return list of complete SensorData snapshots.
+
+        Non-blocking: returns an empty list if no data is available.
+        """
+        results = []
+        waiting = self.serial_port.in_waiting
+        if waiting > 0:
+            data = self.serial_port.read(waiting)
+            packets = self.parser.feed_bytes(data)
+            self.update_statistics(len(packets), len(data))
+            for packet in packets:
+                if self.parser.parse_sensor_packet(packet):
+                    results.append(self.parser.get_sensor_data())
+        return results
 
     def stop_autosend(self):
         """Stop continuous sensor data streaming"""
@@ -267,54 +308,12 @@ class SensorMonitor:
         self.running = True
         self.last_stats_time = time.time()
 
-        # Debug counters
-        bytes_received_total = 0
-        reads_with_data = 0
-        reads_without_data = 0
-
         try:
             while self.running:
-                # Read available data
-                waiting = self.serial_port.in_waiting
-                if waiting > 0:
-                    data = self.serial_port.read(waiting)
-                    bytes_received_total += len(data)
-                    reads_with_data += 1
-
-                    # Debug: Print first time we receive data
-                    if self.verbose and reads_with_data == 1:
-                        print(f"[DEBUG] First data received: {len(data)} bytes")
-                        print(f"[DEBUG] First few bytes (hex): {data[:min(20, len(data))].hex()}")
-
-                    # Parse packets
-                    packets = self.parser.feed_bytes(data)
-
-                    if packets:
-                        self.update_statistics(len(packets), len(data))
-
-                        # Debug: Print first packet info
-                        if self.verbose and self.total_packets == len(packets):
-                            print(f"[DEBUG] First packet parsed! Total packets found: {len(packets)}")
-                            print(f"[DEBUG] First packet length: {len(packets[0])} bytes")
-
-                        # Parse sensor data
-                        for packet in packets:
-                            data_complete = self.parser.parse_sensor_packet(packet)
-
-                            # Notify when we get a complete data set (indicated by dynamic tactile)
-                            if data_complete:
-                                sensor_data = self.parser.get_sensor_data()
-                                callback(sensor_data)
-                                self.displays_in_window += 1
-                                self.last_update_time = time.time()
-                else:
-                    reads_without_data += 1
-
-                    # Debug: Print status every 100 empty reads
-                    if self.verbose and reads_without_data % 100 == 0:
-                        print(f"[DEBUG] Status: {reads_with_data} reads with data, "
-                              f"{bytes_received_total} total bytes, "
-                              f"{self.total_packets} packets parsed")
+                for sensor_data in self.poll_data():
+                    callback(sensor_data)
+                    self.displays_in_window += 1
+                    self.last_update_time = time.time()
 
                 # Small sleep to prevent CPU spinning
                 time.sleep(0.001)
@@ -372,35 +371,7 @@ def main():
 
     signal.signal(signal.SIGINT, signal_handler)
 
-    # Find sensor
-    port = monitor.find_sensor()
-    if not port:
-        print("\nError: Tactile sensor not found!")
-        print("\nTroubleshooting:")
-        print("1. Check that the sensor is plugged in")
-        print("2. On Linux, check udev rules are installed")
-        print("3. On Windows, ensure USB drivers are installed")
-        print("\nAvailable ports:")
-        for p in serial.tools.list_ports.comports():
-            vid = f"{p.vid:04X}" if p.vid is not None else "----"
-            pid = f"{p.pid:04X}" if p.pid is not None else "----"
-            print(f"  {p.device}: {p.description} (VID:PID={vid}:{pid})")
-        return 1
-
-    print()
-
-    # Connect
-    if not monitor.connect(port):
-        return 1
-
-    # Print firmware version
-    monitor.parser.print_firmware_version(monitor.serial_port)
-
-    print()
-
-    # Start streaming
-    if not monitor.start_autosend(period_ms=1):
-        monitor.cleanup()
+    if not monitor.connect_to_sensor():
         return 1
 
     print()

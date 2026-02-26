@@ -10,18 +10,8 @@ import time
 import csv
 import argparse
 
-try:
-    import serial
-except ImportError:
-    print("Error: pyserial not installed")
-    print("Please install with: pip install pyserial")
-    sys.exit(1)
-
-from protocol import UsbPacketParser, SensorData
+from protocol import NUM_FINGERS
 from quick_connect import SensorMonitor
-
-# Number of fingers
-NUM_FINGERS = 2
 
 
 def _kbhit_init():
@@ -59,7 +49,7 @@ def _kbhit_cleanup(ctx):
         termios.tcsetattr(ctx['fd'], termios.TCSADRAIN, ctx['old_settings'])
 
 
-def collect_baseline(serial_port, parser, num_samples=1000):
+def collect_baseline(monitor, num_samples=1000):
     """
     Collect and average samples to establish a per-taxel baseline.
 
@@ -81,22 +71,14 @@ def collect_baseline(serial_port, parser, num_samples=1000):
                 return None
             break
 
-        waiting = serial_port.in_waiting
-        if waiting > 0:
-            data = serial_port.read(waiting)
-            packets = parser.feed_bytes(data)
-
-            for packet in packets:
-                data_complete = parser.parse_sensor_packet(packet)
-                if data_complete:
-                    sensor_data = parser.get_sensor_data()
-                    for finger_id in range(NUM_FINGERS):
-                        finger = sensor_data.fingers[finger_id]
-                        for taxel_idx in range(28):
-                            accumulators[finger_id][taxel_idx] += finger.static_tactile[taxel_idx]
-                    samples_collected += 1
-                    if samples_collected % 100 == 0:
-                        print(f"  Progress: {samples_collected}/{num_samples}", end='\r')
+        for sensor_data in monitor.poll_data():
+            for finger_id in range(NUM_FINGERS):
+                finger = sensor_data.fingers[finger_id]
+                for taxel_idx in range(28):
+                    accumulators[finger_id][taxel_idx] += finger.static_tactile[taxel_idx]
+            samples_collected += 1
+            if samples_collected % 100 == 0:
+                print(f"  Progress: {samples_collected}/{num_samples}", end='\r')
 
         time.sleep(0.001)
 
@@ -188,7 +170,7 @@ def save_to_csv(filename, data):
             writer.writerow(row)
 
 
-def record_loop(serial_port, parser, filename, remove_baseline):
+def record_loop(monitor, filename, remove_baseline):
     """Main recording loop with interactive control."""
     print("\n" + "=" * 60)
     print("Interactive Recording Mode")
@@ -212,7 +194,7 @@ def record_loop(serial_port, parser, filename, remove_baseline):
             if key:
                 if key == 's' and not recording:
                     print("\n>>> COLLECTING BASELINE <<<")
-                    baselines = collect_baseline(serial_port, parser)
+                    baselines = collect_baseline(monitor)
                     if not baselines:
                         print("Failed to collect baseline. Please try again.")
                         continue
@@ -240,20 +222,13 @@ def record_loop(serial_port, parser, filename, remove_baseline):
                     break
 
             # Read sensor data
-            waiting = serial_port.in_waiting
-            if waiting > 0:
-                data = serial_port.read(waiting)
-                packets = parser.feed_bytes(data)
+            for sensor_data in monitor.poll_data():
+                if recording:
+                    row = create_data_row(sensor_data, baselines, remove_baseline)
+                    recorded_data.append(row)
 
-                for packet in packets:
-                    data_complete = parser.parse_sensor_packet(packet)
-                    if data_complete and recording:
-                        sensor_data = parser.get_sensor_data()
-                        row = create_data_row(sensor_data, baselines, remove_baseline)
-                        recorded_data.append(row)
-
-                        if len(recorded_data) % 100 == 0:
-                            print(f"Recorded {len(recorded_data) - 1} samples...", end='\r')
+                    if len(recorded_data) % 100 == 0:
+                        print(f"Recorded {len(recorded_data) - 1} samples...", end='\r')
 
             time.sleep(0.001)
 
@@ -282,21 +257,7 @@ def main():
 
     monitor = SensorMonitor()
 
-    port = monitor.find_sensor()
-    if not port:
-        print("\nError: Tactile sensor not found!")
-        print("\nAvailable ports:")
-        for p in serial.tools.list_ports.comports():
-            vid = f"{p.vid:04X}" if p.vid is not None else "----"
-            pid = f"{p.pid:04X}" if p.pid is not None else "----"
-            print(f"  {p.device}: {p.description} (VID:PID={vid}:{pid})")
-        return 1
-
-    if not monitor.connect(port):
-        return 1
-
-    if not monitor.start_autosend(period_ms=1):
-        monitor.cleanup()
+    if not monitor.connect_to_sensor():
         return 1
 
     print("Initializing sensor...")
@@ -304,7 +265,7 @@ def main():
     print("Ready to record.\n")
 
     try:
-        record_loop(monitor.serial_port, monitor.parser, args.filename,
+        record_loop(monitor, args.filename,
                      remove_baseline=not args.keep_baseline)
     finally:
         monitor.cleanup()

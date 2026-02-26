@@ -33,6 +33,7 @@ SENSOR_TYPE_TIMESTAMP = 0x70
 STATIC_TACTILE_SIZE = 28  # 7x4 grid (7 rows, 4 columns)
 DYNAMIC_TACTILE_SIZE = 1
 IMU_SIZE = 3  # 3 axes
+NUM_FINGERS = 2
 
 
 @dataclass
@@ -64,7 +65,7 @@ class SensorData:
 
     def __post_init__(self):
         if self.fingers is None:
-            self.fingers = [FingerData(), FingerData(), FingerData(), FingerData()]
+            self.fingers = [FingerData() for _ in range(NUM_FINGERS)]
 
 
 class UsbPacketParser:
