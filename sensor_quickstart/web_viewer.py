@@ -39,6 +39,8 @@ class SensorDataBuffer:
         self.adaptive_range = True
         self.default_range = 3000.0
         self.max_range = [300.0] * NUM_FINGERS  # adaptive starts from 0
+        self.push_total = [0] * NUM_FINGERS
+        self.push_corrupt = [0] * NUM_FINGERS
 
     def push(self, sensor_data):
         with self._lock:
@@ -47,10 +49,9 @@ class SensorDataBuffer:
             for f in range(NUM_FINGERS):
                 finger = sensor_data.fingers[f]
                 st = list(finger.static_tactile)
+                self.push_total[f] += 1
                 if len(st) != 28:
-                    print(f"[warn] finger {f} static_tactile has {len(st)} "
-                          f"elements (expected 28), skipping frame",
-                          file=sys.stderr)
+                    self.push_corrupt[f] += 1
                     continue
                 self.static_tactile[f] = st
                 self.dynamic_tactile[f].append(finger.dynamic_tactile)
@@ -265,8 +266,15 @@ class WebViewer:
                         dyn_sizes = [len(b.dynamic_tactile[f]) for f in range(NUM_FINGERS)]
                         acc_sizes = [len(b.accelerometer[f]) for f in range(NUM_FINGERS)]
                         gyr_sizes = [len(b.gyroscope[f]) for f in range(NUM_FINGERS)]
+                        corrupt = [
+                            f"{b.push_corrupt[f]}/{b.push_total[f]}"
+                            f" ({100*b.push_corrupt[f]/b.push_total[f]:.0f}%)"
+                            if b.push_total[f] else "0/0"
+                            for f in range(NUM_FINGERS)
+                        ]
                     print(f"[diag] tab={self.active_tab}  clients={len(self.clients)}  "
-                          f"dyn={dyn_sizes}  accel={acc_sizes}  gyro={gyr_sizes}")
+                          f"dyn={dyn_sizes}  accel={acc_sizes}  gyro={gyr_sizes}  "
+                          f"corrupt={corrupt}")
                 if self.clients:
                     tab = self.active_tab
                     msg = {"type": "data", "tab": tab}
