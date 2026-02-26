@@ -45,6 +45,7 @@ class FingerData:
     gyroscope: List[int] = None  # 3 int16 values [x, y, z]
     magnetometer: List[int] = None  # 3 int16 values [x, y, z]
     temperature: int = 0  # 1 int16 value
+    timestamp: int = 0  # 1 uint64 value
 
     def __post_init__(self):
         if self.static_tactile is None:
@@ -60,7 +61,6 @@ class FingerData:
 @dataclass
 class SensorData:
     """Complete sensor data for all fingers"""
-    timestamp_ms: int = 0
     fingers: List[FingerData] = None
 
     def __post_init__(self):
@@ -239,10 +239,10 @@ class UsbPacketParser:
                 idx += bytes_consumed
 
             elif sensor_type == SENSOR_TYPE_TIMESTAMP:
-                # 1 uint16 value (2 bytes)
-                values, bytes_consumed = self._extract_uint16_array(data[idx:], 1)
+                # 1 uint64 value (8 bytes)
+                values, bytes_consumed = self._extract_uint64_array(data[idx:], 1)
                 if len(values) > 0:
-                    self.sensor_data.timestamp_ms = values[0]
+                    finger.timestamp = values[0]
                 idx += bytes_consumed
 
         return received_dynamic
@@ -258,6 +258,27 @@ class UsbPacketParser:
                 # Big-endian: MSB first
                 value = (data[i] << 8) | data[i + 1]
                 values.append(value)
+
+        return values, bytes_available
+
+    def _extract_uint64_array(self, data: bytes, count: int) -> Tuple[List[int], int]:
+        """Extract array of big-endian uint64 values"""
+        values = []
+        bytes_needed = count * 8
+        bytes_available = min(len(data) // 8 * 8, bytes_needed)
+
+        for i in range(0, bytes_available, 8):
+            value = (
+                (data[i]     << 56) |
+                (data[i + 1] << 48) |
+                (data[i + 2] << 40) |
+                (data[i + 3] << 32) |
+                (data[i + 4] << 24) |
+                (data[i + 5] << 16) |
+                (data[i + 6] << 8)  |
+                (data[i + 7])
+            )
+            values.append(value)
 
         return values, bytes_available
 

@@ -42,7 +42,7 @@ class SensorDataBuffer:
 
     def push(self, sensor_data):
         with self._lock:
-            if sensor_data.timestamp_ms != 0 and self.default_range != 1200.0:
+            if sensor_data.fingers[0].timestamp != 0 and self.default_range != 1200.0:
                 self.default_range = 1200.0
             for f in range(NUM_FINGERS):
                 finger = sensor_data.fingers[f]
