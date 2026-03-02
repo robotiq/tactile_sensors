@@ -338,17 +338,16 @@ class QuietHTTPHandler(SimpleHTTPRequestHandler):
 def run_web_viewer(monitor, port=8080):
     viewer = WebViewer(monitor, port)
 
+    # Seed buffer baseline from the calibration done in main()
+    for f in range(NUM_FINGERS):
+        viewer.buffer.baseline[f] = list(monitor.baseline[f])
+
     serial_thread = threading.Thread(
         target=monitor.read_serial_data,
         args=(viewer.serial_callback,),
         daemon=True
     )
     serial_thread.start()
-
-    # Wait for sensor data to arrive, then reset baseline so the
-    # web page opens with a clean zero reference.
-    time.sleep(0.5)
-    viewer.buffer.reset_baseline()
 
     url = f"http://localhost:{port}"
     print(f"Web viewer starting...")

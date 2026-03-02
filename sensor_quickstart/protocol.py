@@ -107,8 +107,10 @@ class UsbPacketParser:
                 continue
             for packet in self.feed_bytes(data):
                 if len(packet) >= USB_PACKET_HEADER_SIZE and packet[2] == USB_COMMAND_GET_VERSION:
-                    print(f"Firmware version: {packet[USB_PACKET_HEADER_SIZE:].decode('ascii', errors='replace')}")
-                    return
+                    version = packet[USB_PACKET_HEADER_SIZE:].decode('ascii', errors='replace')
+                    print(f"Firmware version: {version}")
+                    return version
+        return ""
         print("Warning: Could not read firmware version")
 
     def create_autosend_command(self, period_ms: int = 1) -> bytes:
