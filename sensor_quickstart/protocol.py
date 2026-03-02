@@ -45,7 +45,7 @@ class FingerData:
     gyroscope: List[int] = None  # 3 int16 values [x, y, z]
     magnetometer: List[int] = None  # 3 int16 values [x, y, z]
     temperature: int = 0  # 1 int16 value
-    timestamp: int = 0  # 1 uint64 value
+    timestamp: int = 0  # 1 uint16 value
 
     def __post_init__(self):
         if self.static_tactile is None:
@@ -239,8 +239,8 @@ class UsbPacketParser:
                 idx += bytes_consumed
 
             elif sensor_type == SENSOR_TYPE_TIMESTAMP:
-                # 1 uint64 value (8 bytes)
-                values, bytes_consumed = self._extract_uint64_array(data[idx:], 1)
+                # 1 uint16 value (2 bytes)
+                values, bytes_consumed = self._extract_uint16_array(data[idx:], 1)
                 if len(values) > 0:
                     finger.timestamp = values[0]
                 idx += bytes_consumed
