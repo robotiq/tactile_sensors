@@ -10,7 +10,11 @@ import select
 import time
 import signal
 import shutil
-from typing import Optional, List
+from typing import Optional, List, Dict, Tuple
+import math
+import os
+from collections import defaultdict
+
 
 try:
     import serial
@@ -21,6 +25,15 @@ except ImportError:
     sys.exit(1)
 
 from protocol import UsbPacketParser, SensorData, FingerData
+from protocol import (
+    UsbPacketParser, SensorData,
+    SENSOR_TYPE_STATIC_TACTILE, SENSOR_TYPE_DYNAMIC_TACTILE,
+    SENSOR_TYPE_ACCELEROMETER, SENSOR_TYPE_GYROSCOPE,
+    SENSOR_TYPE_MAGNETOMETER, SENSOR_TYPE_TEMPERATURE,
+    SENSOR_TYPE_TIMESTAMP,
+    STATIC_TACTILE_SIZE, DYNAMIC_TACTILE_SIZE, IMU_SIZE,
+    USB_PACKET_HEADER_SIZE, USB_COMMAND_GET_VERSION,
+)
 
 # Tactile sensor Hub VID/PID
 MASTER_HUB_APP_VID_OLD = 0x04B4
@@ -38,6 +51,50 @@ TIMEOUT = 0.1  # 100ms timeout for reads
 # Display configuration
 NUM_FINGERS = 2  # Currently 2 fingers
 REFRESH_RATE_WINDOW = 1.0  # Calculate refresh rate over 1 second
+
+# ── Display helpers for Field Tracker ────────────────────────────────────────────────────────────
+FIELD_LABEL = {
+    SENSOR_TYPE_STATIC_TACTILE:  "Static Tactile",
+    SENSOR_TYPE_DYNAMIC_TACTILE: "Dynamic Tactile",
+    SENSOR_TYPE_ACCELEROMETER:   "Accelerometer",
+    SENSOR_TYPE_GYROSCOPE:       "Gyroscope",
+    SENSOR_TYPE_TEMPERATURE:     "Temperature",
+    SENSOR_TYPE_TIMESTAMP:       "Timestamp",
+}
+FIELD_ORDER = [
+    SENSOR_TYPE_STATIC_TACTILE,
+    SENSOR_TYPE_DYNAMIC_TACTILE,
+    SENSOR_TYPE_ACCELEROMETER,
+    SENSOR_TYPE_GYROSCOPE,
+    SENSOR_TYPE_TEMPERATURE,
+    SENSOR_TYPE_TIMESTAMP,
+]
+
+# Field payload sizes in bytes (uint16 = 2 bytes each)
+_FIELD_BYTE_SIZES = {
+    SENSOR_TYPE_STATIC_TACTILE:  STATIC_TACTILE_SIZE * 2,   # 56
+    SENSOR_TYPE_DYNAMIC_TACTILE: DYNAMIC_TACTILE_SIZE * 2,  # 2
+    SENSOR_TYPE_ACCELEROMETER:   IMU_SIZE * 2,               # 6
+    SENSOR_TYPE_GYROSCOPE:       IMU_SIZE * 2,               # 6
+    SENSOR_TYPE_TEMPERATURE:     2,
+    SENSOR_TYPE_TIMESTAMP:       2,  # uint16 in current protocol
+}
+
+
+def _delta_stats(deltas: List[int]) -> Optional[Dict]:
+    """Return mean/std/min/max/count for a list of timestamp deltas, or None."""
+    if not deltas:
+        return None
+    n = len(deltas)
+    mean = sum(deltas) / n
+    variance = sum((d - mean) ** 2 for d in deltas) / n if n > 1 else 0.0
+    return {
+        "mean":  mean,
+        "std":   math.sqrt(variance),
+        "min":   min(deltas),
+        "max":   max(deltas),
+        "count": n,
+    }
 
 
 class SensorMonitor:
@@ -446,6 +503,344 @@ class SensorMonitor:
         print("Cleanup complete")
 
 
+
+# Debugging classes
+class TrackingParser(UsbPacketParser):
+    """
+    UsbPacketParser subclass that counts individual field arrivals and collects
+    firmware timestamp deltas per finger, without changing any parsing logic.
+    """
+
+    def __init__(self):
+        super().__init__()
+        # (sensor_type, finger_id) -> arrival count in current window
+        self.field_counts: Dict[Tuple[int, int], int] = defaultdict(int)
+        # raw timestamp delta list per finger (firmware ticks, uint16 wraps at 65535)
+        self.ts_deltas: List[List[int]] = [[], []]
+        self._ts_prev = [None, None]
+
+    def snapshot_and_reset(self) -> Tuple[Dict, List[List[int]]]:
+        """Atomically snapshot then clear the window counters."""
+        counts = dict(self.field_counts)
+        deltas = [list(d) for d in self.ts_deltas]
+        self.field_counts = defaultdict(int)
+        self.ts_deltas = [[], []]
+        return counts, deltas
+
+    def parse_sensor_packet(self, packet: bytes) -> bool:
+        """
+        Pre-scan the packet to count field arrivals and accumulate timestamp
+        deltas per finger, then delegate actual parsing to the parent.
+        """
+        if len(packet) < USB_PACKET_HEADER_SIZE:
+            return False
+
+        data = packet[USB_PACKET_HEADER_SIZE:]
+        data_length = len(data)
+        idx = 0
+
+        while idx < data_length:
+            sensor_byte = data[idx]
+            sensor_type = sensor_byte & 0xF0
+            finger_id   = (sensor_byte >> 2) & 0x03
+            idx += 1
+
+            field_size = _FIELD_BYTE_SIZES.get(sensor_type)
+            if field_size is None or idx + field_size > data_length:
+                break
+
+            if finger_id < NUM_FINGERS:
+                self.field_counts[(sensor_type, finger_id)] += 1
+
+            # Accumulate timestamp deltas per finger (uint16, big-endian)
+            if sensor_type == SENSOR_TYPE_TIMESTAMP and finger_id < NUM_FINGERS:
+                ts = (data[idx] << 8) | data[idx + 1]
+                prev = self._ts_prev[finger_id]
+                if prev is not None and ts > prev:
+                    self.ts_deltas[finger_id].append(ts - prev)
+                self._ts_prev[finger_id] = ts
+
+            idx += field_size
+
+        return super().parse_sensor_packet(packet)
+
+
+
+# ── Monitor Packets Seperately────────────────────────────────────────────────────────────────────
+class FieldTracker:
+
+    def __init__(self):
+        self.parser       = TrackingParser()
+        self.serial_port: Optional[serial.Serial] = None
+        self.running      = False
+        self.firmware_version = ""
+
+        # Running totals
+        self.total_packets = 0
+        self.total_bytes   = 0
+        self.frames_in_window   = 0
+
+        # Bytes/packets in current window (for data rate)
+        self.packets_in_window = 0
+        self.bytes_in_window   = 0
+        self.last_stats_time   = time.time()
+
+        # Displayed stats (updated each window)
+        self.field_rates: Dict[Tuple[int, int], float] = {}
+        self.frames_hz   = 0.0
+        self.data_rate_kbs  = 0.0
+        self.window_elapsed = 0.0
+        self.ts_stats: List[Optional[Dict]] = [None, None]
+        self.lost_packets_window: List[int] = [0, 0]  # gaps >1ms in last window
+        self.lost_packets_total: List[int]  = [0, 0]  # running total
+
+        self._display_initialized = False
+        self._cursor_hidden       = False
+        self._alt_screen_enabled  = False
+
+    # ── Connection helpers (mirrors Monitor class) ─────────────────────────
+    def _find_port(self) -> Optional[str]:
+        # 1. Try udev symlinks (Linux with rules installed)
+        for i in range(10):
+            symlink = f"/dev/rq_tsf85_{i}"
+            if os.path.exists(symlink):
+                print(f"Found sensor via udev symlink: {symlink}")
+                return symlink
+
+        # 2. Fallback: match by USB VID:PID
+        for vid, pid in [(MASTER_HUB_APP_VID, MASTER_HUB_APP_PID),
+                         (MASTER_HUB_APP_VID_OLD, MASTER_HUB_APP_PID_OLD)]:
+            for p in serial.tools.list_ports.comports():
+                if p.vid == vid and p.pid == pid:
+                    print(f"Found sensor on {p.device}  (VID:{vid:#06x} PID:{pid:#06x})")
+                    return p.device
+        return None
+
+    def connect(self, port: str) -> bool:
+        try:
+            self.serial_port = serial.Serial(
+                port=port, baudrate=BAUD_RATE, bytesize=DATA_BITS,
+                parity=PARITY, stopbits=STOP_BITS,
+                timeout=TIMEOUT, write_timeout=TIMEOUT,
+            )
+            self.serial_port.dtr = True
+            self.serial_port.rts = False
+            time.sleep(0.2)
+            self.serial_port.reset_input_buffer()
+            self.serial_port.reset_output_buffer()
+
+            # Request firmware version
+            self.serial_port.write(self.parser.create_get_version_command())
+            self.serial_port.flush()
+            deadline = time.time() + 1.0
+            while time.time() < deadline:
+                raw = self.serial_port.read(64)
+                if not raw:
+                    continue
+                for pkt in self.parser.feed_bytes(raw):
+                    if len(pkt) >= USB_PACKET_HEADER_SIZE and pkt[2] == USB_COMMAND_GET_VERSION:
+                        self.firmware_version = pkt[USB_PACKET_HEADER_SIZE:].decode(
+                            'ascii', errors='replace').strip('\x00').strip()
+                        break
+                if self.firmware_version:
+                    break
+
+            print(f"Connected to {port}  firmware: {self.firmware_version or '(unknown)'}")
+            return True
+        except serial.SerialException as e:
+            print(f"Failed to connect: {e}")
+            return False
+
+    def start_autosend(self) -> bool:
+        if not self.serial_port:
+            return False
+        cmd = self.parser.create_autosend_command(1)
+        self.serial_port.write(cmd)
+        self.serial_port.flush()
+        time.sleep(0.2)
+        return True
+
+    def stop_autosend(self):
+        if self.serial_port:
+            self.serial_port.write(self.parser.create_autosend_command(0))
+            time.sleep(0.1)
+
+    # ── Stats update ──────────────────────────────────────────────────────────
+    def _update_stats(self, num_packets: int, num_bytes: int):
+        self.total_packets     += num_packets
+        self.total_bytes       += num_bytes
+        self.packets_in_window += num_packets
+        self.bytes_in_window   += num_bytes
+
+        now     = time.time()
+        elapsed = now - self.last_stats_time
+
+        if elapsed >= REFRESH_RATE_WINDOW:
+            counts, deltas = self.parser.snapshot_and_reset()
+
+            # Field rates
+            self.field_rates = {key: cnt / elapsed for key, cnt in counts.items()}
+
+            # Frame complete rate
+            self.frames_hz = self.frames_in_window / elapsed
+
+            # Data rate
+            self.data_rate_kbs = (self.bytes_in_window / elapsed) / 1000.0
+
+            # Timestamp delta stats per finger
+            self.ts_stats = [_delta_stats(deltas[fi]) for fi in range(NUM_FINGERS)]
+
+            # Lost packets: any gap > 1ms between consecutive timestamps
+            window_lost = [
+                sum(1 for d in deltas[fi] if d > 1)
+                for fi in range(NUM_FINGERS)
+            ]
+            self.lost_packets_window = window_lost
+            self.lost_packets_total  = [
+                self.lost_packets_total[fi] + window_lost[fi]
+                for fi in range(NUM_FINGERS)
+            ]
+
+            self.window_elapsed = elapsed
+
+            # Reset window
+            self.packets_in_window = 0
+            self.bytes_in_window   = 0
+            self.frames_in_window  = 0
+            self.last_stats_time   = now
+
+    # ── Display ───────────────────────────────────────────────────────────────
+    def _render(self):
+        W = 72
+        lines = []
+        lines.append("=" * W)
+        lines.append(f"Robotiq Modality Rate Tracker   fw: {self.firmware_version}".center(W))
+        lines.append("=" * W)
+        lines.append(
+            f"Data Rate: {self.data_rate_kbs:.2f} KB/s  |  "
+            f"Frames: {self.frames_hz:.1f} Hz  |  "
+            f"Packets: {self.total_packets}"
+        )
+        lines.append(f"Window: {self.window_elapsed:.3f} s")
+        lines.append("=" * W)
+        lines.append("")
+
+        # ── Per-field rates table ─────────────────────────────────────────────
+        lines.append(f"  {'Field':<20}  {'F0 (Hz)':>10}  {'F1 (Hz)':>10}  {'Match':>6}")
+        lines.append("  " + "-" * (W - 2))
+        for stype in FIELD_ORDER:
+            label = FIELD_LABEL[stype]
+            hz0 = self.field_rates.get((stype, 0), 0.0)
+            hz1 = self.field_rates.get((stype, 1), 0.0)
+            # Flag if either finger is >5% below the other
+            if hz0 > 0 and hz1 > 0:
+                ratio = min(hz0, hz1) / max(hz0, hz1)
+                flag = "OK" if ratio >= 0.95 else "DIFF"
+            elif hz0 == 0 and hz1 == 0:
+                flag = "----"
+            else:
+                flag = "MISS"
+            lines.append(f"  {label:<20}  {hz0:>10.1f}  {hz1:>10.1f}  {flag:>6}")
+
+        lines.append("")
+        lines.append(f"  {'Frame Complete':<20}  {self.frames_hz:>10.1f}")
+        lines.append("")
+        lines.append("=" * W)
+        lines.append("")
+
+        # ── Timestamp delta table ─────────────────────────────────────────────
+        lines.append(f"  {'Timestamp Deltas (ms)':24}  {'F0':>12}  {'F1':>12}")
+        lines.append("  " + "-" * (W - 2))
+        stat_rows = [
+            ("Mean",    "mean",  ".1f"),
+            ("Std Dev", "std",   ".1f"),
+            ("Min",     "min",   ".0f"),
+            ("Max",     "max",   ".0f"),
+            ("Count",   "count", "d"),
+        ]
+        for row_label, key, fmt in stat_rows:
+            vals = []
+            for fi in range(NUM_FINGERS):
+                s = self.ts_stats[fi]
+                if s is None:
+                    vals.append("  --")
+                elif fmt == "d":
+                    vals.append(f"{s[key]:>12d}")
+                else:
+                    vals.append(f"{s[key]:>12{fmt}}")
+            lines.append(f"  {row_label:<24}  {vals[0]}  {vals[1]}")
+
+        lines.append("  " + "-" * (W - 2))
+        lw = self.lost_packets_window
+        lt = self.lost_packets_total
+        lines.append(
+            f"  {'Lost pkts this window':<24}  {lw[0]:>12d}  {lw[1]:>12d}"
+        )
+        lines.append(
+            f"  {'Lost pkts total':<24}  {lt[0]:>12d}  {lt[1]:>12d}"
+        )
+
+        lines.append("")
+        lines.append("=" * W)
+        lines.append("Press Ctrl+C to exit")
+
+        # Trim to terminal height
+        th = shutil.get_terminal_size((80, 50)).lines
+        if len(lines) > th - 1:
+            lines = lines[:th - 2] + [f"... truncated ({len(lines)} lines needed)"]
+
+        if not self._display_initialized:
+            sys.stdout.write("\033[?1049h")
+            self._alt_screen_enabled = True
+            sys.stdout.write("\033[?25l")
+            self._cursor_hidden = True
+            self._display_initialized = True
+
+        sys.stdout.write("\033[H\033[2J")
+        sys.stdout.write("\n".join(lines) + "\n")
+        sys.stdout.flush()
+
+    # ── Main loop ─────────────────────────────────────────────────────────────
+    def run(self):
+        self.running = True
+        self.last_stats_time = time.time()
+
+        try:
+            while self.running:
+                waiting = self.serial_port.in_waiting
+                if waiting > 0:
+                    raw = self.serial_port.read(waiting)
+                    packets = self.parser.feed_bytes(raw)
+
+                    if packets:
+                        self._update_stats(len(packets), len(raw))
+                        for packet in packets:
+                            frame_complete = self.parser.parse_sensor_packet(packet)
+                            if frame_complete:
+                                self.frames_in_window += 1
+                                self._render()
+                else:
+                    try:
+                        select.select([self.serial_port.fd], [], [], 0.001)
+                    except (AttributeError, ValueError, OSError):
+                        time.sleep(0.001)
+
+        except KeyboardInterrupt:
+            pass
+        finally:
+            self.running = False
+
+    def cleanup(self):
+        self.stop_autosend()
+        if self._cursor_hidden:
+            sys.stdout.write("\033[?25h")
+            sys.stdout.flush()
+        if self._alt_screen_enabled:
+            sys.stdout.write("\033[?1049l")
+            sys.stdout.flush()
+        if self.serial_port and self.serial_port.is_open:
+            self.serial_port.close()
+
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description="Robotiq Tactile Sensor Monitor")
@@ -453,6 +848,8 @@ def main():
                         help='Launch web-based visualization in browser')
     parser.add_argument('--port', type=int, default=8080,
                         help='Web server port (default: 8080)')
+    parser.add_argument('--debug', type=bool, default=False,
+                    help='Toggle Sensor outputs vs feedback debugger')
     args = parser.parse_args()
 
     print("=" * 80)
@@ -460,66 +857,100 @@ def main():
     print("=" * 80)
     print()
 
-    monitor = SensorMonitor()
+    if args.debug:
+        tracker = FieldTracker()
 
-    # Set up signal handler for graceful shutdown
-    def signal_handler(sig, frame):
-        monitor.running = False
+        def _sig(sig, frame):
+            tracker.running = False
+        signal.signal(signal.SIGINT, _sig)
 
-    signal.signal(signal.SIGINT, signal_handler)
+        port = tracker._find_port()
+        if not port:
+            print("Sensor not found. Check USB connection.")
+            for p in serial.tools.list_ports.comports():
+                vid = p.vid or 0
+                pid = p.pid or 0
+                print(f"  {p.device}: {p.description}  VID:PID={vid:04X}:{pid:04X}")
+            return 1
 
-    # Find sensor
-    port = monitor.find_sensor()
-    if not port:
-        print("\nError: Tactile sensor not found!")
-        print("\nTroubleshooting:")
-        print("1. Check that the sensor is plugged in")
-        print("2. On Linux, check udev rules are installed")
-        print("3. On Windows, ensure USB drivers are installed")
-        print("\nAvailable ports:")
-        for p in serial.tools.list_ports.comports():
-            vid = f"{p.vid:04X}" if p.vid is not None else "----"
-            pid = f"{p.pid:04X}" if p.pid is not None else "----"
-            print(f"  {p.device}: {p.description} (VID:PID={vid}:{pid})")
-        return 1
+        if not tracker.connect(port):
+            return 1
 
-    print()
+        if not tracker.start_autosend():
+            tracker.cleanup()
+            return 1
 
-    # Connect
-    if not monitor.connect(port):
-        return 1
+        print("Streaming — display starts after first 1-second window...")
 
-    print()
+        try:
+            tracker.run()
+        finally:
+            tracker.cleanup()
 
-    # Start streaming
-    if not monitor.start_autosend(period_ms=1):
-        monitor.cleanup()
-        return 1
+        print("\nDone.")
+        return 0
 
-    print()
+    else:
+        monitor = SensorMonitor()
 
-    # Set running flag (needed for reset_baseline)
-    monitor.running = True
+        # Set up signal handler for graceful shutdown
+        def signal_handler(sig, frame):
+            monitor.running = False
 
-    # Calculate baseline before starting display
-    print("Calibrating baseline...")
-    if not monitor.reset_baseline(num_samples=1000):
-        print("Warning: Baseline calibration failed, continuing with zero baseline")
+        signal.signal(signal.SIGINT, signal_handler)
 
-    print()
+        # Find sensor
+        port = monitor.find_sensor()
+        if not port:
+            print("\nError: Tactile sensor not found!")
+            print("\nTroubleshooting:")
+            print("1. Check that the sensor is plugged in")
+            print("2. On Linux, check udev rules are installed")
+            print("3. On Windows, ensure USB drivers are installed")
+            print("\nAvailable ports:")
+            for p in serial.tools.list_ports.comports():
+                vid = f"{p.vid:04X}" if p.vid is not None else "----"
+                pid = f"{p.pid:04X}" if p.pid is not None else "----"
+                print(f"  {p.device}: {p.description} (VID:PID={vid}:{pid})")
+            return 1
 
-    # Run monitoring loop
-    try:
-        if args.web:
-            from web_viewer import run_web_viewer
-            run_web_viewer(monitor, port=args.port)
-        else:
-            monitor.run()
-    finally:
-        monitor.cleanup()
+        print()
 
-    print("\nExiting...")
-    return 0
+        # Connect
+        if not monitor.connect(port):
+            return 1
+
+        print()
+
+        # Start streaming
+        if not monitor.start_autosend(period_ms=1):
+            monitor.cleanup()
+            return 1
+
+        print()
+
+        # Set running flag (needed for reset_baseline)
+        monitor.running = True
+
+        # Calculate baseline before starting display
+        print("Calibrating baseline...")
+        if not monitor.reset_baseline(num_samples=1000):
+            print("Warning: Baseline calibration failed, continuing with zero baseline")
+
+        print()
+
+        # Run monitoring loop
+        try:
+            if args.web:
+                from web_viewer import run_web_viewer
+                run_web_viewer(monitor, port=args.port)
+            else:
+                monitor.run()
+        finally:
+            monitor.cleanup()
+
+        print("\nExiting...")
+        return 0
 
 
 if __name__ == "__main__":
