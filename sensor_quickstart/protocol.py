@@ -33,6 +33,7 @@ SENSOR_TYPE_TIMESTAMP = 0x70
 STATIC_TACTILE_SIZE = 28  # 7x4 grid (7 rows, 4 columns)
 DYNAMIC_TACTILE_SIZE = 1
 IMU_SIZE = 3  # 3 axes
+NUM_FINGERS = 2
 
 
 @dataclass
@@ -44,6 +45,7 @@ class FingerData:
     gyroscope: List[int] = None  # 3 int16 values [x, y, z]
     magnetometer: List[int] = None  # 3 int16 values [x, y, z]
     temperature: int = 0  # 1 int16 value
+    timestamp: int = 0  # 1 uint16 value
 
     def __post_init__(self):
         if self.static_tactile is None:
@@ -59,12 +61,11 @@ class FingerData:
 @dataclass
 class SensorData:
     """Complete sensor data for all fingers"""
-    timestamp_ms: int = 0
     fingers: List[FingerData] = None
 
     def __post_init__(self):
         if self.fingers is None:
-            self.fingers = [FingerData(), FingerData(), FingerData(), FingerData()]
+            self.fingers = [FingerData() for _ in range(NUM_FINGERS)]
 
 
 class UsbPacketParser:
@@ -106,8 +107,10 @@ class UsbPacketParser:
                 continue
             for packet in self.feed_bytes(data):
                 if len(packet) >= USB_PACKET_HEADER_SIZE and packet[2] == USB_COMMAND_GET_VERSION:
-                    print(f"Firmware version: {packet[USB_PACKET_HEADER_SIZE:].decode('ascii', errors='replace')}")
-                    return
+                    version = packet[USB_PACKET_HEADER_SIZE:].decode('ascii', errors='replace')
+                    print(f"Firmware version: {version}")
+                    return version
+        return ""
         print("Warning: Could not read firmware version")
 
     def create_autosend_command(self, period_ms: int = 1) -> bytes:
@@ -241,8 +244,13 @@ class UsbPacketParser:
                 # 1 uint16 value (2 bytes)
                 values, bytes_consumed = self._extract_uint16_array(data[idx:], 1)
                 if len(values) > 0:
-                    self.sensor_data.timestamp_ms = values[0]
+                    finger.timestamp = values[0]
                 idx += bytes_consumed
+
+            else:
+                # Unknown sensor type — can't safely continue parsing
+                # this packet (matches C++ SDK behaviour).
+                break
 
         return received_dynamic
 
@@ -257,6 +265,27 @@ class UsbPacketParser:
                 # Big-endian: MSB first
                 value = (data[i] << 8) | data[i + 1]
                 values.append(value)
+
+        return values, bytes_available
+
+    def _extract_uint64_array(self, data: bytes, count: int) -> Tuple[List[int], int]:
+        """Extract array of big-endian uint64 values"""
+        values = []
+        bytes_needed = count * 8
+        bytes_available = min(len(data) // 8 * 8, bytes_needed)
+
+        for i in range(0, bytes_available, 8):
+            value = (
+                (data[i]     << 56) |
+                (data[i + 1] << 48) |
+                (data[i + 2] << 40) |
+                (data[i + 3] << 32) |
+                (data[i + 4] << 24) |
+                (data[i + 5] << 16) |
+                (data[i + 6] << 8)  |
+                (data[i + 7])
+            )
+            values.append(value)
 
         return values, bytes_available
 

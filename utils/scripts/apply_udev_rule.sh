@@ -7,8 +7,9 @@ apply_udev_rule() {
   if grep -qi microsoft /proc/version; then
       echo "[INFO] Running in WSL — creating serial symlink manually."
 
-      # Load generic USB serial driver for the Cypress device if available.
+      # Load generic USB serial driver for known VID:PID pairs if available.
       if sudo modprobe usbserial; then
+        sudo sh -c "echo '16d0 14cc' > /sys/bus/usb-serial/drivers/generic/new_id" 2>/dev/null || true
         sudo sh -c "echo '04b4 f232' > /sys/bus/usb-serial/drivers/generic/new_id" 2>/dev/null || true
       fi
 
@@ -44,6 +45,9 @@ apply_udev_rule() {
       sudo install -m 644 "${src_rule}" "${dest_rule}"
 
       sudo udevadm control --reload-rules
+      sudo udevadm trigger \
+        --attr-match=idVendor=16d0 \
+        --attr-match=idProduct=14cc
       sudo udevadm trigger \
         --attr-match=idVendor=04b4 \
         --attr-match=idProduct=f232

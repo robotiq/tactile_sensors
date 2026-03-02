@@ -20,8 +20,7 @@ from pathlib import Path
 
 import websockets
 
-
-NUM_FINGERS = 2
+from protocol import NUM_FINGERS
 DISPLAY_POINTS = 500  # max points sent to browser for time-series
 BROADCAST_HZ = 5      # display refresh rate
 
@@ -40,14 +39,21 @@ class SensorDataBuffer:
         self.adaptive_range = True
         self.default_range = 3000.0
         self.max_range = [300.0] * NUM_FINGERS  # adaptive starts from 0
+        self.push_total = [0] * NUM_FINGERS
+        self.push_corrupt = [0] * NUM_FINGERS
 
     def push(self, sensor_data):
         with self._lock:
-            if sensor_data.timestamp_ms != 0 and self.default_range != 1200.0:
+            if sensor_data.fingers[0].timestamp != 0 and self.default_range != 1200.0:
                 self.default_range = 1200.0
             for f in range(NUM_FINGERS):
                 finger = sensor_data.fingers[f]
-                self.static_tactile[f] = list(finger.static_tactile)
+                st = list(finger.static_tactile)
+                self.push_total[f] += 1
+                if len(st) != 28:
+                    self.push_corrupt[f] += 1
+                    continue
+                self.static_tactile[f] = st
                 self.dynamic_tactile[f].append(finger.dynamic_tactile)
                 self.accelerometer[f].append(list(finger.accelerometer))
                 self.gyroscope[f].append(list(finger.gyroscope))
@@ -58,6 +64,9 @@ class SensorDataBuffer:
             for f in range(NUM_FINGERS):
                 raw = self.static_tactile[f]
                 if raw is None:
+                    result.append([0] * 28)
+                    continue
+                if len(raw) != 28:
                     result.append([0] * 28)
                     continue
                 if self.use_baseline:
@@ -248,50 +257,63 @@ class WebViewer:
                 busy.discard(client)
 
         while True:
-            now = time.monotonic()
-            if now - last_diag >= 5.0:
-                last_diag = now
-                b = self.buffer
-                with b._lock:
-                    dyn_sizes = [len(b.dynamic_tactile[f]) for f in range(NUM_FINGERS)]
-                    acc_sizes = [len(b.accelerometer[f]) for f in range(NUM_FINGERS)]
-                    gyr_sizes = [len(b.gyroscope[f]) for f in range(NUM_FINGERS)]
-                print(f"[diag] tab={self.active_tab}  clients={len(self.clients)}  "
-                      f"dyn={dyn_sizes}  accel={acc_sizes}  gyro={gyr_sizes}")
-            if self.clients:
-                tab = self.active_tab
-                msg = {"type": "data", "tab": tab}
+            try:
+                now = time.monotonic()
+                if now - last_diag >= 5.0:
+                    last_diag = now
+                    b = self.buffer
+                    with b._lock:
+                        dyn_sizes = [len(b.dynamic_tactile[f]) for f in range(NUM_FINGERS)]
+                        acc_sizes = [len(b.accelerometer[f]) for f in range(NUM_FINGERS)]
+                        gyr_sizes = [len(b.gyroscope[f]) for f in range(NUM_FINGERS)]
+                        corrupt = [
+                            f"{b.push_corrupt[f]}/{b.push_total[f]}"
+                            f" ({100*b.push_corrupt[f]/b.push_total[f]:.0f}%)"
+                            if b.push_total[f] else "0/0"
+                            for f in range(NUM_FINGERS)
+                        ]
+                    print(f"[diag] tab={self.active_tab}  clients={len(self.clients)}  "
+                          f"dyn={dyn_sizes}  accel={acc_sizes}  gyro={gyr_sizes}  "
+                          f"corrupt={corrupt}")
+                if self.clients:
+                    tab = self.active_tab
+                    msg = {"type": "data", "tab": tab}
 
-                if tab == "static":
-                    values, max_ranges = self.buffer.get_static_snapshot()
-                    msg["static"] = values
-                    msg["maxRange"] = max_ranges
-                elif tab == "dynamic":
-                    msg["dynamic"] = self.buffer.get_dynamic_snapshot()
-                elif tab == "imu":
-                    acc, gyr = self.buffer.get_imu_snapshot()
-                    msg["accel"] = acc
-                    msg["gyro"] = gyr
+                    if tab == "static":
+                        values, max_ranges = self.buffer.get_static_snapshot()
+                        msg["static"] = values
+                        msg["maxRange"] = max_ranges
+                    elif tab == "dynamic":
+                        msg["dynamic"] = self.buffer.get_dynamic_snapshot()
+                    elif tab == "imu":
+                        acc, gyr = self.buffer.get_imu_snapshot()
+                        msg["accel"] = acc
+                        msg["gyro"] = gyr
 
-                payload = json.dumps(msg)
-                for client in self.clients.copy():
-                    if client not in busy:
-                        busy.add(client)
-                        asyncio.ensure_future(_send(client, payload))
-                    # else: client is still sending previous frame, drop this one
+                    payload = json.dumps(msg)
+                    for client in self.clients.copy():
+                        if client not in busy:
+                            busy.add(client)
+                            asyncio.ensure_future(_send(client, payload))
+                        # else: client is still sending previous frame, drop this one
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
             await asyncio.sleep(interval)
 
     async def fft_loop(self):
         """Compute FFT at 1Hz and broadcast directly to clients."""
         loop = asyncio.get_event_loop()
         while True:
-            fft_result = await loop.run_in_executor(None, self.buffer.compute_fft)
-            if self.clients and self.active_tab == "dynamic":
-                payload = json.dumps({"type": "fft", "fft": fft_result})
-                await asyncio.gather(
-                    *[c.send(payload) for c in self.clients.copy()],
-                    return_exceptions=True
-                )
+            try:
+                fft_result = await loop.run_in_executor(None, self.buffer.compute_fft)
+                if self.clients and self.active_tab == "dynamic":
+                    payload = json.dumps({"type": "fft", "fft": fft_result})
+                    await asyncio.gather(
+                        *[c.send(payload) for c in self.clients.copy()],
+                        return_exceptions=True
+                    )
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
             await asyncio.sleep(1.0)
 
     async def run_server(self):
@@ -316,17 +338,16 @@ class QuietHTTPHandler(SimpleHTTPRequestHandler):
 def run_web_viewer(monitor, port=8080):
     viewer = WebViewer(monitor, port)
 
+    # Seed buffer baseline from the calibration done in main()
+    for f in range(NUM_FINGERS):
+        viewer.buffer.baseline[f] = list(monitor.baseline[f])
+
     serial_thread = threading.Thread(
         target=monitor.read_serial_data,
         args=(viewer.serial_callback,),
         daemon=True
     )
     serial_thread.start()
-
-    # Wait for sensor data to arrive, then reset baseline so the
-    # web page opens with a clean zero reference.
-    time.sleep(0.5)
-    viewer.buffer.reset_baseline()
 
     url = f"http://localhost:{port}"
     print(f"Web viewer starting...")
