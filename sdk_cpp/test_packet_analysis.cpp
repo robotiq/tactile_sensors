@@ -10,6 +10,7 @@
 std::atomic<bool> g_running(true);
 std::atomic<int> g_packetCount(0);
 std::atomic<int> g_withDynamic(0);
+std::atomic<int> g_withTimestamp(0);
 
 void signalHandler(int signum)
 {
@@ -35,11 +36,26 @@ void onData(const Fingers& data)
     if (hasDynamic)
         g_withDynamic++;
 
+    // Check if any finger has a non-zero firmware timestamp
+    bool hasTimestamp = false;
+    for (int f = 0; f < FINGER_COUNT; f++)
+    {
+        if (data.finger[f].timestamp != 0)
+        {
+            hasTimestamp = true;
+            break;
+        }
+    }
+    if (hasTimestamp)
+        g_withTimestamp++;
+
     if (g_packetCount % 100 == 0)
     {
         std::cout << "Packets: " << g_packetCount
                   << ", With dynamic: " << g_withDynamic
                   << " (" << (100 * g_withDynamic / g_packetCount) << "%)"
+                  << ", With timestamp: " << g_withTimestamp
+                  << " (" << (100 * g_withTimestamp / g_packetCount) << "%)"
                   << std::endl;
     }
 }
@@ -81,11 +97,14 @@ int main(int argc, char* argv[])
     std::cout << "========================================" << std::endl;
     std::cout << "Total packets received: " << g_packetCount << std::endl;
     std::cout << "Packets with dynamic data: " << g_withDynamic << std::endl;
+    std::cout << "Packets with firmware timestamp: " << g_withTimestamp << std::endl;
 
     if (g_packetCount > 0)
     {
         std::cout << "Percentage with dynamic: "
                   << (100.0 * g_withDynamic / g_packetCount) << "%" << std::endl;
+        std::cout << "Percentage with timestamp: "
+                  << (100.0 * g_withTimestamp / g_packetCount) << "%" << std::endl;
     }
 
     return 0;

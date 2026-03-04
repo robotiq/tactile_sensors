@@ -94,14 +94,8 @@ void onSensorData(const Fingers& data)
                   << "Y=" << data.finger[f].gyroscope[1] << ", "
                   << "Z=" << data.finger[f].gyroscope[2] << std::endl;
 
-        // Display magnetometer (raw values)
-        std::cout << "Magnetometer:   "
-                  << "X=" << data.finger[f].magnetometer[0] << ", "
-                  << "Y=" << data.finger[f].magnetometer[1] << ", "
-                  << "Z=" << data.finger[f].magnetometer[2] << std::endl;
-
-        // Display freebyte
-        std::cout << "Freebyte:       " << data.finger[f].freebyte << std::endl;
+        // Display per-finger timestamp
+        std::cout << "Timestamp:      " << data.finger[f].timestamp << std::endl;
 
     }
 
