@@ -33,8 +33,8 @@ struct FingerData
     int16_t dynamicTactile[FINGER_DYNAMIC_TACTILE_COUNT];
     int16_t accelerometer[3];
     int16_t gyroscope[3];
-    int16_t magnetometer[3];
     int16_t temperature;
+    uint16_t timestamp;
 };
 
 struct Fingers

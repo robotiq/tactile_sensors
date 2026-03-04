@@ -55,21 +55,21 @@ Timestamp: 15234 ms
 
 --- Finger 0 ---
 
+
 Static Tactile (7x4 pressure grid, baseline-subtracted):
-      -8     -8     -6     -3 
-     -14    -39     -6     -4 
-      -9      4     -6      3 
-       6     -1      0     -2 
-      23      9      7      7 
-     -12      8      3      5 
-       4      8      0     -6 
+     -24      4      2      1 
+      -9      0      4      0 
+      -3     -8     -6     -1 
+       4      8      3      5 
+     -12      1     16     18 
+      -2     14      2     -5 
+      15     13     -3      6 
 
-Dynamic Tactile: 296
+Dynamic Tactile: 4
 
-Accelerometer:  X=1284, Y=-40, Z=-16808
-Gyroscope:      X=-118, Y=184, Z=-96
-Magnetometer:   X=0, Y=0, Z=0
-Freebyte:       0
+Accelerometer:  X=44, Y=16244, Z=728
+Gyroscope:      X=-127, Y=111, Z=-98
+Timestamp:      27678
 ```
 
 

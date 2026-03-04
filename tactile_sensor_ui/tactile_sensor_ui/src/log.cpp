@@ -44,6 +44,8 @@ void MainWindow::log()
         for (int f = 0; f < FINGER_COUNT; ++f)
             for (int s = 0; s < 3; ++s)
                 fprintf(logFile, "%s %d", csvSeparator, fd[i].finger[f].gyroscope[s]);
+        for (int f = 0; f < FINGER_COUNT; ++f)
+            fprintf(logFile, "%s %u", csvSeparator, fd[i].finger[f].timestamp);
         fprintf(logFile, "\n");
     }
 }
@@ -89,6 +91,8 @@ void MainWindow::startLog()
         fprintf(logFile, "%s Ax%d%s Ay%d%s Az%d", csvSeparator, f, csvSeparator, f, csvSeparator, f);
     for (int f = 0; f < FINGER_COUNT; ++f)
         fprintf(logFile, "%s Gx%d%s Gy%d%s Gz%d", csvSeparator, f, csvSeparator, f, csvSeparator, f);
+    for (int f = 0; f < FINGER_COUNT; ++f)
+        fprintf(logFile, "%s FTS%d", csvSeparator, f);
     fprintf(logFile, "\n");
 }
 

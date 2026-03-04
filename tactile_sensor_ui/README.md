@@ -23,6 +23,51 @@ The launcher script handles Docker image building, sensor detection, and X11 for
 
 ---
 
+## Force Rebuilding the Docker Image
+
+The launcher script only builds the Docker image if it doesn't already exist. After changing source files, force a rebuild manually:
+
+```bash
+cd tactile_sensor_ui   # the directory containing Docker/ and tactile_sensor_ui/
+
+docker build \
+  -f Docker/Dockerfile_UI \
+  -t tactilesensor-uiv2 \
+  .
+```
+
+Then run as normal:
+```bash
+./run_tactilesensorUI.sh
+```
+
+---
+
+## Running Locally (Without Docker)
+
+Install dependencies:
+```bash
+sudo apt install build-essential cmake qtbase5-dev qtbase5-dev-tools \
+    libqt5serialport5-dev libmgl-dev libfftw3-dev
+```
+
+Build:
+```bash
+cd tactile_sensor_ui/tactile_sensor_ui
+mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+```
+
+Run:
+```bash
+./tactile_sensor_ui
+```
+
+> You may need to set sensor permissions first: `sudo chmod a+rw /dev/rq_tsf85_*`
+
+---
+
 ## What It Does
 
 1. Builds a Docker image with Qt5, CMake, and all dependencies
