@@ -40,8 +40,8 @@ enum UsbSensorType
     USB_SENSOR_TYPE_DYNAMIC_TACTILE = 0x20,
     USB_SENSOR_TYPE_ACCELEROMETER = 0x30,
     USB_SENSOR_TYPE_GYROSCOPE = 0x40,
-    USB_SENSOR_TYPE_MAGNETOMETER = 0x50,
     USB_SENSOR_TYPE_TEMPERATURE = 0x60,
+    USB_SENSOR_TYPE_TIMESTAMP = 0x70,
 };
 
 struct UsbPacket
@@ -149,11 +149,11 @@ static bool parseSensors(UsbPacket *packet, Fingers *fingers)
         case USB_SENSOR_TYPE_GYROSCOPE:
             i += extractUint16((uint16_t *)fingers->finger[f].gyroscope, 3, sensorData, sensorDataBytes);
             break;
-        case USB_SENSOR_TYPE_MAGNETOMETER:
-            i += extractUint16((uint16_t *)fingers->finger[f].magnetometer, 3, sensorData, sensorDataBytes);
-            break;
         case USB_SENSOR_TYPE_TEMPERATURE:
             i += extractUint16((uint16_t *)&fingers->finger[f].temperature, 1, sensorData, sensorDataBytes);
+            break;
+        case USB_SENSOR_TYPE_TIMESTAMP:
+            i += extractUint16(&fingers->finger[f].timestamp, 1, sensorData, sensorDataBytes);
             break;
         default:
              // Unknown sensor, we can't continue parsing anything from here on
