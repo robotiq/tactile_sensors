@@ -77,7 +77,7 @@ _FIELD_BYTE_SIZES = {
     SENSOR_TYPE_ACCELEROMETER:   IMU_SIZE * 2,               # 6
     SENSOR_TYPE_GYROSCOPE:       IMU_SIZE * 2,               # 6
     SENSOR_TYPE_TEMPERATURE:     2,
-    SENSOR_TYPE_TIMESTAMP:       2,  # uint16 in current protocol
+    SENSOR_TYPE_TIMESTAMP:       8,  # uint64 in new firmware protocol
 }
 
 
@@ -372,9 +372,12 @@ class SensorMonitor:
 
                 # Parse packets
                 for packet in self.parser.feed_bytes(data):
-                    if not self.parser.parse_sensor_packet(packet):
+                    new_data_available = self.parser.parse_sensor_packet(packet)
+                    if not all(new_data_available[:NUM_FINGERS]):
                         continue
                     sensor_data = self.parser.get_sensor_data()
+                    for f in sensor_data.fingers:
+                        f.new_data_available = False
 
                     # Accumulate static tactile values for each finger
                     for finger_id in range(NUM_FINGERS):
@@ -411,8 +414,12 @@ class SensorMonitor:
             if waiting > 0:
                 data = self.serial_port.read(waiting)
                 for packet in self.parser.feed_bytes(data):
-                    if self.parser.parse_sensor_packet(packet):
-                        callback(self.parser.get_sensor_data())
+                    new_data_available = self.parser.parse_sensor_packet(packet)
+                    if all(new_data_available[:NUM_FINGERS]):
+                        sensor_data = self.parser.get_sensor_data()
+                        for f in sensor_data.fingers:
+                            f.new_data_available = False
+                        callback(sensor_data)
             else:
                 try:
                     select.select([self.serial_port.fd], [], [], 0.001)
@@ -457,12 +464,14 @@ class SensorMonitor:
                             print(f"[DEBUG] First packet length: {len(packets[0])} bytes")
 
                         for packet in packets:
-                            if not self.parser.parse_sensor_packet(packet):
-                                continue
+                            new_data_available = self.parser.parse_sensor_packet(packet)
                             sensor_data = self.parser.get_sensor_data()
-                            self.display_sensor_data(sensor_data)
-                            self.displays_in_window += 1
-                            self.last_update_time = time.time()
+                            if all(new_data_available[:NUM_FINGERS]):
+                                for f in sensor_data.fingers:
+                                    f.new_data_available = False
+                                self.display_sensor_data(sensor_data)
+                                self.displays_in_window += 1
+                                self.last_update_time = time.time()
                 else:
                     reads_without_data += 1
 
@@ -552,9 +561,14 @@ class TrackingParser(UsbPacketParser):
             if finger_id < NUM_FINGERS:
                 self.field_counts[(sensor_type, finger_id)] += 1
 
-            # Accumulate timestamp deltas per finger (uint16, big-endian)
+            # Accumulate timestamp deltas per finger (uint64, big-endian)
             if sensor_type == SENSOR_TYPE_TIMESTAMP and finger_id < NUM_FINGERS:
-                ts = (data[idx] << 8) | data[idx + 1]
+                ts = (
+                    (data[idx]     << 56) | (data[idx + 1] << 48) |
+                    (data[idx + 2] << 40) | (data[idx + 3] << 32) |
+                    (data[idx + 4] << 24) | (data[idx + 5] << 16) |
+                    (data[idx + 6] << 8)  |  data[idx + 7]
+                )
                 prev = self._ts_prev[finger_id]
                 if prev is not None and ts > prev:
                     self.ts_deltas[finger_id].append(ts - prev)
@@ -562,7 +576,11 @@ class TrackingParser(UsbPacketParser):
 
             idx += field_size
 
-        return super().parse_sensor_packet(packet)
+        new_data_available = super().parse_sensor_packet(packet)
+        # Reset new_data_available flags after reading so counts stay per-packet
+        for f in self.sensor_data.fingers:
+            f.new_data_available = False
+        return new_data_available
 
 
 
@@ -630,7 +648,7 @@ class FieldTracker:
             self.serial_port.reset_output_buffer()
 
             # Request firmware version
-            self.serial_port.write(self.parser.create_get_version_command())
+            self.serial_port.write(self.parser.create_get_firmware_command())
             self.serial_port.flush()
             deadline = time.time() + 1.0
             while time.time() < deadline:
@@ -815,8 +833,8 @@ class FieldTracker:
                     if packets:
                         self._update_stats(len(packets), len(raw))
                         for packet in packets:
-                            frame_complete = self.parser.parse_sensor_packet(packet)
-                            if frame_complete:
+                            new_data_available = self.parser.parse_sensor_packet(packet)
+                            if all(new_data_available[:NUM_FINGERS]):
                                 self.frames_in_window += 1
                                 self._render()
                 else:
