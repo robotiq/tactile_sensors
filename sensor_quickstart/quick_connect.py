@@ -792,10 +792,10 @@ class FieldTracker:
         lw = self.lost_packets_window
         lt = self.lost_packets_total
         lines.append(
-            f"  {'Lost pkts this window':<24}  {lw[0]:>12d}  {lw[1]:>12d}"
+            f"  {'Timestamp Delta >1000 window':<32}  {lw[0]:>12d}  {lw[1]:>12d}"
         )
         lines.append(
-            f"  {'Lost pkts total':<24}  {lt[0]:>12d}  {lt[1]:>12d}"
+            f"  {'Timestamp Delta >1000 total':<32}  {lt[0]:>12d}  {lt[1]:>12d}"
         )
 
         lines.append("")
