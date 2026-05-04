@@ -708,9 +708,9 @@ class FieldTracker:
             # Timestamp delta stats per finger
             self.ts_stats = [_delta_stats(deltas[fi]) for fi in range(NUM_FINGERS)]
 
-            # Lost packets: any gap > 1ms between consecutive timestamps
+            # Lost packets: any gap > 1000us (1ms period) between consecutive timestamps
             window_lost = [
-                sum(1 for d in deltas[fi] if d > 1)
+                sum(1 for d in deltas[fi] if d > 1000)
                 for fi in range(NUM_FINGERS)
             ]
             self.lost_packets_window = window_lost
@@ -767,7 +767,7 @@ class FieldTracker:
         lines.append("")
 
         # ── Timestamp delta table ─────────────────────────────────────────────
-        lines.append(f"  {'Timestamp Deltas (ms)':24}  {'F0':>12}  {'F1':>12}")
+        lines.append(f"  {'Timestamp Deltas (us)':24}  {'F0':>12}  {'F1':>12}")
         lines.append("  " + "-" * (W - 2))
         stat_rows = [
             ("Mean",    "mean",  ".1f"),
@@ -822,6 +822,7 @@ class FieldTracker:
     def run(self):
         self.running = True
         self.last_stats_time = time.time()
+        seen = [False] * NUM_FINGERS
 
         try:
             while self.running:
@@ -834,8 +835,12 @@ class FieldTracker:
                         self._update_stats(len(packets), len(raw))
                         for packet in packets:
                             new_data_available = self.parser.parse_sensor_packet(packet)
-                            if all(new_data_available[:NUM_FINGERS]):
+                            for i, v in enumerate(new_data_available[:NUM_FINGERS]):
+                                if v:
+                                    seen[i] = True
+                            if all(seen):
                                 self.frames_in_window += 1
+                                seen = [False] * NUM_FINGERS
                                 self._render()
                 else:
                     try:
