@@ -128,6 +128,9 @@ class SensorMonitor:
         # Per-finger baseline for static tactile (28 taxels each)
         self.baseline = [[0] * 28 for _ in range(NUM_FINGERS)]
 
+        # Fingers detected at startup; defaults to all until detection runs
+        self.connected_fingers: List[int] = list(range(NUM_FINGERS))
+
 
     def find_sensor(self) -> Optional[str]:
         """
@@ -222,6 +225,33 @@ class SensorMonitor:
         print("Autosend command sent")
         return True
 
+    def detect_connected_fingers(self, duration_s: float = 0.5) -> List[int]:
+        """
+        Listen briefly after autosend has started and return the list of finger IDs
+        that produced data. Run once at startup; hot-plugging is not supported.
+        """
+        seen = [False] * NUM_FINGERS
+        deadline = time.time() + duration_s
+        while time.time() < deadline:
+            waiting = self.serial_port.in_waiting
+            if waiting > 0:
+                data = self.serial_port.read(waiting)
+                for packet in self.parser.feed_bytes(data):
+                    new_data_available = self.parser.parse_sensor_packet(packet)
+                    for i, v in enumerate(new_data_available[:NUM_FINGERS]):
+                        if v:
+                            seen[i] = True
+                    for f in self.parser.sensor_data.fingers:
+                        f.new_data_available = False
+            else:
+                try:
+                    select.select([self.serial_port.fd], [], [], 0.001)
+                except (AttributeError, ValueError, OSError):
+                    time.sleep(0.001)
+
+        self.connected_fingers = [i for i, v in enumerate(seen) if v]
+        return self.connected_fingers
+
     def stop_autosend(self):
         """Stop continuous sensor data streaming"""
         if not self.serial_port:
@@ -283,10 +313,15 @@ class SensorMonitor:
         lines.append("")
 
         for finger_id in range(NUM_FINGERS):
-            finger = data.fingers[finger_id]
-
             lines.append(f"FINGER {finger_id}")
             lines.append("-" * 80)
+
+            if finger_id not in self.connected_fingers:
+                lines.append("  Replug Finger and Relaunch Quick Connect")
+                lines.append("")
+                continue
+
+            finger = data.fingers[finger_id]
 
             # Static Tactile (7x4 grid)
             lines.append("  Static Tactile (7 rows × 4 columns):")
@@ -373,14 +408,14 @@ class SensorMonitor:
                 # Parse packets
                 for packet in self.parser.feed_bytes(data):
                     new_data_available = self.parser.parse_sensor_packet(packet)
-                    if not all(new_data_available[:NUM_FINGERS]):
+                    if not all(new_data_available[i] for i in self.connected_fingers):
                         continue
                     sensor_data = self.parser.get_sensor_data()
                     for f in sensor_data.fingers:
                         f.new_data_available = False
 
-                    # Accumulate static tactile values for each finger
-                    for finger_id in range(NUM_FINGERS):
+                    # Accumulate static tactile values for connected fingers
+                    for finger_id in self.connected_fingers:
                         finger = sensor_data.fingers[finger_id]
                         for taxel_idx in range(28):
                             accumulators[finger_id][taxel_idx] += finger.static_tactile[taxel_idx]
@@ -398,8 +433,8 @@ class SensorMonitor:
                 except (AttributeError, ValueError, OSError):
                     time.sleep(0.001)
 
-        # Calculate averages and update baselines
-        for finger_id in range(NUM_FINGERS):
+        # Calculate averages and update baselines (only for connected fingers)
+        for finger_id in self.connected_fingers:
             for taxel_idx in range(28):
                 self.baseline[finger_id][taxel_idx] = accumulators[finger_id][taxel_idx] // num_samples
 
@@ -415,7 +450,7 @@ class SensorMonitor:
                 data = self.serial_port.read(waiting)
                 for packet in self.parser.feed_bytes(data):
                     new_data_available = self.parser.parse_sensor_packet(packet)
-                    if all(new_data_available[:NUM_FINGERS]):
+                    if all(new_data_available[i] for i in self.connected_fingers):
                         sensor_data = self.parser.get_sensor_data()
                         for f in sensor_data.fingers:
                             f.new_data_available = False
@@ -466,7 +501,7 @@ class SensorMonitor:
                         for packet in packets:
                             new_data_available = self.parser.parse_sensor_packet(packet)
                             sensor_data = self.parser.get_sensor_data()
-                            if all(new_data_available[:NUM_FINGERS]):
+                            if all(new_data_available[i] for i in self.connected_fingers):
                                 for f in sensor_data.fingers:
                                     f.new_data_available = False
                                 self.display_sensor_data(sensor_data)
@@ -949,6 +984,20 @@ def main():
         if not monitor.start_autosend(period_ms=1):
             monitor.cleanup()
             return 1
+
+        print()
+
+        # Detect which fingers are actually connected (hot-plug not supported)
+        print("Detecting connected fingers...")
+        connected = monitor.detect_connected_fingers()
+        if not connected:
+            print("Error: No finger data received. Check sensor connection.")
+            monitor.cleanup()
+            return 1
+        missing = [i for i in range(NUM_FINGERS) if i not in connected]
+        print(f"Connected fingers: {connected}")
+        for fi in missing:
+            print(f"  FINGER {fi}: missing — Replug Finger and Relaunch Quick Connect")
 
         print()
 
