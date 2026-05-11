@@ -55,13 +55,18 @@ static std::string resolveSymlink(const char* path)
 enum UsbPacketSpecial
 {
     USB_PACKET_START_BYTE = 0x9A,
+    USB_PACKET_HEADER_SIZE = 4,
+    USB_PACKET_MAX_DATA_SIZE = 256,
+    USB_PACKET_MAX_SIZE = USB_PACKET_HEADER_SIZE + USB_PACKET_MAX_DATA_SIZE,
 };
 
 enum UsbCommands
 {
     USB_COMMAND_READ_SENSORS = 0x61,
-    USB_COMMAND_AUTOSEND_SENSORS = 0x58,
+    USB_COMMAND_AUTOSEND_SYNC_SENSORS = 0x58,
+    USB_COMMAND_AUTOSEND_ASYNC_SENSORS = 0x59,
     USB_COMMAND_ENTER_BOOTLOADER = 0xE2,
+    USB_COMMAND_GET_VERSION = 0xE3,
 };
 
 // Sensor types occupy the higher 4 bits, the 2 bits lower than that identify finger,
@@ -82,7 +87,7 @@ struct UsbPacket
     uint8_t crc8;           // over command, data_length and data
     uint8_t command;        // 4 bits of flag (MSB) and 4 bits of command (LSB)
     uint8_t data_length;
-    uint8_t data[60];
+    uint8_t data[USB_PACKET_MAX_DATA_SIZE];
 };
 
 // ============================================================================
@@ -126,12 +131,12 @@ static bool usbReadByte(UsbPacket *packet, unsigned int *readSoFar, uint8_t d)
         return false;
 
     // Buffer the byte (making sure not to overflow the packet)
-    if (*readSoFar < 64)
+    if (*readSoFar < USB_PACKET_MAX_SIZE)
         p[*readSoFar] = d;
     ++*readSoFar;
 
     // If length is read, stop when done
-    if (*readSoFar > 3 && *readSoFar >= (unsigned)packet->data_length + 4)
+    if (*readSoFar > 3 && *readSoFar >= (unsigned)packet->data_length + USB_PACKET_HEADER_SIZE)
     {
         *readSoFar = 0;
 
@@ -141,11 +146,11 @@ static bool usbReadByte(UsbPacket *packet, unsigned int *readSoFar, uint8_t d)
 
         // If CRC is not ok, find the next start byte and shift the packet back
         // in hopes of getting back in sync
-        for (unsigned int i = 1; i < (unsigned)packet->data_length + 4; ++i)
+        for (unsigned int i = 1; i < (unsigned)packet->data_length + USB_PACKET_HEADER_SIZE; ++i)
             if (p[i] == USB_PACKET_START_BYTE)
             {
-                memmove(p, p + i, packet->data_length + 4 - i);
-                *readSoFar = packet->data_length + 4 - i;
+                memmove(p, p + i, packet->data_length + USB_PACKET_HEADER_SIZE - i);
+                *readSoFar = packet->data_length + USB_PACKET_HEADER_SIZE - i;
                 break;
             }
     }
@@ -170,14 +175,34 @@ static uint8_t extractUint16(uint16_t *to, uint16_t toCount, uint8_t *data, unsi
     return cur * 2;
 }
 
-static bool parseSensors(UsbPacket *packet, Fingers *fingers)
+static inline uint64_t parseBigEndian8(uint8_t *data)
 {
-    bool sawDynamic = false;
+    return  (uint64_t)data[0] << 56 | (uint64_t)data[1] << 48
+          | (uint64_t)data[2] << 40 | (uint64_t)data[3] << 32
+          | (uint64_t)data[4] << 24 | (uint64_t)data[5] << 16
+          | (uint64_t)data[6] << 8  | (uint64_t)data[7];
+}
+
+static unsigned int extractUint64(uint64_t *to, unsigned int toCount, uint8_t *data, unsigned int size)
+{
+    unsigned int cur;
+
+    for (cur = 0; 8 * cur + 7 < size && cur < toCount; ++cur)
+        to[cur] = parseBigEndian8(&data[8 * cur]);
+
+    return cur * 8;
+}
+
+static void parseSensors(UsbPacket *packet, Fingers *fingers)
+{
     for (unsigned int i = 0; i < packet->data_length;)
     {
         uint8_t sensorType = packet->data[i] & 0xF0;
         uint8_t f = packet->data[i] >> 2 & 0x03;
         ++i;
+
+        if (f >= FINGER_COUNT)
+            continue;
 
         uint8_t *sensorData = packet->data + i;
         unsigned int sensorDataBytes = packet->data_length - i;
@@ -187,39 +212,39 @@ static bool parseSensors(UsbPacket *packet, Fingers *fingers)
         case USB_SENSOR_TYPE_DYNAMIC_TACTILE:
             i += extractUint16((uint16_t *)fingers->finger[f].dynamicTactile,
                              FINGER_DYNAMIC_TACTILE_COUNT, sensorData, sensorDataBytes);
-            sawDynamic = true;
+            fingers->finger[f].newDataAvailable = true;
             break;
         case USB_SENSOR_TYPE_STATIC_TACTILE:
             i += extractUint16(fingers->finger[f].staticTactile,
                              FINGER_STATIC_TACTILE_COUNT, sensorData, sensorDataBytes);
+            fingers->finger[f].newDataAvailable = true;
             break;
         case USB_SENSOR_TYPE_ACCELEROMETER:
             i += extractUint16((uint16_t *)fingers->finger[f].accelerometer,
                              3, sensorData, sensorDataBytes);
+            fingers->finger[f].newDataAvailable = true;
             break;
         case USB_SENSOR_TYPE_GYROSCOPE:
             i += extractUint16((uint16_t *)fingers->finger[f].gyroscope,
                              3, sensorData, sensorDataBytes);
+            fingers->finger[f].newDataAvailable = true;
             break;
         case USB_SENSOR_TYPE_TEMPERATURE:
             i += extractUint16((uint16_t *)&fingers->finger[f].temperature,
                              1, sensorData, sensorDataBytes);
+            fingers->finger[f].newDataAvailable = true;
             break;
         case USB_SENSOR_TYPE_TIMESTAMP:
-            i += extractUint16(&fingers->finger[f].timestamp,
+            i += extractUint64(&fingers->finger[f].timestamp,
                              1, sensorData, sensorDataBytes);
+            fingers->finger[f].newDataAvailable = true;
             break;
         default:
-            // Unknown sensor, we can't continue parsing anything from here on
-            return sawDynamic;
+            // Unknown sensor type — consume only the type byte (already done)
+            // and continue, so forward-compatible additions don't kill the parse.
+            break;
         }
     }
-
-    /*
-     * Return true every time dynamic data is read.  This is used to identify when
-     * a whole set of data has arrived and needs to be processed.
-     */
-    return sawDynamic;
 }
 
 // ============================================================================
@@ -238,6 +263,7 @@ RobotiqTactileSensor::RobotiqTactileSensor(const char* portName,
     , m_receiveBuffer(1024)
     , m_dataRate(0)
     , m_calculatingBaseline(false)
+    , m_versionReady(false)
 {
     // Resolve symbolic link to actual device (e.g., /dev/rq_tsf85_0 -> /dev/ttyACM0)
     std::string resolvedPort = resolveSymlink(portName);
@@ -326,6 +352,48 @@ void RobotiqTactileSensor::start()
         if (!m_thread.joinable())
             m_thread = std::thread(&RobotiqTactileSensor::threadLoop, this);
     }
+}
+
+bool RobotiqTactileSensor::getFirmwareVersion(std::string& version, unsigned int timeout_ms)
+{
+    if (!m_connected)
+    {
+        m_lastError = "Cannot query firmware version: sensor not connected";
+        return false;
+    }
+
+    // Reset the handoff slot before sending the request
+    {
+        std::lock_guard<std::mutex> lk(m_versionMutex);
+        m_versionReady = false;
+        m_firmwareVersion.clear();
+    }
+
+    // Send GET_VERSION command (no payload)
+    UsbPacket pkt;
+    pkt.command = USB_COMMAND_GET_VERSION;
+    pkt.data_length = 0;
+    {
+        std::lock_guard<std::mutex> lk(m_portWriteMutex);
+        if (!usbSend(m_port, &pkt))
+        {
+            m_lastError = "Failed to send GET_VERSION command";
+            return false;
+        }
+    }
+
+    // Wait for the read thread to populate the version
+    std::unique_lock<std::mutex> lk(m_versionMutex);
+    if (!m_versionCv.wait_for(lk,
+                              std::chrono::milliseconds(timeout_ms),
+                              [this] { return m_versionReady; }))
+    {
+        m_lastError = "Timeout waiting for firmware version reply";
+        return false;
+    }
+
+    version = m_firmwareVersion;
+    return true;
 }
 
 bool RobotiqTactileSensor::findBaseline(Fingers& baseline)
@@ -444,10 +512,13 @@ void RobotiqTactileSensor::threadLoop()
     Fingers fingers = {0};
 
     // Send auto-send message
-    send.command = USB_COMMAND_AUTOSEND_SENSORS;
+    send.command = USB_COMMAND_AUTOSEND_SYNC_SENSORS;
     send.data_length = 1;
     send.data[0] = m_period_ms;
-    usbSend(m_port, &send);
+    {
+        std::lock_guard<std::mutex> lk(m_portWriteMutex);
+        usbSend(m_port, &send);
+    }
 
     while (m_running)
     {
@@ -497,11 +568,41 @@ void RobotiqTactileSensor::threadLoop()
         {
             if (usbReadByte(&recv, &recvSoFar, m_receiveBuffer[i]))
             {
-                bool newSetOfData = parseSensors(&recv, &fingers);
+                // Firmware-version reply: hand off to any waiting getFirmwareVersion() call
+                if (recv.command == USB_COMMAND_GET_VERSION)
+                {
+                    {
+                        std::lock_guard<std::mutex> lk(m_versionMutex);
+                        m_firmwareVersion.assign(
+                            reinterpret_cast<const char *>(recv.data),
+                            recv.data_length);
+                        m_versionReady = true;
+                    }
+                    m_versionCv.notify_all();
+                    continue;
+                }
 
-                // Many messages can arrive in the same millisecond, so let the data
-                // accumulate and store it only when a whole set is complete
-                if (newSetOfData)
+                // Any other non-sensor reply is ignored to avoid mis-parsing
+                if (recv.command != USB_COMMAND_AUTOSEND_SYNC_SENSORS &&
+                    recv.command != USB_COMMAND_AUTOSEND_ASYNC_SENSORS &&
+                    recv.command != USB_COMMAND_READ_SENSORS)
+                {
+                    continue;
+                }
+
+                parseSensors(&recv, &fingers);
+
+                // A packet may carry data for one or both fingers. Fire the
+                // callback once per packet whenever any finger was updated.
+                bool anyNew = false;
+                for (int f = 0; f < FINGER_COUNT; f++)
+                    if (fingers.finger[f].newDataAvailable)
+                    {
+                        anyNew = true;
+                        break;
+                    }
+
+                if (anyNew)
                 {
                     auto timestamp = std::chrono::steady_clock::now();
                     fingers.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -521,14 +622,21 @@ void RobotiqTactileSensor::threadLoop()
                     {
                         m_dataCallback(fingers);
                     }
+
+                    // Clear flags so the next packet starts fresh
+                    for (int f = 0; f < FINGER_COUNT; f++)
+                        fingers.finger[f].newDataAvailable = false;
                 }
             }
         }
     }
 
     // Stop auto-send message
-    send.command = USB_COMMAND_AUTOSEND_SENSORS;
+    send.command = USB_COMMAND_AUTOSEND_SYNC_SENSORS;
     send.data_length = 1;
     send.data[0] = 0;
-    usbSend(m_port, &send);
+    {
+        std::lock_guard<std::mutex> lk(m_portWriteMutex);
+        usbSend(m_port, &send);
+    }
 }

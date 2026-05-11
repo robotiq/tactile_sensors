@@ -26,6 +26,7 @@
 #include <thread>
 #include <atomic>
 #include <mutex>
+#include <condition_variable>
 #include <string>
 #include <vector>
 #include <stdint.h>
@@ -85,6 +86,18 @@ public:
     void start();
 
     /**
+     * @brief Query the firmware version string from the sensor
+     *
+     * Sends a GET_VERSION command and waits for the reply (handled by the
+     * background read thread). Safe to call while data collection is running.
+     *
+     * @param version Output parameter receiving the ASCII firmware version
+     * @param timeout_ms Maximum time to wait for a reply (default 2000 ms)
+     * @return true on success, false on timeout or disconnect
+     */
+    bool getFirmwareVersion(std::string& version, unsigned int timeout_ms = 2000);
+
+    /**
      * @brief Calculate baseline values by averaging 1000 samples
      *
      * This function collects 1000 samples from the sensor and calculates
@@ -128,6 +141,15 @@ private:
     std::atomic<bool> m_calculatingBaseline;
     std::vector<Fingers> m_baselineSamples;
     std::mutex m_baselineMutex;
+
+    // Firmware version request/response handoff between user and read thread
+    std::mutex m_versionMutex;
+    std::condition_variable m_versionCv;
+    std::string m_firmwareVersion;
+    bool m_versionReady;
+
+    // Serializes writes to the serial port between user thread and read thread
+    std::mutex m_portWriteMutex;
 
     // Prevent copying
     RobotiqTactileSensor(const RobotiqTactileSensor&) = delete;

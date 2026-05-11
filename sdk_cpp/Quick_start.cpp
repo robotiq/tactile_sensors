@@ -19,6 +19,9 @@
 // Global flag for graceful shutdown
 std::atomic<bool> g_running(true);
 
+// Gate that suppresses the streaming display until baseline is complete
+std::atomic<bool> g_baselineDone(false);
+
 // Global baseline data
 Fingers g_baseline = {0};
 
@@ -35,6 +38,12 @@ void signalHandler(int signum)
 // Callback function that receives sensor data
 void onSensorData(const Fingers& data)
 {
+    // Don't display anything until baseline calculation is done — otherwise
+    // the streaming display would overwrite the connection / firmware /
+    // baseline-progress messages printed from main().
+    if (!g_baselineDone)
+        return;
+
     // Throttle display updates to prevent terminal overload
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - g_lastDisplayUpdate).count();
@@ -141,6 +150,19 @@ int main(int argc, char* argv[])
     std::cout << "Connected! Waiting for initial data..." << std::endl;
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
+    // Query and print firmware version
+    std::string fwVersion;
+    if (sensor.getFirmwareVersion(fwVersion))
+    {
+        std::cout << "Firmware version: " << fwVersion << std::endl;
+    }
+    else
+    {
+        std::cout << "Warning: could not read firmware version ("
+                  << sensor.getLastError() << ")" << std::endl;
+    }
+    std::cout << std::endl;
+
     std::cout << "Calculating baseline (1000 samples, ~1 second)..." << std::endl;
     std::cout << "Please do not touch the sensor..." << std::endl;
     std::cout << std::endl;
@@ -163,6 +185,9 @@ int main(int argc, char* argv[])
 
     // Initialize display throttling timestamp
     g_lastDisplayUpdate = std::chrono::steady_clock::now();
+
+    // Now allow the callback to render to the terminal
+    g_baselineDone = true;
 
     // Main loop - just wait for Ctrl+C
     while (g_running)

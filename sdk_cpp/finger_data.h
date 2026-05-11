@@ -29,12 +29,16 @@
 
 struct FingerData
 {
+    // True when this finger's data was updated in the current packet.
+    // Set by the parser, cleared by the SDK after dispatching the callback.
+    bool newDataAvailable;
+
     uint16_t staticTactile[FINGER_STATIC_TACTILE_COUNT];
     int16_t dynamicTactile[FINGER_DYNAMIC_TACTILE_COUNT];
     int16_t accelerometer[3];
     int16_t gyroscope[3];
     int16_t temperature;
-    uint16_t timestamp;
+    uint64_t timestamp;
 
     // Baseline values for static tactile (initialized to 0)
     uint16_t baseline[FINGER_STATIC_TACTILE_COUNT];
