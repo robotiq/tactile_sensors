@@ -12,11 +12,12 @@ from typing import List, Optional, Tuple
 USB_PACKET_START_BYTE = 0x9A
 USB_PACKET_MAX_SIZE = 64
 USB_PACKET_HEADER_SIZE = 4
-USB_PACKET_MAX_DATA_SIZE = 60
+USB_PACKET_MAX_DATA_SIZE = 256
 
 # Commands
 USB_COMMAND_READ_SENSORS = 0x61
-USB_COMMAND_AUTOSEND_SENSORS = 0x58
+USB_COMMAND_AUTOSEND_SYNC_SENSORS = 0x58
+USB_COMMAND_AUTOSEND_ASYNC_SENSORS = 0x59
 USB_COMMAND_ENTER_BOOTLOADER = 0xE2
 USB_COMMAND_GET_VERSION = 0XE3
 
@@ -39,6 +40,7 @@ NUM_FINGERS = 2
 @dataclass
 class FingerData:
     """Data structure for a single finger"""
+    new_data_available: bool = False  # True when this finger's data was updated in the current packet
     static_tactile: List[int] = None  # 28 uint16 values
     dynamic_tactile: int = 0  # 1 int16 value
     accelerometer: List[int] = None  # 3 int16 values [x, y, z]
@@ -61,6 +63,7 @@ class FingerData:
 @dataclass
 class SensorData:
     """Complete sensor data for all fingers"""
+    timestamp_ms: int = 0
     fingers: List[FingerData] = None
 
     def __post_init__(self):
@@ -91,13 +94,13 @@ class UsbPacketParser:
 
         return bytes(packet)
 
-    def create_get_version_command(self) -> bytes:
+    def create_get_firmware_command(self) -> bytes:
         """Create command to request firmware version"""
         return self.create_command_packet(USB_COMMAND_GET_VERSION)
 
     def print_firmware_version(self, serial_port, timeout: float = 2.0):
         """Request and print the firmware version from the sensor."""
-        serial_port.write(self.create_get_version_command())
+        serial_port.write(self.create_get_firmware_command())
         serial_port.flush()
 
         deadline = time.time() + timeout
@@ -119,7 +122,7 @@ class UsbPacketParser:
         if period_ms > 255:
             raise ValueError(f"Period must be <= 255ms, got {period_ms}")
         period_byte = bytes([period_ms])
-        return self.create_command_packet(USB_COMMAND_AUTOSEND_SENSORS, period_byte)
+        return self.create_command_packet(USB_COMMAND_AUTOSEND_SYNC_SENSORS, period_byte)
 
     def feed_bytes(self, data: bytes) -> List[bytes]:
         """
@@ -166,20 +169,19 @@ class UsbPacketParser:
 
         return packets
 
-    def parse_sensor_packet(self, packet: bytes) -> bool:
+    def parse_sensor_packet(self, packet: bytes) -> list:
         """
         Parse a sensor data packet and update sensor_data.
-        Returns True if dynamic tactile data was received (indicates complete data set).
+        Returns list[bool], one entry per finger, True if new data was received for that finger.
         Based on parseSensors() from communicator.cpp
         """
         if len(packet) < USB_PACKET_HEADER_SIZE:
-            return False
+            return [False] * len(self.sensor_data.fingers)
 
         data = packet[USB_PACKET_HEADER_SIZE:]
         data_length = len(data)
 
         idx = 0
-        received_dynamic = False
 
         while idx < data_length:
             if idx >= len(data):
@@ -199,6 +201,7 @@ class UsbPacketParser:
                 continue
 
             finger = self.sensor_data.fingers[finger_id]
+            finger.new_data_available = True
 
             # Parse sensor data based on type
             if sensor_type == SENSOR_TYPE_STATIC_TACTILE:
@@ -212,7 +215,6 @@ class UsbPacketParser:
                 values, bytes_consumed = self._extract_int16_array(data[idx:], DYNAMIC_TACTILE_SIZE)
                 if len(values) > 0:
                     finger.dynamic_tactile = values[0]
-                    received_dynamic = True
                 idx += bytes_consumed
 
             elif sensor_type == SENSOR_TYPE_ACCELEROMETER:
@@ -241,18 +243,13 @@ class UsbPacketParser:
                 idx += bytes_consumed
 
             elif sensor_type == SENSOR_TYPE_TIMESTAMP:
-                # 1 uint16 value (2 bytes)
-                values, bytes_consumed = self._extract_uint16_array(data[idx:], 1)
+                # 1 uint64 value (8 bytes)
+                values, bytes_consumed = self._extract_uint64_array(data[idx:], 1)
                 if len(values) > 0:
                     finger.timestamp = values[0]
                 idx += bytes_consumed
 
-            else:
-                # Unknown sensor type — can't safely continue parsing
-                # this packet (matches C++ SDK behaviour).
-                break
-
-        return received_dynamic
+        return [f.new_data_available for f in self.sensor_data.fingers]
 
     def _extract_uint16_array(self, data: bytes, count: int) -> Tuple[List[int], int]:
         """Extract array of big-endian uint16 values"""

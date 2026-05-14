@@ -77,7 +77,7 @@ _FIELD_BYTE_SIZES = {
     SENSOR_TYPE_ACCELEROMETER:   IMU_SIZE * 2,               # 6
     SENSOR_TYPE_GYROSCOPE:       IMU_SIZE * 2,               # 6
     SENSOR_TYPE_TEMPERATURE:     2,
-    SENSOR_TYPE_TIMESTAMP:       2,  # uint16 in current protocol
+    SENSOR_TYPE_TIMESTAMP:       8,  # uint64 in new firmware protocol
 }
 
 
@@ -127,6 +127,9 @@ class SensorMonitor:
 
         # Per-finger baseline for static tactile (28 taxels each)
         self.baseline = [[0] * 28 for _ in range(NUM_FINGERS)]
+
+        # Fingers detected at startup; defaults to all until detection runs
+        self.connected_fingers: List[int] = list(range(NUM_FINGERS))
 
 
     def find_sensor(self) -> Optional[str]:
@@ -222,6 +225,33 @@ class SensorMonitor:
         print("Autosend command sent")
         return True
 
+    def detect_connected_fingers(self, duration_s: float = 0.5) -> List[int]:
+        """
+        Listen briefly after autosend has started and return the list of finger IDs
+        that produced data. Run once at startup; hot-plugging is not supported.
+        """
+        seen = [False] * NUM_FINGERS
+        deadline = time.time() + duration_s
+        while time.time() < deadline:
+            waiting = self.serial_port.in_waiting
+            if waiting > 0:
+                data = self.serial_port.read(waiting)
+                for packet in self.parser.feed_bytes(data):
+                    new_data_available = self.parser.parse_sensor_packet(packet)
+                    for i, v in enumerate(new_data_available[:NUM_FINGERS]):
+                        if v:
+                            seen[i] = True
+                    for f in self.parser.sensor_data.fingers:
+                        f.new_data_available = False
+            else:
+                try:
+                    select.select([self.serial_port.fd], [], [], 0.001)
+                except (AttributeError, ValueError, OSError):
+                    time.sleep(0.001)
+
+        self.connected_fingers = [i for i, v in enumerate(seen) if v]
+        return self.connected_fingers
+
     def stop_autosend(self):
         """Stop continuous sensor data streaming"""
         if not self.serial_port:
@@ -283,10 +313,15 @@ class SensorMonitor:
         lines.append("")
 
         for finger_id in range(NUM_FINGERS):
-            finger = data.fingers[finger_id]
-
             lines.append(f"FINGER {finger_id}")
             lines.append("-" * 80)
+
+            if finger_id not in self.connected_fingers:
+                lines.append("  Replug Finger and Relaunch Quick Connect")
+                lines.append("")
+                continue
+
+            finger = data.fingers[finger_id]
 
             # Static Tactile (7x4 grid)
             lines.append("  Static Tactile (7 rows × 4 columns):")
@@ -372,12 +407,15 @@ class SensorMonitor:
 
                 # Parse packets
                 for packet in self.parser.feed_bytes(data):
-                    if not self.parser.parse_sensor_packet(packet):
+                    new_data_available = self.parser.parse_sensor_packet(packet)
+                    if not all(new_data_available[i] for i in self.connected_fingers):
                         continue
                     sensor_data = self.parser.get_sensor_data()
+                    for f in sensor_data.fingers:
+                        f.new_data_available = False
 
-                    # Accumulate static tactile values for each finger
-                    for finger_id in range(NUM_FINGERS):
+                    # Accumulate static tactile values for connected fingers
+                    for finger_id in self.connected_fingers:
                         finger = sensor_data.fingers[finger_id]
                         for taxel_idx in range(28):
                             accumulators[finger_id][taxel_idx] += finger.static_tactile[taxel_idx]
@@ -395,8 +433,8 @@ class SensorMonitor:
                 except (AttributeError, ValueError, OSError):
                     time.sleep(0.001)
 
-        # Calculate averages and update baselines
-        for finger_id in range(NUM_FINGERS):
+        # Calculate averages and update baselines (only for connected fingers)
+        for finger_id in self.connected_fingers:
             for taxel_idx in range(28):
                 self.baseline[finger_id][taxel_idx] = accumulators[finger_id][taxel_idx] // num_samples
 
@@ -411,8 +449,12 @@ class SensorMonitor:
             if waiting > 0:
                 data = self.serial_port.read(waiting)
                 for packet in self.parser.feed_bytes(data):
-                    if self.parser.parse_sensor_packet(packet):
-                        callback(self.parser.get_sensor_data())
+                    new_data_available = self.parser.parse_sensor_packet(packet)
+                    if all(new_data_available[i] for i in self.connected_fingers):
+                        sensor_data = self.parser.get_sensor_data()
+                        for f in sensor_data.fingers:
+                            f.new_data_available = False
+                        callback(sensor_data)
             else:
                 try:
                     select.select([self.serial_port.fd], [], [], 0.001)
@@ -457,12 +499,14 @@ class SensorMonitor:
                             print(f"[DEBUG] First packet length: {len(packets[0])} bytes")
 
                         for packet in packets:
-                            if not self.parser.parse_sensor_packet(packet):
-                                continue
+                            new_data_available = self.parser.parse_sensor_packet(packet)
                             sensor_data = self.parser.get_sensor_data()
-                            self.display_sensor_data(sensor_data)
-                            self.displays_in_window += 1
-                            self.last_update_time = time.time()
+                            if all(new_data_available[i] for i in self.connected_fingers):
+                                for f in sensor_data.fingers:
+                                    f.new_data_available = False
+                                self.display_sensor_data(sensor_data)
+                                self.displays_in_window += 1
+                                self.last_update_time = time.time()
                 else:
                     reads_without_data += 1
 
@@ -552,9 +596,14 @@ class TrackingParser(UsbPacketParser):
             if finger_id < NUM_FINGERS:
                 self.field_counts[(sensor_type, finger_id)] += 1
 
-            # Accumulate timestamp deltas per finger (uint16, big-endian)
+            # Accumulate timestamp deltas per finger (uint64, big-endian)
             if sensor_type == SENSOR_TYPE_TIMESTAMP and finger_id < NUM_FINGERS:
-                ts = (data[idx] << 8) | data[idx + 1]
+                ts = (
+                    (data[idx]     << 56) | (data[idx + 1] << 48) |
+                    (data[idx + 2] << 40) | (data[idx + 3] << 32) |
+                    (data[idx + 4] << 24) | (data[idx + 5] << 16) |
+                    (data[idx + 6] << 8)  |  data[idx + 7]
+                )
                 prev = self._ts_prev[finger_id]
                 if prev is not None and ts > prev:
                     self.ts_deltas[finger_id].append(ts - prev)
@@ -562,7 +611,11 @@ class TrackingParser(UsbPacketParser):
 
             idx += field_size
 
-        return super().parse_sensor_packet(packet)
+        new_data_available = super().parse_sensor_packet(packet)
+        # Reset new_data_available flags after reading so counts stay per-packet
+        for f in self.sensor_data.fingers:
+            f.new_data_available = False
+        return new_data_available
 
 
 
@@ -630,7 +683,7 @@ class FieldTracker:
             self.serial_port.reset_output_buffer()
 
             # Request firmware version
-            self.serial_port.write(self.parser.create_get_version_command())
+            self.serial_port.write(self.parser.create_get_firmware_command())
             self.serial_port.flush()
             deadline = time.time() + 1.0
             while time.time() < deadline:
@@ -690,9 +743,9 @@ class FieldTracker:
             # Timestamp delta stats per finger
             self.ts_stats = [_delta_stats(deltas[fi]) for fi in range(NUM_FINGERS)]
 
-            # Lost packets: any gap > 1ms between consecutive timestamps
+            # Lost packets: any gap > 1000us (1ms period) between consecutive timestamps
             window_lost = [
-                sum(1 for d in deltas[fi] if d > 1)
+                sum(1 for d in deltas[fi] if d > 1000)
                 for fi in range(NUM_FINGERS)
             ]
             self.lost_packets_window = window_lost
@@ -749,7 +802,7 @@ class FieldTracker:
         lines.append("")
 
         # ── Timestamp delta table ─────────────────────────────────────────────
-        lines.append(f"  {'Timestamp Deltas (ms)':24}  {'F0':>12}  {'F1':>12}")
+        lines.append(f"  {'Timestamp Deltas (us)':24}  {'F0':>12}  {'F1':>12}")
         lines.append("  " + "-" * (W - 2))
         stat_rows = [
             ("Mean",    "mean",  ".1f"),
@@ -774,10 +827,10 @@ class FieldTracker:
         lw = self.lost_packets_window
         lt = self.lost_packets_total
         lines.append(
-            f"  {'Lost pkts this window':<24}  {lw[0]:>12d}  {lw[1]:>12d}"
+            f"  {'Timestamp Delta >1000 window':<32}  {lw[0]:>12d}  {lw[1]:>12d}"
         )
         lines.append(
-            f"  {'Lost pkts total':<24}  {lt[0]:>12d}  {lt[1]:>12d}"
+            f"  {'Timestamp Delta >1000 total':<32}  {lt[0]:>12d}  {lt[1]:>12d}"
         )
 
         lines.append("")
@@ -804,6 +857,7 @@ class FieldTracker:
     def run(self):
         self.running = True
         self.last_stats_time = time.time()
+        seen = [False] * NUM_FINGERS
 
         try:
             while self.running:
@@ -815,9 +869,13 @@ class FieldTracker:
                     if packets:
                         self._update_stats(len(packets), len(raw))
                         for packet in packets:
-                            frame_complete = self.parser.parse_sensor_packet(packet)
-                            if frame_complete:
+                            new_data_available = self.parser.parse_sensor_packet(packet)
+                            for i, v in enumerate(new_data_available[:NUM_FINGERS]):
+                                if v:
+                                    seen[i] = True
+                            if all(seen):
                                 self.frames_in_window += 1
+                                seen = [False] * NUM_FINGERS
                                 self._render()
                 else:
                     try:
@@ -926,6 +984,20 @@ def main():
         if not monitor.start_autosend(period_ms=1):
             monitor.cleanup()
             return 1
+
+        print()
+
+        # Detect which fingers are actually connected (hot-plug not supported)
+        print("Detecting connected fingers...")
+        connected = monitor.detect_connected_fingers()
+        if not connected:
+            print("Error: No finger data received. Check sensor connection.")
+            monitor.cleanup()
+            return 1
+        missing = [i for i in range(NUM_FINGERS) if i not in connected]
+        print(f"Connected fingers: {connected}")
+        for fi in missing:
+            print(f"  FINGER {fi}: missing — Replug Finger and Relaunch Quick Connect")
 
         print()
 
