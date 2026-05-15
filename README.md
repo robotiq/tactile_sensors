@@ -12,7 +12,6 @@ The TSF-85 provides per-finger data at 1 kHz over USB:
 ```
 ├── sdk_cpp/             C++ SDK for direct sensor access
 ├── sensor_quickstart/   Python quick-connect and web viewer
-├── tactile_sensor_ui/   Qt-based GUI application
 └── utils/               Device setup and platform utilities
 ```
 
@@ -55,22 +54,6 @@ Windows:
 ```batch
 cd sensor_quickstart
 run_web_viewer.bat
-```
-
-### [tactile_sensor_ui](tactile_sensor_ui/)
-
-Qt-based desktop application for real-time visualization and data logging. Runs via Docker. See [tactile_sensor_ui/README.md](tactile_sensor_ui/README.md).
-
-Linux:
-```bash
-cd tactile_sensor_ui
-./run_tactilesensorUI.sh
-```
-
-Windows (requires WSL2 + Docker Desktop — see [sensor_quickstart](sensor_quickstart/) for an easier alternative):
-```batch
-cd tactile_sensor_ui
-run_tactilesensorUI_windows.bat
 ```
 
 ### [utils](utils/)
