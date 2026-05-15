@@ -1,3 +1,6 @@
 sensor_logs/
 debugtools/
 .vscode/
+temp_files/
+.claude/
+DEPENDENCIES.md
