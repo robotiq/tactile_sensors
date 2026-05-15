@@ -4,3 +4,5 @@ debugtools/
 temp_files/
 .claude/
 DEPENDENCIES.md
+
+.venv/
