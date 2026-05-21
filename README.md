@@ -1,6 +1,7 @@
 # TSF-85 Tactile Sensor
 
 SDK, sensor I/O, and quickstart tools for the Robotiq TSF-85 tactile sensor.
+For generating synthetic tactile maps of the sensor, checkout this [TSF-85 Isaac Sim Extension](https://github.com/Lab-CORO/TSF-85).
 
 The TSF-85 provides per-finger data at 1 kHz over USB:
 - **28-element tactile array** (7x4 grid) per finger — updated at 60 Hz
