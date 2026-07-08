@@ -103,7 +103,11 @@ std::vector<uint8_t> DefaultDriver::send(const std::vector<uint8_t>& request, si
 
   if (retry_count == kMaxRetries)
   {
-    RCLCPP_ERROR(kLogger, "Reached maximum retries. Operation failed.");
+    RCLCPP_ERROR(kLogger,
+                 "The gripper did not respond after %d attempts. Check that the gripper is powered "
+                 "(24 V supply connected), the RS-485 cable is plugged in, and slave_address/baudrate "
+                 "match the gripper configuration.",
+                 kMaxRetries);
     return {};
   }
 
