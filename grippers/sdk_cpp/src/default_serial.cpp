@@ -58,7 +58,11 @@ std::vector<uint8_t> DefaultSerial::read(size_t size)
   size_t bytes_read = serial_->read(data, size);
   if (bytes_read != size)
   {
-    const auto error_msg = "Requested " + std::to_string(size) + " bytes, but got " + std::to_string(bytes_read);
+    // 0 bytes = the gripper never answered (vs. a partial/garbled response),
+    // which almost always means no power or no RS-485 connection.
+    const auto error_msg = bytes_read == 0 ?
+                               "No response from the gripper (0 of " + std::to_string(size) + " bytes read)" :
+                               "Requested " + std::to_string(size) + " bytes, but got " + std::to_string(bytes_read);
     THROW(serial::IOException, error_msg.c_str());
   }
   return data;
