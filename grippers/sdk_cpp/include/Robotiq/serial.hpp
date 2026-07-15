@@ -33,7 +33,7 @@
 #include <string>
 #include <vector>
 
-namespace robotiq_driver
+namespace Robotiq
 {
 /**
  * The driver talks to the hardware through an implementation of the
@@ -120,4 +120,4 @@ public:
    */
   [[nodiscard]] virtual uint32_t get_baudrate() const = 0;
 };
-}  // namespace robotiq_driver
+}  // namespace Robotiq

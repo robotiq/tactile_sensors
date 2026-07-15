@@ -28,9 +28,9 @@
 
 #include <gtest/gtest.h>
 
-#include <robotiq_driver/data_utils.hpp>
+#include <Robotiq/data_utils.hpp>
 
-namespace robotiq_driver::test
+namespace Robotiq::test
 {
 TEST(TestDataUtils, uint8_t_to_hex)
 {
@@ -57,4 +57,4 @@ TEST(TestDataUtils, get_lsb)
 {
   ASSERT_EQ(data_utils::get_lsb(0x14A2), 0xA2);
 }
-}  // namespace robotiq_driver::test
+}  // namespace Robotiq::test

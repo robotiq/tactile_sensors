@@ -30,9 +30,9 @@
 #include <string>
 #include <vector>
 
-#include <robotiq_driver/data_utils.hpp>
+#include <Robotiq/data_utils.hpp>
 
-namespace robotiq_driver::data_utils
+namespace Robotiq::data_utils
 {
 constexpr std::array<char, 16> vChars = {
   '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'
@@ -96,4 +96,4 @@ uint8_t get_lsb(uint16_t value)
   return static_cast<uint8_t>(value & 0xFF);
 }
 
-}  // namespace robotiq_driver::data_utils
+}  // namespace Robotiq::data_utils

@@ -33,11 +33,11 @@
 #include <string>
 #include <vector>
 
-#include "robotiq_driver/serial.hpp"
+#include "robotiq/serial.hpp"
 
-namespace robotiq_driver::test
+namespace Robotiq::test
 {
-class MockSerial : public robotiq_driver::Serial
+class MockSerial : public Robotiq::Serial
 {
 public:
   MOCK_METHOD(void, open, (), (override));
@@ -52,4 +52,4 @@ public:
   MOCK_METHOD(void, set_baudrate, (uint32_t baudrate), (override));
   MOCK_METHOD(uint32_t, get_baudrate, (), (override, const));
 };
-}  // namespace robotiq_driver::test
+}  // namespace Robotiq::test
