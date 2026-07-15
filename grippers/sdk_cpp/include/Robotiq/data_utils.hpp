@@ -36,8 +36,7 @@
 /**
  * Utility class to convert between commonly used data types.
  */
-namespace Robotiq::data_utils
-{
+namespace Robotiq::data_utils {
 /**
  * Convert a sequence of uint8_t into a sequence of hex numbers.
  * @param bytes The sequence of bytes.
@@ -73,4 +72,4 @@ uint8_t get_msb(uint16_t value);
  */
 uint8_t get_lsb(uint16_t value);
 
-}  // namespace Robotiq::data_utils
+} // namespace Robotiq::data_utils

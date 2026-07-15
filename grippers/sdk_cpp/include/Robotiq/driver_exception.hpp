@@ -32,35 +32,32 @@
 #include <string>
 #include <sstream>
 
-namespace Robotiq
-{
+namespace Robotiq {
 /**
  * This is a custom exception thrown by the Driver.
  */
 class DriverException : public std::exception
 {
-  std::string what_;
+   std::string what_;
 
 public:
-  explicit DriverException(const std::string& description)
-  {
-    std::stringstream ss;
-    ss << "DriverException: " << description << ".";
-    what_ = ss.str();
-  }
+   explicit DriverException(const std::string& description)
+   {
+      std::stringstream ss;
+      ss << "DriverException: " << description << ".";
+      what_ = ss.str();
+   }
 
-  DriverException(const DriverException& other) : what_(other.what_)
-  {
-  }
+   DriverException(const DriverException& other)
+      : what_(other.what_)
+   {
+   }
 
-  ~DriverException() override = default;
+   ~DriverException() override = default;
 
-  // Disable copy constructors
-  DriverException& operator=(const DriverException&) = delete;
+   // Disable copy constructors
+   DriverException& operator=(const DriverException&) = delete;
 
-  [[nodiscard]] const char* what() const throw() override
-  {
-    return what_.c_str();
-  }
+   [[nodiscard]] const char* what() const throw() override { return what_.c_str(); }
 };
-}  // namespace Robotiq
+} // namespace Robotiq
