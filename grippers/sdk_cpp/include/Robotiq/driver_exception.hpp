@@ -26,6 +26,8 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+//! This is a custom exception thrown by the Driver.
+
 #pragma once
 
 #include <exception>
@@ -33,23 +35,20 @@
 #include <sstream>
 
 namespace Robotiq {
-/**
- * This is a custom exception thrown by the Driver.
- */
 class DriverException : public std::exception
 {
-   std::string what_;
+   std::string _what;
 
 public:
    explicit DriverException(const std::string& description)
    {
       std::stringstream ss;
       ss << "DriverException: " << description << ".";
-      what_ = ss.str();
+      _what = ss.str();
    }
 
    DriverException(const DriverException& other)
-      : what_(other.what_)
+      : _what(other._what)
    {
    }
 
@@ -58,6 +57,6 @@ public:
    // Disable copy constructors
    DriverException& operator=(const DriverException&) = delete;
 
-   [[nodiscard]] const char* what() const throw() override { return what_.c_str(); }
+   [[nodiscard]] const char* what() const throw() override { return _what.c_str(); }
 };
 } // namespace Robotiq

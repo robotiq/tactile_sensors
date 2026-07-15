@@ -36,7 +36,7 @@ namespace Robotiq::data_utils {
 constexpr std::array<char, 16> vChars =
    {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
 
-std::string to_hex(const std::vector<uint8_t>& bytes)
+std::string toHex(const std::vector<uint8_t>& bytes)
 {
    std::string hex;
    for(auto it = std::begin(bytes); it != std::end(bytes); ++it)
@@ -54,7 +54,7 @@ std::string to_hex(const std::vector<uint8_t>& bytes)
    return hex;
 }
 
-std::string to_hex(const std::vector<uint16_t>& bytes)
+std::string toHex(const std::vector<uint16_t>& bytes)
 {
    std::string hex;
    for(auto it = std::begin(bytes); it != std::end(bytes); ++it)
@@ -74,7 +74,7 @@ std::string to_hex(const std::vector<uint16_t>& bytes)
    return hex;
 }
 
-std::string to_binary_string(const uint8_t byte)
+std::string toBinaryString(const uint8_t byte)
 {
    std::string result = "";
    for(int i = 7; i >= 0; --i)
@@ -84,12 +84,12 @@ std::string to_binary_string(const uint8_t byte)
    return result;
 }
 
-uint8_t get_msb(uint16_t value)
+uint8_t getMsb(uint16_t value)
 {
    return static_cast<uint8_t>(value >> 8) & 0xFF;
 }
 
-uint8_t get_lsb(uint16_t value)
+uint8_t getLsb(uint16_t value)
 {
    return static_cast<uint8_t>(value & 0xFF);
 }

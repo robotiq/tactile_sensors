@@ -33,27 +33,27 @@
 namespace Robotiq::test {
 TEST(TestDataUtils, uint8_t_to_hex)
 {
-   ASSERT_EQ(data_utils::to_hex(std::vector<uint8_t>{255, 121, 56, 33, 125, 60}), "FF 79 38 21 7D 3C");
+   ASSERT_EQ(data_utils::toHex(std::vector<uint8_t>{255, 121, 56, 33, 125, 60}), "FF 79 38 21 7D 3C");
 }
 
 TEST(TestDataUtils, uint16_t_to_hex)
 {
-   ASSERT_EQ(data_utils::to_hex(std::vector<uint16_t>{1169, 58544, 14917, 42884, 36112, 16512, 33207, 62584, 30418}),
+   ASSERT_EQ(data_utils::toHex(std::vector<uint16_t>{1169, 58544, 14917, 42884, 36112, 16512, 33207, 62584, 30418}),
              "0491 E4B0 3A45 A784 8D10 4080 81B7 F478 76D2");
 }
 
-TEST(TestDataUtils, to_binary_string)
+TEST(TestDataUtils, toBinaryString)
 {
-   ASSERT_EQ(data_utils::to_binary_string(155), "10011011");
+   ASSERT_EQ(data_utils::toBinaryString(155), "10011011");
 }
 
-TEST(TestDataUtils, get_msb)
+TEST(TestDataUtils, getMsb)
 {
-   ASSERT_EQ(data_utils::get_msb(0x14A2), 0x14);
+   ASSERT_EQ(data_utils::getMsb(0x14A2), 0x14);
 }
 
-TEST(TestDataUtils, get_lsb)
+TEST(TestDataUtils, getLsb)
 {
-   ASSERT_EQ(data_utils::get_lsb(0x14A2), 0xA2);
+   ASSERT_EQ(data_utils::getLsb(0x14A2), 0xA2);
 }
 } // namespace Robotiq::test

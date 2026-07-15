@@ -26,6 +26,12 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+//! The driver talks to the hardware through an implementation of the
+//! serial interface.
+//! We can mock the serial connection to check that a high level command
+//! (e.g activate) is converted into the correct sequence of bytes
+//! including CRC.
+
 #pragma once
 
 #include <chrono>
@@ -34,89 +40,62 @@
 #include <vector>
 
 namespace Robotiq {
-/**
- * The driver talks to the hardware through an implementation of the
- * serial interface.
- * We can mock the serial connection to check that a high level command
- * (e.g activate) is converted into the correct sequence of bytes
- * including CRC.
- */
 class Serial
 {
 public:
    virtual ~Serial() = default;
 
-   /**
-    * Opens the serial port as long as the port is set and the port isn't
-    * already open.
-    */
+   // Opens the serial port as long as the port is set and the port isn't
+   // already open.
    virtual void open() = 0;
 
-   /**
-    * Gets the open status of the serial port.
-    * @return Returns true if the port is open, false otherwise.
-    */
-   [[nodiscard]] virtual bool is_open() const = 0;
+   // Gets the open status of the serial port.
+   // \return Returns true if the port is open, false otherwise.
+   [[nodiscard]] virtual bool isOpen() const = 0;
 
-   /** Closes the serial port. */
+   // Closes the serial port.
    virtual void close() = 0;
 
-   /**
-    * Read a given amount of bytes from the serial port.
-    * @param size The number of bytes to read.
-    * @return The sequence of bytes.
-    * @throw serial::PortNotOpenedException
-    * @throw serial::SerialException
-    */
+   // Read a given amount of bytes from the serial port.
+   // \param size The number of bytes to read.
+   // \return The sequence of bytes.
+   // \throw serial::PortNotOpenedException
+   // \throw serial::SerialException
    [[nodiscard]] virtual std::vector<uint8_t> read(size_t size) = 0;
 
-   /**
-    * Write a sequence of bytes to the serial port.
-    * @param data A vector containing data to be written to the serial port.
-    * @throw serial::PortNotOpenedException
-    * @throw serial::SerialException
-    * @throw serial::IOException
-    */
+   // Write a sequence of bytes to the serial port.
+   // \param data A vector containing data to be written to the serial port.
+   // \throw serial::PortNotOpenedException
+   // \throw serial::SerialException
+   // \throw serial::IOException
    virtual void write(const std::vector<uint8_t>& data) = 0;
 
-   /**
-    * Sets the serial port identifier.
-    * @param port A const std::string reference containing the address of the
-    * serial port, which would be something like "COM1" on Windows and
-    * "/dev/ttyS0" on Linux.
-    * @throw std::invalid_argument
-    */
-   virtual void set_port(const std::string& port) = 0;
+   // Sets the serial port identifier.
+   // \param port A const std::string reference containing the address of the
+   // serial port, which would be something like "COM1" on Windows and
+   // "/dev/ttyS0" on Linux.
+   // \throw std::invalid_argument
+   virtual void setPort(const std::string& port) = 0;
 
-   /**
-    * Gets the serial port identifier.
-    * @see SerialInterface::setPort
-    * @throw std::invalid_argument
-    */
-   [[nodiscard]] virtual std::string get_port() const = 0;
+   // Gets the serial port identifier.
+   // \see SerialInterface::setPort
+   // \throw std::invalid_argument
+   [[nodiscard]] virtual std::string getPort() const = 0;
 
-   /**
-    * Set read timeout in milliseconds.
-    * @param timeout Read timeout in milliseconds.
-    */
-   virtual void set_timeout(const std::chrono::milliseconds timeout) = 0;
+   // Set read timeout in milliseconds.
+   // \param timeout Read timeout in milliseconds.
+   virtual void setTimeout(const std::chrono::milliseconds timeout) = 0;
 
-   /**
-    * Get read timeout in milliseconds.
-    * @return Read timeout in milliseconds.
-    */
-   [[nodiscard]] virtual std::chrono::milliseconds get_timeout() const = 0;
+   // Get read timeout in milliseconds.
+   // \return Read timeout in milliseconds.
+   [[nodiscard]] virtual std::chrono::milliseconds getTimeout() const = 0;
 
-   /**
-    * Sets the baudrate for the serial port.
-    * @param baudrate An integer that sets the baud rate for the serial port.
-    */
-   virtual void set_baudrate(uint32_t baudrate) = 0;
+   // Sets the baudrate for the serial port.
+   // \param baudrate An integer that sets the baud rate for the serial port.
+   virtual void setBaudrate(uint32_t baudrate) = 0;
 
-   /**
-    * Gets the baudrate for the serial port.
-    * @return An integer that sets the baud rate for the serial port.
-    */
-   [[nodiscard]] virtual uint32_t get_baudrate() const = 0;
+   // Gets the baudrate for the serial port.
+   // \return An integer that sets the baud rate for the serial port.
+   [[nodiscard]] virtual uint32_t getBaudrate() const = 0;
 };
 } // namespace Robotiq
