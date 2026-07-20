@@ -278,11 +278,11 @@ Your callback() <-------           Call callback()
 
 
 
-**GNU General Public License v3.0**
+**BSD 3-Clause License**
 
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the BSD 3-Clause conditions are met.
 
-See [LICENSE](../LICENSE) or <https://www.gnu.org/licenses/> for details.
+See [LICENSE](../LICENSE) for details.
 
 ## Credits
 
