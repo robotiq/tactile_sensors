@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 #
 # Copyright (C) 2016  Forest Crossman <cyrozap@gmail.com>
+# Copyright (C) 2026  Robotiq
+#
+# Based on cyrozap/Cypress-HID-Bootloader-Host; modified 2026 by Robotiq for
+# Master Hub integration (device VID/PIDs, firmware selection, and the serial
+# reboot-to-bootloader handshake).
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
