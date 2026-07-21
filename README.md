@@ -14,6 +14,7 @@ For generating synthetic tactile maps of the sensor, checkout this [TSF-85 Isaac
 ```
 ├── sdk_cpp/             C++ SDK for direct sensor access
 ├── sensor_quickstart/   Python quick-connect and web viewer
+├── firmware/            Standalone GPL-3.0 bootloader/flashing tool (see firmware/LICENSE)
 └── utils/               Device setup and platform utilities
 ```
 

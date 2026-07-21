@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2016 Shahbaz Youssefi
 // Copyright (c) 2026 Robotiq
 //
