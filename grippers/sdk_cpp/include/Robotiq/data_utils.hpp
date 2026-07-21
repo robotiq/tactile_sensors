@@ -1,4 +1,4 @@
-// Copyright (c) 2022 PickNik, Inc.
+// Copyright (c) 2023 PickNik, Inc.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
@@ -26,34 +26,39 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+//! Utility class to convert between commonly used data types.
+
 #pragma once
 
-#include <memory>
+#include <array>
+#include <cstdint>
+#include <string>
+#include <vector>
 
-#include <robotiq_driver/default_driver_factory.hpp>
-#include <robotiq_driver/driver_factory.hpp>
+namespace Robotiq::data_utils {
+//! Convert a sequence of uint8_t into a sequence of hex numbers.
+//! \param bytes The sequence of bytes.
+//! \return A string containing the sequence of hex numbers.
+std::string toHex(const std::vector<uint8_t>& bytes);
 
-#include <hardware_interface/hardware_info.hpp>
+//! Convert a sequence of uint16_t into a sequence of hex numbers.
+//! \param bytes The sequence of bytes.
+//! \return A string containing the sequence of hex numbers.
+std::string toHex(const std::vector<uint16_t>& bytes);
 
-namespace robotiq_driver
-{
-/**
- * This class is used to create a default driver to interact with the hardware.
- */
-class DefaultDriverFactory : public DriverFactory
-{
-public:
-  DefaultDriverFactory() = default;
+//! Convert a byte to a binary representation for testing purposes.
+//! \param byte The byte to decode.
+//! \return The binary representation of the given byte.
+std::string toBinaryString(const uint8_t byte);
 
-  /**
-   * @brief Create a driver.
-   * @param info The hardware information.
-   * @return A driver to interact with the hardware.
-   */
-  std::unique_ptr<Driver> create(const hardware_interface::HardwareInfo& info) const;
+//! Get the Most Significant Byte (MSB) of the given value.
+//! \param value A 16-bits value.
+//! \return The Most Significant Byte (MSB) of the given value.
+uint8_t getMsb(uint16_t value);
 
-protected:
-  // Seam for testing.
-  virtual std::unique_ptr<Driver> create_driver(const hardware_interface::HardwareInfo& info) const;
-};
-}  // namespace robotiq_driver
+//! Get the Least Significant Byte (LSB) of the given value.
+//! \param value A 16-bits value.
+//! \return The Least Significant Byte (LSB) of the given value.
+uint8_t getLsb(uint16_t value);
+
+} // namespace Robotiq::data_utils

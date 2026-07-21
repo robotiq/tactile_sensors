@@ -26,51 +26,37 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+//! This is a custom exception thrown by the Driver.
+
 #pragma once
 
-#include <array>
-#include <cstdint>
+#include <exception>
 #include <string>
-#include <vector>
+#include <sstream>
 
-/**
- * Utility class to convert between commonly used data types.
- */
-namespace robotiq_driver::data_utils
+namespace Robotiq {
+class DriverException : public std::exception
 {
-/**
- * Convert a sequence of uint8_t into a sequence of hex numbers.
- * @param bytes The sequence of bytes.
- * @return A string containing the sequence of hex numbers.
- */
-std::string to_hex(const std::vector<uint8_t>& bytes);
+   std::string _what;
 
-/**
- * Convert a sequence of uint16_t into a sequence of hex numbers.
- * @param bytes The sequence of bytes.
- * @return A string containing the sequence of hex numbers.
- */
-std::string to_hex(const std::vector<uint16_t>& bytes);
+public:
+   explicit DriverException(const std::string& description)
+   {
+      std::stringstream ss;
+      ss << "DriverException: " << description << ".";
+      _what = ss.str();
+   }
 
-/**
- * Convert a byte to a binary representation for testing purposes.
- * @param byte The byte to decode.
- * @return The binary representation of the given byte.
- */
-std::string to_binary_string(const uint8_t byte);
+   DriverException(const DriverException& other)
+      : _what(other._what)
+   {
+   }
 
-/**
- * Get the Most Significant Byte (MSB) of the given value.
- * @param value A 16-bits value.
- * @return The Most Significant Byte (MSB) of the given value.
- */
-uint8_t get_msb(uint16_t value);
+   ~DriverException() override = default;
 
-/**
- * Get the Least Significant Byte (LSB) of the given value.
- * @param value A 16-bits value.
- * @return The Least Significant Byte (LSB) of the given value.
- */
-uint8_t get_lsb(uint16_t value);
+   // Disable copy constructors
+   DriverException& operator=(const DriverException&) = delete;
 
-}  // namespace robotiq_driver::data_utils
+   [[nodiscard]] const char* what() const throw() override { return _what.c_str(); }
+};
+} // namespace Robotiq

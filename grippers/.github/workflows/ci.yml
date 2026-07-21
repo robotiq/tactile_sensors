@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install libserialport (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libserialport-dev
+
+      - name: Install libserialport (macOS)
+        if: runner.os == 'macOS'
+        run: brew install libserialport
+
+      # libserialport has no vcpkg port; MSYS2 packages it (UCRT64).
+      - name: Set up MSYS2 with libserialport (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          pacboy: toolchain:p cmake:p ninja:p pkgconf:p libserialport:p
+
+      - name: Configure, build, test
+        if: runner.os != 'Windows'
+        run: |
+          cmake -S sdk_cpp -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j 4
+          ctest --test-dir build --output-on-failure
+
+      - name: Configure, build, test (MSYS2)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          cmake -S sdk_cpp -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j 4
+          ctest --test-dir build --output-on-failure
+
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: clang-format check
+        run: |
+          git ls-files 'sdk_cpp/include/**/*.hpp' 'sdk_cpp/src/**/*.cpp' 'sdk_cpp/tests/**/*.[ch]pp' 'sdk_cpp/examples/**/*.cpp' \
+            | xargs clang-format --dry-run --Werror
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y libserialport-dev gcovr
+      - name: Configure
+        run: >
+          cmake -S sdk_cpp -B build -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX_FLAGS=--coverage
+          -DGRIPPERS_BUILD_EXAMPLES=OFF
+      - name: Build
+        run: cmake --build build -j 4
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Coverage report
+        run: >
+          gcovr --root . --filter 'sdk_cpp/(include|src)/' build
+          --print-summary --xml coverage.xml --html-details coverage.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            coverage.xml
+            coverage.html
