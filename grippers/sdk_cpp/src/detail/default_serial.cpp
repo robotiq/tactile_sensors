@@ -71,9 +71,8 @@ void DefaultSerial::open()
 {
    if(_portHandle != nullptr)
    {
-      _logger->logf(Logger::Level::Debug,
-                    "open() called on %s but the port is already open; ignoring.",
-                    _config.port.c_str());
+      _logger->log(Logger::Level::Debug,
+                   "open() called on " + _config.port + " but the port is already open; ignoring.");
       return;
    }
    if(_config.port.empty())
@@ -103,20 +102,19 @@ void DefaultSerial::open()
    {
       if(applyLatencyTimer())
       {
-         _logger->logf(Logger::Level::Info,
-                       "FTDI latency_timer set to %d ms on %s.",
-                       _config.latencyTimerMs,
-                       _config.port.c_str());
+         _logger->log(Logger::Level::Info,
+                      "FTDI latency_timer set to " + std::to_string(_config.latencyTimerMs) + " ms on " + _config.port
+                         + ".");
       }
       else
       {
-         _logger->logf(Logger::Level::Warn,
-                       "Could not set FTDI latency_timer to %d ms on %s. Modbus cycle latency may be "
-                       "~3x higher than expected (the kernel default is 16 ms). Either run with "
-                       "permissions to write /sys/bus/usb-serial/devices/<dev>/latency_timer, or ship "
-                       "a udev rule that sets it at plug time.",
-                       _config.latencyTimerMs,
-                       _config.port.c_str());
+         _logger->log(Logger::Level::Warn,
+                      "Could not set FTDI latency_timer to " + std::to_string(_config.latencyTimerMs) + " ms on "
+                         + _config.port
+                         + ". Modbus cycle latency may be ~3x higher than expected (the kernel default "
+                           "is 16 ms). Either run with permissions to write "
+                           "/sys/bus/usb-serial/devices/<dev>/latency_timer, or ship a udev rule that "
+                           "sets it at plug time.");
       }
    }
 #endif

@@ -14,7 +14,7 @@
 
 namespace Robotiq::test {
 namespace {
-//! Captures every delivered line, for asserting on logf formatting.
+//! Captures every delivered line.
 class CollectingLogger : public Logger
 {
 public:
@@ -23,17 +23,6 @@ public:
    std::vector<std::pair<Level, std::string>> lines;
 };
 } // namespace
-
-TEST(TestLogger, logf_formats_printf_style)
-{
-   CollectingLogger logger;
-
-   logger.logf(Logger::Level::Info, "position %d of %s", 42, "255");
-
-   ASSERT_EQ(logger.lines.size(), 1U);
-   EXPECT_EQ(logger.lines[0].first, Logger::Level::Info);
-   EXPECT_EQ(logger.lines[0].second, "position 42 of 255");
-}
 
 TEST(TestLogger, makeDefaultLogger_returns_a_logger)
 {
@@ -89,7 +78,6 @@ TEST(TestNullLogger, swallows_everything)
 
    testing::internal::CaptureStderr();
    logger.log(Logger::Level::Error, "x");
-   logger.logf(Logger::Level::Error, "%d", 1);
 
    EXPECT_TRUE(testing::internal::GetCapturedStderr().empty());
 }

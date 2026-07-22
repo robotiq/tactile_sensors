@@ -4,8 +4,6 @@
 
 #include <Robotiq/gripper/logger.hpp>
 
-#include <cstdarg>
-#include <cstdio>
 #include <ctime>
 #include <iomanip>
 #include <iostream>
@@ -47,16 +45,6 @@ void writeTimestamp(std::ostream& out)
 }
 
 } // namespace
-
-void Logger::logf(Level level, const char* fmt, ...)
-{
-   char buf[512];
-   va_list args;
-   va_start(args, fmt);
-   vsnprintf(buf, sizeof(buf), fmt, args);
-   va_end(args);
-   log(level, buf);
-}
 
 void StderrLogger::log(Level level, std::string_view message)
 {

@@ -7,8 +7,8 @@
 //!   - Production ROS 2 nodes — adapter forwards to rclcpp's logger
 //!   - Standalone CLI / bench tools — default stderr printer (no rclcpp dep)
 //!   - Unit tests — null logger or string capture
-//! The interface is tiny by design: log level + formatted message.
-//! printf-style formatting via the logf(level, fmt, ...) convenience method.
+//! The interface is tiny by design: one method taking a level and a
+//! fully formatted message — formatting is the caller's concern.
 
 #pragma once
 
@@ -17,12 +17,6 @@
 #include <mutex>
 #include <string_view>
 #include <utility>
-
-#if defined(__GNUC__) || defined(__clang__)
-#define ROBOTIQ_PRINTF_FORMAT(fmt_index, args_index) __attribute__((format(printf, fmt_index, args_index)))
-#else
-#define ROBOTIQ_PRINTF_FORMAT(fmt_index, args_index)
-#endif
 
 namespace Robotiq {
 class Logger
@@ -40,9 +34,6 @@ public:
 
    // Emit a fully-formatted log line. Implementation-defined sink.
    virtual void log(Level level, std::string_view message) = 0;
-
-   // printf-style convenience wrapping log().
-   void logf(Level level, const char* fmt, ...) ROBOTIQ_PRINTF_FORMAT(3, 4);
 };
 
 //! \brief Default Logger implementation that writes to stderr.
