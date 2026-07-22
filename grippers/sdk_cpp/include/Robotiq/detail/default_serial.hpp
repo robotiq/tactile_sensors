@@ -17,6 +17,7 @@
 
 #include <chrono>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <Robotiq/detail/serial.hpp>
@@ -59,4 +60,9 @@ private:
    SerialConfig _config;
    std::shared_ptr<Logger> _logger;
 };
+
+// Strip the directory part of a device path ("/dev/ttyUSB0" -> "ttyUSB0");
+// the sysfs latency_timer path is derived from it.
+[[nodiscard]] std::string deviceBasename(const std::string& port);
+
 } // namespace Robotiq::detail

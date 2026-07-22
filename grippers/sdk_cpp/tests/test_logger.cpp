@@ -38,6 +38,7 @@ TEST(TestLogger, logf_formats_printf_style)
 TEST(TestLogger, makeDefaultLogger_returns_a_logger)
 {
    EXPECT_NE(makeDefaultLogger(), nullptr);
+   EXPECT_EQ(makeDefaultLogger(), makeDefaultLogger());
 }
 
 TEST(TestStderrLogger, log_writes_the_message_to_stderr)

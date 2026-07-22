@@ -48,13 +48,13 @@ void check(sp_return result, const std::string& context)
    }
 }
 
-//! Strip "/dev/" prefix and return just the device name (e.g. "ttyUSB0").
+} // namespace
+
 std::string deviceBasename(const std::string& port)
 {
    const auto slash = port.find_last_of('/');
    return slash == std::string::npos ? port : port.substr(slash + 1);
 }
-} // namespace
 
 DefaultSerial::DefaultSerial(SerialConfig config, std::shared_ptr<Logger> logger)
    : _config(std::move(config))
@@ -149,7 +149,7 @@ std::vector<uint8_t> DefaultSerial::read(size_t size, std::chrono::milliseconds 
       timeout.count() == 0
          ? sp_nonblocking_read(_portHandle, data.data(), size)
          : sp_blocking_read(_portHandle, data.data(), size, static_cast<unsigned int>(timeout.count()));
-   check(result, "sp_read");
+   check(result, timeout.count() == 0 ? "sp_nonblocking_read" : "sp_blocking_read");
    data.resize(static_cast<size_t>(result));
    return data;
 }

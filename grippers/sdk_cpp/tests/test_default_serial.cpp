@@ -71,4 +71,13 @@ TEST(TestDefaultSerial, construction_config_round_trip)
    EXPECT_EQ(serial.getConfig().latencyTimerMs, 1);
    EXPECT_EQ(serial.getTimeout(), std::chrono::milliseconds{200});
 }
+
+TEST(TestDeviceBasename, strips_the_directory_part)
+{
+   EXPECT_EQ(detail::deviceBasename("/dev/ttyUSB0"), "ttyUSB0");
+   EXPECT_EQ(detail::deviceBasename("/dev/serial/by-id/usb-FTDI_X-if00-port0"), "usb-FTDI_X-if00-port0");
+   EXPECT_EQ(detail::deviceBasename("COM3"), "COM3");
+   EXPECT_EQ(detail::deviceBasename(""), "");
+}
+
 } // namespace Robotiq::test

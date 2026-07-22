@@ -69,6 +69,9 @@ void NullLogger::log(Level, std::string_view) {}
 
 std::shared_ptr<Logger> makeDefaultLogger()
 {
-   return std::make_shared<StderrLogger>();
+   // One shared instance: fallback users share a single mutex, so their
+   // stderr lines stay serialized against each other.
+   static const auto instance = std::make_shared<StderrLogger>();
+   return instance;
 }
 } // namespace Robotiq
