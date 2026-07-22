@@ -14,6 +14,7 @@ For generating synthetic tactile maps of the sensor, checkout this [TSF-85 Isaac
 ```
 ├── sdk_cpp/             C++ SDK for direct sensor access
 ├── sensor_quickstart/   Python quick-connect and web viewer
+├── firmware/            Standalone GPL-3.0 bootloader/flashing tool (see firmware/LICENSE)
 └── utils/               Device setup and platform utilities
 ```
 
@@ -75,3 +76,9 @@ Platform utilities for device setup:
 ## License
 
 This project is licensed under the BSD 3-Clause License. See [LICENSE](LICENSE) for details.
+
+**Exception:** `firmware/bootloader_host.py` is a derivative of
+[cyrozap/Cypress-HID-Bootloader-Host](https://github.com/cyrozap/Cypress-HID-Bootloader-Host)
+and is licensed under the GNU General Public License v3.0, not BSD-3-Clause. See
+[firmware/LICENSE](firmware/LICENSE). It is a standalone firmware-flashing tool;
+the SDK and other components neither import nor link it.
