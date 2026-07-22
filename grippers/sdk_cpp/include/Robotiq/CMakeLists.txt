@@ -1,5 +1,9 @@
 target_sources(grippers_sdk PRIVATE
-  data_utils.hpp
   driver_exception.hpp
-  serial.hpp
+  gripper/logger.hpp
+  gripper/throttle.hpp
+  gripper/serial_config.hpp
+  gripper/serial_io_exception.hpp
+  detail/serial.hpp
+  detail/default_serial.hpp
 )
