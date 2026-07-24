@@ -82,15 +82,20 @@ void DefaultSerial::open()
    _logger->log(Logger::Level::Debug,
                 "opening serial port '" + _config.port + "' at " + std::to_string(_config.baudrate) + " baud");
 
-   check(sp_get_port_by_name(_config.port.c_str(), &_portHandle), "sp_get_port_by_name(" + _config.port + ")");
+   struct sp_port* handle = nullptr;
+   if(sp_get_port_by_name(_config.port.c_str(), &handle) != SP_OK)
+   {
+      throw SerialIOException("no serial port named '" + _config.port + "' (is the device connected?)");
+   }
+   _portHandle = handle;
    try
    {
-      check(sp_open(_portHandle, SP_MODE_READ_WRITE), "sp_open(" + _config.port + ")");
-      check(sp_set_baudrate(_portHandle, static_cast<int>(_config.baudrate)), "sp_set_baudrate");
-      check(sp_set_bits(_portHandle, 8), "sp_set_bits");
-      check(sp_set_parity(_portHandle, SP_PARITY_NONE), "sp_set_parity");
-      check(sp_set_stopbits(_portHandle, 1), "sp_set_stopbits");
-      check(sp_set_flowcontrol(_portHandle, SP_FLOWCONTROL_NONE), "sp_set_flowcontrol");
+      check(sp_open(_portHandle, SP_MODE_READ_WRITE), "opening serial port '" + _config.port + "'");
+      check(sp_set_baudrate(_portHandle, static_cast<int>(_config.baudrate)), "setting baud rate");
+      check(sp_set_bits(_portHandle, 8), "setting data bits");
+      check(sp_set_parity(_portHandle, SP_PARITY_NONE), "setting parity");
+      check(sp_set_stopbits(_portHandle, 1), "setting stop bits");
+      check(sp_set_flowcontrol(_portHandle, SP_FLOWCONTROL_NONE), "setting flow control");
    }
    catch(...)
    {
