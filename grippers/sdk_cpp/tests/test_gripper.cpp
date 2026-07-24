@@ -1,0 +1,413 @@
+// Copyright (c) 2026 Robotiq, Inc.
+//
+// Licensed under the BSD-3-Clause license; see LICENSE for details.
+
+#include <gtest/gtest.h>
+
+#include <atomic>
+#include <chrono>
+#include <cstring>
+#include <memory>
+#include <vector>
+
+#include <Robotiq/gripper.hpp>
+#include <Robotiq/gripper/connection_state.hpp>
+#include <Robotiq/gripper/command.hpp>
+#include <Robotiq/gripper/driver_exception.hpp>
+#include <Robotiq/gripper/status.hpp>
+#include <Robotiq/gripper/register_map.hpp>
+#include <Robotiq/gripper/logger.hpp>
+#include <Robotiq/gripper/serial_io_exception.hpp>
+#include <Robotiq/detail/modbus_constants.hpp>
+#include <Robotiq/detail/gripper_modbus_client.hpp>
+
+#include "fake_gripper.hpp"
+#include "test_utils.hpp"
+
+namespace Robotiq::test {
+
+namespace {
+namespace mc = Robotiq::detail::modbus_constants;
+namespace rm = Robotiq::register_map;
+
+constexpr uint8_t kSlave = 0x09;
+constexpr std::chrono::milliseconds kFastPeriod{1};
+
+GripperCommand activateCommand()
+{
+   GripperCommand command;
+   std::memset(command.data(), 0, command.size());
+   command.action.set(ActionRequestBit::Activate, true);
+   return command;
+}
+
+//! FakeGripperSerial whose writes fail while failing is set — a link
+//! that starts healthy, drops out, and comes back. Failing on write
+//! keeps the fake's reply streams free of stale responses.
+class WriteFailingSerial : public FakeGripperSerial
+{
+public:
+   using FakeGripperSerial::FakeGripperSerial;
+
+   void write(const std::vector<uint8_t>& data) override
+   {
+      if(failing.load())
+      {
+         throw SerialIOException("injected wire failure");
+      }
+      FakeGripperSerial::write(data);
+   }
+
+   std::atomic<bool> failing{false};
+};
+
+//! FakeGripperSerial whose replies are lost while dropReplies is set:
+//! requests still reach the gripper, but reads fail.
+class ReplyDroppingSerial : public FakeGripperSerial
+{
+public:
+   using FakeGripperSerial::FakeGripperSerial;
+
+   std::vector<uint8_t> read(size_t size, std::chrono::milliseconds timeout) override
+   {
+      if(dropReplies.load())
+      {
+         _gripper.toClientStream.clear();
+         throw SerialIOException("injected reply loss");
+      }
+      return FakeGripperSerial::read(size, timeout);
+   }
+
+   std::atomic<bool> dropReplies{true};
+};
+} // namespace
+
+class TestGripper : public ::testing::Test
+{
+protected:
+   TestGripper()
+      : gripper(std::make_unique<FakeGripperSerial>(gripperModbusServer),
+                kSlave,
+                kFastPeriod,
+                std::make_shared<NullLogger>())
+   {
+   }
+
+   template <typename Predicate>
+   bool waitFor(Predicate predicate, std::chrono::seconds timeout = std::chrono::seconds(2))
+   {
+      return Robotiq::waitFor(predicate, timeout, std::chrono::milliseconds(1));
+   }
+
+   FakeGripperModbusServer gripperModbusServer;
+   Gripper gripper;
+};
+
+TEST_F(TestGripper, construction_reaches_the_gripper)
+{
+   // The initial read happened in the constructor: no waiting.
+   EXPECT_EQ(gripper.connectionState(), ConnectionState::Operational);
+}
+
+TEST_F(TestGripper, activate_blocks_until_the_gripper_reports_complete)
+{
+   EXPECT_EQ(activate(gripper, std::chrono::seconds(2)), ActivationResult::Activated);
+   EXPECT_TRUE(gripper.getStatus().gripperStatus.activated());
+   // Idempotent: a second call reports already-active without acting.
+   EXPECT_EQ(activate(gripper, std::chrono::seconds(2)), ActivationResult::AlreadyActive);
+}
+
+TEST(TestGripperActivate, default_speed_and_force_reach_the_gripper)
+{
+   FakeGripperModbusServer modbusServer;
+   {
+      Gripper gripper(std::make_unique<FakeGripperSerial>(modbusServer),
+                      kSlave,
+                      kFastPeriod,
+                      std::make_shared<NullLogger>());
+      EXPECT_EQ(activate(gripper, std::chrono::seconds(2)), ActivationResult::Activated);
+   }
+   const GripperCommand defaults = GripperCommand::defaults();
+   EXPECT_EQ(modbusServer.registers[mc::kCommandAddress + 2],
+             static_cast<uint16_t>((defaults.speed << 8) | defaults.force));
+}
+
+TEST(TestGripperActivate, redundant_activate_keeps_the_command_and_never_resets)
+{
+   FakeGripperModbusServer modbusServer;
+   Gripper gripper(std::make_unique<FakeGripperSerial>(modbusServer),
+                   kSlave,
+                   kFastPeriod,
+                   std::make_shared<NullLogger>());
+   ASSERT_EQ(activate(gripper, std::chrono::seconds(2)), ActivationResult::Activated);
+
+   GripperCommand command = GripperCommand::defaults();
+   command.action.set(ActionRequestBit::GoTo, true);
+   command.positionRequest = 0x42;
+   command.speed = 0x21;
+   gripper.setCommand(command);
+
+   EXPECT_EQ(activate(gripper, std::chrono::seconds(2)), ActivationResult::AlreadyActive);
+
+   // The application's command survives, and no reset request went out.
+   EXPECT_EQ(modbusServer.resets.load(), 0);
+   const GripperCommand kept = gripper.getCommand();
+   EXPECT_EQ(kept.positionRequest, 0x42);
+   EXPECT_EQ(kept.speed, 0x21);
+   EXPECT_TRUE(kept.action.get(ActionRequestBit::GoTo));
+   EXPECT_TRUE(kept.action.get(ActionRequestBit::Activate));
+}
+
+TEST(TestGripperActivate, already_activated_gripper_is_left_undisturbed)
+{
+   FakeGripperModbusServer modbusServer;
+   // Activation retained from a previous session (it survives com loss,
+   // only power loss clears it).
+   modbusServer.givenGripperIsActivated();
+   {
+      Gripper gripper(std::make_unique<FakeGripperSerial>(modbusServer),
+                      kSlave,
+                      kFastPeriod,
+                      std::make_shared<NullLogger>());
+
+      EXPECT_EQ(activate(gripper, std::chrono::seconds(2)), ActivationResult::AlreadyActive);
+
+      // The cycle only echoes state the gripper already holds: after
+      // command writes land, it is still activated and was never reset.
+      ASSERT_TRUE(Robotiq::waitFor([&] { return modbusServer.commandWrites.load() > 0; },
+                                   std::chrono::seconds(2),
+                                   std::chrono::milliseconds(1)));
+      EXPECT_EQ(modbusServer.resets.load(), 0);
+      EXPECT_TRUE(gripper.getStatus().gripperStatus.activated());
+   }
+   // The register file is safe to inspect only once the exchange thread
+   // is gone (the counters above are atomic; the registers are not).
+   const ActionRequest written{static_cast<uint8_t>(modbusServer.registers[mc::kCommandAddress] >> 8)};
+   EXPECT_TRUE(written.get(ActionRequestBit::Activate));
+}
+
+TEST(TestGripperActivate, latched_major_fault_refuses_activation_until_explicit_recovery)
+{
+   FakeGripperModbusServer modbusServer;
+   // An activated gripper latching a major fault: per the manual, only
+   // an rACT falling edge (reset) clears the fault status — but that
+   // reset releases any grip and sweeps the fingers, so activate() must
+   // refuse and leave the decision to the application.
+   modbusServer.givenGripperIsActivated();
+   modbusServer.givenGripperFault(0x0E); // overcurrent
+   Gripper gripper(std::make_unique<FakeGripperSerial>(modbusServer),
+                   kSlave,
+                   kFastPeriod,
+                   std::make_shared<NullLogger>());
+
+   EXPECT_EQ(activate(gripper, std::chrono::seconds(2)), ActivationResult::FaultLatched);
+   EXPECT_EQ(modbusServer.resets.load(), 0);
+   EXPECT_EQ(gripper.getStatus().faultStatus.gripperFault(), GripperFault::Overcurrent);
+
+   // The explicit recovery runs the documented reset and clears it.
+   EXPECT_EQ(recoverFromFault(gripper, std::chrono::seconds(2)), ActivationResult::Activated);
+   EXPECT_GE(modbusServer.resets.load(), 1);
+   EXPECT_EQ(gripper.getStatus().faultStatus.gripperFault(), GripperFault::None);
+   EXPECT_TRUE(gripper.getStatus().gripperStatus.activated());
+}
+
+TEST(TestGripperActivate, minor_fault_does_not_trigger_a_reset)
+{
+   FakeGripperModbusServer modbusServer;
+   // gFLT 0x09 ("no communication for 1 s") is inevitably latched when
+   // connecting after idle time: it must not cost a reset and a
+   // recalibration sweep.
+   modbusServer.givenGripperIsActivated();
+   modbusServer.givenGripperFault(0x09); // no-com
+   Gripper gripper(std::make_unique<FakeGripperSerial>(modbusServer),
+                   kSlave,
+                   kFastPeriod,
+                   std::make_shared<NullLogger>());
+
+   EXPECT_EQ(activate(gripper, std::chrono::seconds(2)), ActivationResult::AlreadyActive);
+   EXPECT_EQ(modbusServer.resets.load(), 0);
+   // The fake's latched fault would have cleared on a reset: it still
+   // being there is hardware-level proof none was sent.
+   EXPECT_EQ(gripper.getStatus().faultStatus.gripperFault(), GripperFault::NoCommunication);
+   EXPECT_TRUE(gripper.getStatus().gripperStatus.activated());
+}
+
+TEST(TestGripperActivate, power_cycled_gripper_needs_the_full_handshake)
+{
+   FakeGripperModbusServer modbusServer;
+   // A power-cycled gripper comes back unactivated yet echoing gACT set
+   // while gSTA reports reset (bench-observed), so gACT alone must not
+   // be trusted.
+   modbusServer.registers[mc::kStatusAddress] = 0x0100; // gACT | gSTA reset
+   modbusServer.previousActivateBit = true;
+   Gripper gripper(std::make_unique<FakeGripperSerial>(modbusServer),
+                   kSlave,
+                   kFastPeriod,
+                   std::make_shared<NullLogger>());
+
+   EXPECT_EQ(activate(gripper, std::chrono::seconds(2)), ActivationResult::Activated);
+   // The full clear-then-set handshake ran: a reset request went out.
+   EXPECT_GE(modbusServer.resets.load(), 1);
+   EXPECT_EQ(gripper.getStatus().gripperStatus.activationState(), ActivationState::Complete);
+}
+
+TEST(TestGripperCommandImage, is_seeded_from_the_status_echoes_at_construction)
+{
+   FakeGripperModbusServer modbusServer;
+   // Retained state from a previous session: activated, GoTo held,
+   // position request 0x55.
+   modbusServer.givenGripperIsActivated();
+   modbusServer.registers[mc::kStatusAddress] |= static_cast<uint16_t>(rm::kGoToEchoMask << 8);
+   modbusServer.registers[mc::kStatusAddress + 1] = 0x55; // gFLT 0 | gPR echo
+   Gripper gripper(std::make_unique<FakeGripperSerial>(modbusServer),
+                   kSlave,
+                   kFastPeriod,
+                   std::make_shared<NullLogger>());
+
+   // The construction-time read already seeded the image: no waiting.
+   EXPECT_EQ(gripper.connectionState(), ConnectionState::Operational);
+   const GripperCommand seeded = gripper.getCommand();
+   EXPECT_TRUE(seeded.action.get(ActionRequestBit::Activate));
+   EXPECT_TRUE(seeded.action.get(ActionRequestBit::GoTo));
+   EXPECT_EQ(seeded.positionRequest, 0x55);
+   // No echo exists for speed and force: they seed at the defaults()
+   // full-scale values.
+   EXPECT_EQ(seeded.speed, GripperCommand::defaults().speed);
+   EXPECT_EQ(seeded.force, GripperCommand::defaults().force);
+}
+
+TEST(TestGripperConstruction, fails_when_no_gripper_answers_and_never_writes)
+{
+   FakeGripperModbusServer modbusServer;
+   auto serial = std::make_unique<ReplyDroppingSerial>(modbusServer);
+
+   // Requests reach the gripper but no reply ever arrives: construction
+   // must fail like a dead serial link would...
+   EXPECT_THROW(Gripper(std::move(serial), kSlave, kFastPeriod, std::make_shared<NullLogger>()), DriverException);
+
+   // ...after retrying the status read, without ever writing a command.
+   EXPECT_GE(modbusServer.statusReads.load(), 2);
+   EXPECT_EQ(modbusServer.commandWrites.load(), 0);
+}
+
+TEST_F(TestGripper, commands_reach_the_gripper_and_status_returns)
+{
+   gripper.setCommand(activateCommand());
+
+   EXPECT_TRUE(waitFor([&] { return gripper.getStatus().gripperStatus.activated(); }));
+   EXPECT_EQ(gripper.connectionState(), ConnectionState::Operational);
+}
+
+TEST_F(TestGripper, command_read_modify_write_round_trips)
+{
+   GripperCommand command;
+   command.positionRequest = 0x42;
+   gripper.setCommand(command);
+
+   GripperCommand readBack = gripper.getCommand();
+   EXPECT_EQ(readBack.positionRequest, 0x42);
+
+   readBack.speed = 0x21;
+   gripper.setCommand(readBack);
+
+   EXPECT_EQ(gripper.getCommand().speed, 0x21);
+   EXPECT_EQ(gripper.getCommand().positionRequest, 0x42);
+}
+
+TEST_F(TestGripper, typed_layers_compose_over_the_image)
+{
+   GripperCommand command = GripperCommand::defaults();
+   command.action.set(ActionRequestBit::GoTo, true);
+   command.positionRequest = 0x42;
+   command.speed = 0x21;
+   command.force = 0x11;
+   gripper.setCommand(command);
+
+   EXPECT_TRUE(waitFor([&] { return gripper.getStatus().positionRequestEcho == 0x42; }));
+   EXPECT_TRUE(gripper.getStatus().gripperStatus.activated());
+   EXPECT_EQ(gripper.getStatus().position, 0x42);
+   EXPECT_EQ(gripper.getStatus().gripperStatus.objectDetection(), ObjectDetection::AtRequestedPosition);
+   EXPECT_EQ(gripper.getStatus().current, FakeGripperModbusServer::kSimulatedCurrent);
+   EXPECT_EQ(gripper.getStatus().faultStatus.raw(), 0);
+   EXPECT_EQ(gripper.getStatus().positionRequestEcho, 0x42);
+   EXPECT_TRUE(gripper.getStatus().gripperStatus.goToEnabled());
+   EXPECT_EQ(gripper.getStatus().gripperStatus.activationState(), ActivationState::Complete);
+}
+
+TEST(TestGripperActivateFailure, times_out_while_the_link_is_down)
+{
+   FakeGripperModbusServer modbusServer;
+   auto serial = std::make_unique<WriteFailingSerial>(modbusServer);
+   WriteFailingSerial& link = *serial;
+   Gripper gripper(std::move(serial), kSlave, kFastPeriod, std::make_shared<NullLogger>());
+
+   // The link dies after construction: activate() must not judge the
+   // gripper through a stale image.
+   link.failing.store(true);
+   ASSERT_TRUE(Robotiq::waitFor([&] { return gripper.connectionState() == ConnectionState::Faulted; },
+                                std::chrono::seconds(2),
+                                std::chrono::milliseconds(1)));
+   EXPECT_EQ(activate(gripper, std::chrono::milliseconds(30)), ActivationResult::Timeout);
+}
+
+TEST(TestGripperActivateFailure, times_out_when_activation_never_completes)
+{
+   // A gripper stuck reporting "activated, calibration in progress":
+   // activation complete never arrives.
+   FakeGripperModbusServer modbusServer;
+   modbusServer.forcedStatusByte =
+      static_cast<uint8_t>(rm::kActivationStatusMask | (rm::kActivationStateInProgress << rm::kActivationStateShift));
+   Gripper gripper(std::make_unique<FakeGripperSerial>(modbusServer),
+                   kSlave,
+                   kFastPeriod,
+                   std::make_shared<NullLogger>());
+
+   EXPECT_EQ(activate(gripper, std::chrono::milliseconds(30)), ActivationResult::Timeout);
+}
+
+TEST(TestGripperConfigCtor, delivers_serial_logs_to_the_injected_logger)
+{
+   // Regression: the delegating constructor once moved the logger before
+   // makeSerial read it (argument evaluation order is unspecified), so
+   // the serial layer silently fell back to the default stderr logger.
+   auto logger = std::make_shared<CollectingLogger>();
+   ConnectionConfig config;
+   config.serial.port = "/dev/this_should_not_exist";
+
+   EXPECT_THROW(Gripper(config, logger), SerialIOException);
+   EXPECT_TRUE(logger->contains("opening serial port '/dev/this_should_not_exist'"));
+}
+
+TEST(TestGripperHealth, repeated_exchange_failures_degrade_the_state_to_faulted)
+{
+   FakeGripperModbusServer modbusServer;
+   auto serial = std::make_unique<WriteFailingSerial>(modbusServer);
+   WriteFailingSerial& link = *serial;
+   Gripper gripper(std::move(serial), kSlave, kFastPeriod, std::make_shared<NullLogger>());
+   ASSERT_EQ(gripper.connectionState(), ConnectionState::Operational);
+
+   // The link dies: every exchange fails from here on.
+   link.failing.store(true);
+   EXPECT_TRUE(Robotiq::waitFor([&] { return gripper.connectionState() == ConnectionState::Faulted; },
+                                std::chrono::seconds(2),
+                                std::chrono::milliseconds(1)));
+}
+
+TEST(TestGripperHealth, faulted_state_recovers_to_operational_on_the_next_success)
+{
+   FakeGripperModbusServer modbusServer;
+   auto serial = std::make_unique<WriteFailingSerial>(modbusServer);
+   WriteFailingSerial& link = *serial;
+   Gripper gripper(std::move(serial), kSlave, kFastPeriod, std::make_shared<NullLogger>());
+
+   link.failing.store(true);
+   ASSERT_TRUE(Robotiq::waitFor([&] { return gripper.connectionState() == ConnectionState::Faulted; },
+                                std::chrono::seconds(2),
+                                std::chrono::milliseconds(1)));
+
+   link.failing.store(false);
+   EXPECT_TRUE(Robotiq::waitFor([&] { return gripper.connectionState() == ConnectionState::Operational; },
+                                std::chrono::seconds(2),
+                                std::chrono::milliseconds(1)));
+}
+} // namespace Robotiq::test

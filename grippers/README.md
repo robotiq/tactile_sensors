@@ -8,32 +8,31 @@ A standalone, ROS-independent C++ SDK for controlling Robotiq 2F adaptive
 grippers (2F-85 / 2F-140 / Hand-E class) over their Modbus RTU serial link.
 Cross-platform: Linux, Windows, macOS.
 
-**Current state: scaffolding only.** The repo builds and tests on all three
-platforms, but no gripper functionality has landed yet. The
-[ROS 2 driver](https://github.com/robotiq/ros) will consume this SDK; it is
-equally intended for direct use — the same audience served by tools like
-pyRobotiqGripper, with a supported C++ core.
+The [ROS 2 driver](https://github.com/robotiq/ros) will consume this SDK.
 
-## Planned design
+## Design
 
-Everything in this section is forthcoming, in roadmap order below.
+A layered API around a shared process image:
 
-Two operating modes over a layered API:
+- **`Gripper`** — the API for applications. Construction opens the
+  link, reads the gripper status (it fails when no gripper answers), and
+  starts exchanging. All Modbus traffic happens in the background
+  exchange cycle (one FC 0x17 transaction per period, up to ~200 Hz at
+  115200 baud). The command image is seeded from the gripper's own
+  state echoes before anything is written — connecting never disturbs
+  a running gripper.
 
-- **Synchronous block access**: on-demand status-block reads and
-  command-block writes (Modbus FC 0x03/0x10), deliberately scoped to the
-  two register blocks documented in the instruction manual.
-- **Runtime mode**: a background loop exchanging the command and
-  status register blocks in a single FC 0x17 transaction per cycle at
-  maximum frequency (~200 Hz+), with thread-safe accessors.
+`setCommand()`/`getStatus()` exchange whole `GripperCommand`/`GripperStatus`
+blocks. Each block has named fields (`command.positionRequest`,
+`command.speed`, ...) and small accessors for its packed action/status
+byte, plus the raw bytes through `data()`. Reads stay whole-snapshot, so
+consecutive fields never come from different exchange cycles. The block byte layout and status
+bit masks are published in `Robotiq/gripper/register_map.hpp`, and the
+Modbus register addresses in `Robotiq/detail/modbus_constants.hpp`, mirroring
+the instruction manual.
 
-Layer 1 exposes raw registers/bytes; higher layers (typed structs,
-`getActualPosition()`-style accessors) come later.
-
-The Modbus protocol layer is [nanoMODBUS](https://github.com/debevv/nanoMODBUS)
-(vendored, the same library used inside Robotiq gripper firmware); the
-serial transport will be built on
-[libserialport](https://sigrok.org/wiki/Libserialport).
+The Modbus protocol layer is [nanoMODBUS](https://github.com/debevv/nanoMODBUS);
+serial transport is [libserialport](https://sigrok.org/wiki/Libserialport).
 
 ## Building
 
@@ -43,13 +42,62 @@ Requirements: CMake ≥ 3.16, a C++17 compiler, libserialport.
 |----------|----------------|
 | Ubuntu/Debian | `sudo apt install libserialport-dev` |
 | macOS | `brew install libserialport` |
-| Windows | MSYS2: `pacman -S mingw-w64-ucrt-x86_64-libserialport` (build in a UCRT64 shell) |
+| Windows | MSYS2 — see [Windows (MSYS2)](#windows-msys2) below |
 
 ```sh
 cmake -S sdk_cpp -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
-ctest --test-dir build            # unit tests, no hardware needed
+ctest --test-dir build            # run unit tests, no hardware needed
 ```
+
+### Windows (MSYS2)
+
+Neither vcpkg nor Conan Center packages libserialport, so the supported
+Windows toolchain is MSYS2/GCC — the same environment this repo's CI
+uses. MSYS2 is a Windows distribution of Unix tooling with `pacman`
+(the Arch Linux package manager) and a large repository of prebuilt
+native libraries.
+
+1. Install MSYS2 from [msys2.org](https://www.msys2.org)
+   (or `winget install MSYS2.MSYS2`).
+2. Open the **MSYS2 UCRT64** shell from the Start menu.
+3. Install the toolchain and dependencies:
+
+   ```sh
+   pacman -Syu
+   pacman -S --needed mingw-w64-ucrt-x86_64-gcc \
+             mingw-w64-ucrt-x86_64-cmake \
+             mingw-w64-ucrt-x86_64-ninja \
+             mingw-w64-ucrt-x86_64-libserialport
+   ```
+
+4. Build and test as usual, from the same shell:
+
+   ```sh
+   cmake -S sdk_cpp -B build -DCMAKE_BUILD_TYPE=Release
+   cmake --build build -j
+   ctest --test-dir build
+   ```
+
+This produces native Windows binaries (GCC, no emulation layer). MSVC
+is not currently supported: libserialport ships no MSVC package, so a
+Visual Studio build would have to compile libserialport itself.
+
+## Getting started
+
+A complete example — waiting for motion to settle, reading the
+position back, injecting a log sink — is built as described in the Building section
+and can be found here:
+[`sdk_cpp/examples/move_gripper.cpp`](sdk_cpp/examples/move_gripper.cpp)
+
+Run it by executing:
+```sh
+./build/examples/move_gripper /dev/ttyUSB0    # Linux (macOS: /dev/tty.usbserial-XXXX)
+./build/examples/move_gripper.exe COM3        # Windows: find the port in Device Manager
+```
+
+The example activates the gripper (calibration sweep), opens, and
+closes — keep the jaws clear.
 
 ## Consuming from CMake
 
@@ -59,12 +107,30 @@ find_package(grippers REQUIRED)           # installed
 target_link_libraries(your_target PRIVATE Robotiq::grippers)
 ```
 
+## Serial port notes
+
+- **Linux**: add yourself to the `dialout` group for `/dev/ttyUSB*` access.
+  The SDK sets the FTDI `latency_timer` to 1 ms automatically when it has
+  permission (the kernel default of 16 ms triples Modbus latency); for
+  unprivileged use, ship a udev rule that sets it at plug time.
+- **Windows**: the FTDI latency timer is a driver setting (Device Manager →
+  COM port → Port Settings → Advanced → Latency Timer); set it to 1 ms for
+  high-rate control.
+- Factory-default link settings: 115200 baud, 8N1, Modbus slave 0x09.
+- Port naming: `/dev/ttyUSB0` on Linux, `COM3` on Windows,
+  `/dev/tty.usbserial-XXXX` on macOS.
+- **Windows**: thread pacing is quantized by the OS timer (default tick
+  ~15.6 ms), so exchange periods shorter than ~16 ms will run slower
+  than configured. High-rate control on Windows is currently untuned —
+  open an issue if your application needs it.
+
 ## Roadmap
 
-1. Configuration mode (raw registers)
-2. Runtime mode: cyclic FC 0x17 loop, thread-safe byte access
-3. Layer 2/3: typed command/status structs, convenience accessors
-4. High-level configuration helpers, Python bindings
+1. ~~Foundations: logging, cross-platform serial transport~~ — done
+2. ~~Modbus protocol layer, typed register views~~ — done
+3. ~~Runtime mode: the `Gripper` application API~~ — done
+4. Automatic reconnection; exchange-cycle sync (control loops that run in
+   step with the exchange, without polling)
 
 ## License
 
