@@ -12,17 +12,9 @@
 #include <Robotiq/gripper/logger.hpp>
 #include <Robotiq/gripper/throttle.hpp>
 
-namespace Robotiq::test {
-namespace {
-//! Captures every delivered line.
-class CollectingLogger : public Logger
-{
-public:
-   void log(Level level, std::string_view message) override { lines.emplace_back(level, std::string(message)); }
+#include "test_utils.hpp"
 
-   std::vector<std::pair<Level, std::string>> lines;
-};
-} // namespace
+namespace Robotiq::test {
 
 TEST(TestLogger, makeDefaultLogger_returns_a_logger)
 {
