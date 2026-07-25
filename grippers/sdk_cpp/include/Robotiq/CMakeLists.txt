@@ -1,5 +1,6 @@
 target_sources(grippers_sdk PRIVATE
   gripper.hpp
+  fake/gripper_factory.hpp
   gripper/command.hpp
   gripper/named_bit_array.hpp
   gripper/status.hpp

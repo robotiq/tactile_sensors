@@ -19,7 +19,7 @@
 #include <Robotiq/detail/gripper_modbus_client.hpp>
 #include <Robotiq/detail/modbus_constants.hpp>
 
-#include "fake_gripper.hpp"
+#include "fake_gripper_fixture.hpp"
 #include "test_utils.hpp"
 
 namespace Robotiq::test {
@@ -110,8 +110,8 @@ TEST(TestGripperModbusClient, exchange_superloop_pattern_control_then_communicat
 {
    // The no-thread (microcontroller) usage: a control step computes the
    // command, a communication step exchanges it for fresh status.
-   FakeGripperModbusServer gripper;
-   detail::GripperModbusClient client(std::make_unique<FakeGripperSerial>(gripper),
+   InstrumentedFakeGripperServer fakeServer;
+   detail::GripperModbusClient client(std::make_unique<fake::GripperSerial>(fakeServer.server),
                                       kSlaveAddress,
                                       std::make_shared<NullLogger>());
 

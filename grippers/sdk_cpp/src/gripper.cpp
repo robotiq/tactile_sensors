@@ -6,7 +6,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <cmath>
 #include <mutex>
 #include <thread>
 #include <utility>
@@ -22,7 +21,7 @@
 #include <Robotiq/detail/gripper_modbus_client.hpp>
 #include <Robotiq/detail/serial.hpp>
 
-#include "frequency.hpp"
+#include "exchange_period.hpp"
 
 namespace Robotiq {
 using detail::DefaultSerial;
@@ -180,24 +179,12 @@ std::unique_ptr<Serial> makeSerial(const ConnectionConfig& config, const std::sh
    return std::make_unique<DefaultSerial>(config.serial, logger);
 }
 
-// Supported exchange frequency (Hz) to cycle period. Free-run becomes a zero
-// period, which the exchange loop paces past immediately: on a real link the
-// wire does the pacing.
-std::chrono::microseconds periodFromFrequency(double hz)
-{
-   const double supported = detail::clampFrequency(hz);
-   if(supported == 0.0)
-   {
-      return std::chrono::microseconds{0};
-   }
-   return std::chrono::microseconds{std::llround(1000000.0 / supported)};
-}
 } // namespace
 
 Gripper::Gripper(const ConnectionConfig& config, std::shared_ptr<Logger> logger)
    : Gripper(makeSerial(config, logger),
              config.modbusSlaveAddress,
-             periodFromFrequency(config.connectionFrequency),
+             detail::exchangePeriodFromFrequency(config.connectionFrequency),
              logger)
 {
 }

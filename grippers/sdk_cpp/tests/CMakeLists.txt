@@ -11,8 +11,8 @@ if(NOT TARGET GTest::gmock)
 endif()
 
 add_executable(grippers_tests
-  fake_gripper.hpp
-  fake_gripper.cpp
+  fake_gripper_fixture.hpp
+  fake_gripper_fixture.cpp
   mock/mock_serial.hpp
   test_gripper_modbus_client.cpp
   test_byte_packing.cpp
@@ -22,7 +22,10 @@ add_executable(grippers_tests
   test_wait.cpp
   test_frequency.cpp
   test_default_serial.cpp
-  test_fake_gripper.cpp
+  test_fake_gripper_server.cpp
+  test_make_fake_gripper.cpp
+  test_exchange_period.cpp
+  test_fake_frequency.cpp
   test_utils.hpp
 )
 target_link_libraries(grippers_tests PRIVATE
@@ -33,7 +36,6 @@ target_link_libraries(grippers_tests PRIVATE
 target_include_directories(grippers_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/../src
-  ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/nanomodbus
 )
 include(GoogleTest)
 gtest_discover_tests(grippers_tests)

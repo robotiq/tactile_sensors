@@ -37,6 +37,7 @@ target_include_directories(grippers_sdk
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
   PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nanomodbus
 )
 
@@ -94,15 +95,20 @@ install(FILES
 )
 
 # --- convenience targets ------------------------------------------------
-file(GLOB_RECURSE GRIPPERS_FORMAT_SOURCES CONFIGURE_DEPENDS
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/examples/*.cpp
-)
-add_custom_target(format
-  COMMAND clang-format -i ${GRIPPERS_FORMAT_SOURCES}
-  COMMENT "Formatting sources with clang-format"
-)
+# For working on the SDK itself. Target names are global to a CMake project,
+# so a consumer that add_subdirectory()s the SDK would otherwise inherit these
+# — and fail to configure if it defines a target of the same name.
+if(GRIPPERS_TOP_LEVEL)
+  file(GLOB_RECURSE GRIPPERS_FORMAT_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/examples/*.cpp
+  )
+  add_custom_target(format
+    COMMAND clang-format -i ${GRIPPERS_FORMAT_SOURCES}
+    COMMENT "Formatting sources with clang-format"
+  )
+endif()

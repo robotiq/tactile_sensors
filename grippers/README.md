@@ -99,6 +99,23 @@ Run it by executing:
 The example activates the gripper (calibration sweep), opens, and
 closes — keep the jaws clear.
 
+### Without a gripper
+
+`makeFakeGripper()` returns a `Gripper` driving a fake device instead of a
+serial port, for bring-up, demos and CI on machines with no hardware attached:
+
+```cpp
+#include <Robotiq/fake/gripper_factory.hpp>
+
+auto gripper = Robotiq::makeFakeGripper();   // no port opened
+```
+
+Everything above the wire is the real thing — the typed blocks, the exchange
+cycle, the process image, `activate()` / `recoverFromFault()`. The device below
+it is deliberately minimal: activation completes instantly and the fingers are
+wherever they were last commanded to be. There is no motion profile, no travel
+time, no object detection and no fault injection.
+
 ## Consuming from CMake
 
 ```cmake
