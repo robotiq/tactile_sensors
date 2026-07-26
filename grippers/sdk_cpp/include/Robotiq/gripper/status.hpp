@@ -11,6 +11,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <type_traits>
 
 #include <Robotiq/gripper/register_map.hpp>
@@ -60,6 +61,9 @@ public:
 
    [[nodiscard]] uint8_t raw() const { return _bits; }
 
+   [[nodiscard]] bool operator==(GripperStatusFlags other) const { return _bits == other._bits; }
+   [[nodiscard]] bool operator!=(GripperStatusFlags other) const { return _bits != other._bits; }
+
 private:
    uint8_t _bits = 0;
 };
@@ -77,12 +81,21 @@ struct GripperStatus
    uint8_t position = 0; // byte 4 — gPO: 0 open .. 255 closed
    uint8_t current = 0; // byte 5 — gCU (effort proxy)
 
-   std::array<uint8_t, register_map::kStatusBlockBytes - 6> reserved{}; // bytes 6..15
+   std::array<uint8_t, register_map::kStatusBlockBytes - register_map::kDocumentedBytes> reserved{}; // bytes 6..15
 
    [[nodiscard]] const uint8_t* data() const { return reinterpret_cast<const uint8_t*>(this); }
    [[nodiscard]] uint8_t* data() { return reinterpret_cast<uint8_t*>(this); }
    [[nodiscard]] static constexpr std::size_t size() { return register_map::kStatusBlockBytes; }
 };
+
+[[nodiscard]] inline bool operator==(const GripperStatus& lhs, const GripperStatus& rhs)
+{
+   return std::memcmp(lhs.data(), rhs.data(), GripperStatus::size()) == 0;
+}
+[[nodiscard]] inline bool operator!=(const GripperStatus& lhs, const GripperStatus& rhs)
+{
+   return !(lhs == rhs);
+}
 
 static_assert(std::is_standard_layout_v<GripperStatus> && std::is_trivially_copyable_v<GripperStatus>
                  && sizeof(GripperStatus) == register_map::kStatusBlockBytes,

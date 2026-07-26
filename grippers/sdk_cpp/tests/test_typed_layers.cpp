@@ -35,6 +35,21 @@ TEST(TestGripperCommand, defaults_is_activated_but_motionless)
    EXPECT_EQ(command.force, 0xFF);
 }
 
+TEST(TestGripperBlocks, equality_compares_the_full_block)
+{
+   const GripperCommand command = GripperCommand::defaults();
+   GripperCommand other = command;
+   EXPECT_EQ(command, other);
+   other.reserved[3] = 1; // reserved bytes count too: the block is the value
+   EXPECT_NE(command, other);
+
+   GripperStatus status;
+   GripperStatus same;
+   EXPECT_EQ(status, same);
+   EXPECT_EQ(status.gripperStatus, same.gripperStatus);
+   EXPECT_EQ(status.faultStatus, same.faultStatus);
+}
+
 TEST(TestGripperCommand, lays_out_the_documented_bytes)
 {
    const GripperCommand command = closeCommand();

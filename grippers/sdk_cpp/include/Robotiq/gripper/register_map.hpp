@@ -26,6 +26,12 @@ namespace Robotiq::register_map {
 inline constexpr std::size_t kCommandBlockBytes = 16;
 inline constexpr std::size_t kStatusBlockBytes = 16;
 
+// Bytes 0..kDocumentedBytes-1 carry the fields tabled in the manual; the
+// rest of each block is reserved. Bandwidth-precious transports, such as
+// Modbus RTU move only the documented bytes; transports with headroom may
+// carry the whole block, leaving room for future fields without repacking.
+inline constexpr std::size_t kDocumentedBytes = 6;
+
 // Bit layout of the gripper-status byte (byte 0 of the status block):
 //   bit    7     6     5     4     3     2     1     0
 //         gOBJ  gOBJ  gSTA  gSTA  gGTO  rsvd  rsvd  gACT

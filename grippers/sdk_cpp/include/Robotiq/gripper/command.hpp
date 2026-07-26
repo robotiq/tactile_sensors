@@ -13,6 +13,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <type_traits>
 
 #include <Robotiq/gripper/register_map.hpp>
@@ -42,7 +43,7 @@ struct GripperCommand
    uint8_t speed = 0; // byte 4 — rSP
    uint8_t force = 0; // byte 5 — rFR
 
-   std::array<uint8_t, register_map::kCommandBlockBytes - 6> reserved{}; // bytes 6..15
+   std::array<uint8_t, register_map::kCommandBlockBytes - register_map::kDocumentedBytes> reserved{}; // bytes 6..15
 
    // A ready-to-use command: activated (rACT), full speed and force, no
    // motion. Default construction is all-zero; opt into these values.
@@ -60,6 +61,15 @@ struct GripperCommand
    [[nodiscard]] uint8_t* data() { return reinterpret_cast<uint8_t*>(this); }
    [[nodiscard]] static constexpr std::size_t size() { return register_map::kCommandBlockBytes; }
 };
+
+[[nodiscard]] inline bool operator==(const GripperCommand& lhs, const GripperCommand& rhs)
+{
+   return std::memcmp(lhs.data(), rhs.data(), GripperCommand::size()) == 0;
+}
+[[nodiscard]] inline bool operator!=(const GripperCommand& lhs, const GripperCommand& rhs)
+{
+   return !(lhs == rhs);
+}
 
 static_assert(std::is_standard_layout_v<GripperCommand> && std::is_trivially_copyable_v<GripperCommand>
                  && sizeof(GripperCommand) == register_map::kCommandBlockBytes,

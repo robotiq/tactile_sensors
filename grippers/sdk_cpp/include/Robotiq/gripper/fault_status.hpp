@@ -109,6 +109,9 @@ public:
 
    [[nodiscard]] uint8_t raw() const { return _bits; }
 
+   [[nodiscard]] bool operator==(FaultStatus other) const { return _bits == other._bits; }
+   [[nodiscard]] bool operator!=(FaultStatus other) const { return _bits != other._bits; }
+
 private:
    uint8_t _bits = 0;
 };
