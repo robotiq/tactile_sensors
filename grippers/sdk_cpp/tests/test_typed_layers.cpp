@@ -26,6 +26,15 @@ GripperCommand closeCommand()
 }
 } // namespace
 
+TEST(TestGripperCommand, defaults_is_activated_but_motionless)
+{
+   const GripperCommand command = GripperCommand::defaults();
+   EXPECT_EQ(command.action.value(), 0x01); // rACT set, rGTO clear: no motion
+   EXPECT_EQ(command.positionRequest, 0x00);
+   EXPECT_EQ(command.speed, 0xFF);
+   EXPECT_EQ(command.force, 0xFF);
+}
+
 TEST(TestGripperCommand, lays_out_the_documented_bytes)
 {
    const GripperCommand command = closeCommand();
