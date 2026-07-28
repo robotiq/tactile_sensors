@@ -45,17 +45,19 @@ public:
    GripperModbusClient& operator=(const GripperModbusClient&) = delete;
 
    // Read the status block (FC 0x03).
-   // \throw DriverException on Modbus protocol errors (timeout, CRC,
-   //        exception response); SerialIOException on wire-level failures.
+   // \throw DriverException on any transaction failure — Modbus protocol
+   //        errors (timeout, CRC, exception response) and wire-level
+   //        failures alike.
    [[nodiscard]] GripperStatus readStatus();
 
    // Write the command block (FC 0x10).
-   // \throw DriverException / SerialIOException as for readStatus().
+   // \throw DriverException as for readStatus().
    void writeCommand(const GripperCommand& command);
 
    // Write the command block and read the status block in a single
    // FC 0x17 transaction — the exchange step of a communication cycle.
-   // \throw DriverException / SerialIOException as for readStatus().
+   // \throw DriverException as for readStatus(); note that the exception
+   // can happen after the write has been applied.
    [[nodiscard]] GripperStatus exchange(const GripperCommand& command);
 
 private:
