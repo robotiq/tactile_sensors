@@ -95,6 +95,38 @@ TEST(TestGripperStatus, decodes_all_documented_fields)
    EXPECT_EQ(status.current, 0x14);
 }
 
+TEST(TestGripperStatus, decodes_every_gsta_and_gobj_pattern)
+{
+   struct Case
+   {
+      uint8_t raw;
+      ActivationState state;
+      ObjectDetection object;
+   };
+   // Every value the two-bit gSTA and gOBJ fields can hold, including the
+   // gSTA pattern the manual leaves unallocated.
+   constexpr Case kCases[] = {
+      {0x00, ActivationState::Reset, ObjectDetection::Moving},
+      {0x10, ActivationState::InProgress, ObjectDetection::Moving},
+      {0x20, ActivationState::Reserved, ObjectDetection::Moving},
+      {0x30, ActivationState::Complete, ObjectDetection::Moving},
+      {0x40, ActivationState::Reset, ObjectDetection::DetectedWhileOpening},
+      {0x80, ActivationState::Reset, ObjectDetection::DetectedWhileClosing},
+      {0xC0, ActivationState::Reset, ObjectDetection::AtRequestedPosition},
+      {0xD1, ActivationState::InProgress, ObjectDetection::AtRequestedPosition},
+      {0xF9, ActivationState::Complete, ObjectDetection::AtRequestedPosition},
+   };
+
+   for(const Case& testCase : kCases)
+   {
+      const GripperStatusFlags flags = GripperStatusFlags::fromRaw(testCase.raw);
+      EXPECT_EQ(flags.activationState(), testCase.state) << "raw " << static_cast<int>(testCase.raw);
+      EXPECT_EQ(flags.objectDetection(), testCase.object) << "raw " << static_cast<int>(testCase.raw);
+      EXPECT_EQ(flags.activated(), (testCase.raw & 0x01) != 0) << "raw " << static_cast<int>(testCase.raw);
+      EXPECT_EQ(flags.goToEnabled(), (testCase.raw & 0x08) != 0) << "raw " << static_cast<int>(testCase.raw);
+   }
+}
+
 TEST(TestActionRequest, bits_round_trip_for_all_combinations)
 {
    constexpr ActionRequestBit kBits[] = {ActionRequestBit::Activate,
@@ -122,11 +154,11 @@ TEST(TestActionRequest, bits_round_trip_for_all_combinations)
 
 TEST(TestFaultStatus, splits_into_gripper_and_controller_nibbles)
 {
-   GripperStatus status;
-   status.data()[2] = 0x5C; // kFLT = 0x5 (controller), gFLT = 0xC (gripper)
-   EXPECT_EQ(status.faultStatus.raw(), 0x5C);
-   EXPECT_EQ(status.faultStatus.gripperFault(), GripperFault::InternalFault);
-   EXPECT_EQ(status.faultStatus.controllerFault(), ControllerFault::NoDeviceDetected);
+   // kFLT = 0x5 (controller), gFLT = 0xC (gripper)
+   constexpr FaultStatus fault = FaultStatus::fromRaw(0x5C);
+   EXPECT_EQ(fault.raw(), 0x5C);
+   EXPECT_EQ(fault.gripperFault(), GripperFault::InternalFault);
+   EXPECT_EQ(fault.controllerFault(), ControllerFault::NoDeviceDetected);
 }
 
 TEST(TestFaultStatus, severity_matches_the_documented_tiers)
@@ -142,11 +174,10 @@ TEST(TestFaultStatus, severity_matches_the_documented_tiers)
 
 TEST(TestFaultStatus, undocumented_code_is_carried_through_and_treated_as_major)
 {
-   GripperStatus status;
-   status.data()[2] = 0x01; // 0x01 is not a documented gFLT code
-   EXPECT_EQ(status.faultStatus.raw(), 0x01);
-   EXPECT_NE(status.faultStatus.gripperFault(), GripperFault::None);
-   EXPECT_EQ(severity(status.faultStatus.gripperFault()), FaultSeverity::Major);
+   constexpr FaultStatus fault = FaultStatus::fromRaw(0x01); // 0x01 is not a documented gFLT code
+   EXPECT_EQ(fault.raw(), 0x01);
+   EXPECT_NE(fault.gripperFault(), GripperFault::None);
+   EXPECT_EQ(severity(fault.gripperFault()), FaultSeverity::Major);
 }
 
 TEST(TestGripperBlocks, overlay_the_full_physical_block)

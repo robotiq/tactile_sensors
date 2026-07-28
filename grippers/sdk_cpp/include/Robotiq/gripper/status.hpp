@@ -24,6 +24,7 @@ enum class ActivationState : uint8_t
 {
    Reset = register_map::kActivationStateReset,
    InProgress = register_map::kActivationStateInProgress,
+   Reserved = register_map::kActivationStateReserved, // unallocated pattern; not activated
    Complete = register_map::kActivationStateComplete,
 };
 
@@ -40,6 +41,15 @@ enum class ObjectDetection : uint8_t
 class GripperStatusFlags
 {
 public:
+   // Synthesize a byte the gripper would have sent — for simulators and
+   // for exercising status handling without hardware.
+   [[nodiscard]] static constexpr GripperStatusFlags fromRaw(uint8_t bits)
+   {
+      GripperStatusFlags flags;
+      flags._bits = bits;
+      return flags;
+   }
+
    [[nodiscard]] bool activated() const // gACT (echo of rACT)
    {
       return (_bits & register_map::kActivationStatusMask) != 0;

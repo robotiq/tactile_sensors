@@ -97,6 +97,15 @@ enum class FaultSeverity : uint8_t
 class FaultStatus
 {
 public:
+   // Synthesize a byte the gripper would have sent — for simulators and
+   // for exercising fault handling without hardware.
+   [[nodiscard]] static constexpr FaultStatus fromRaw(uint8_t bits)
+   {
+      FaultStatus status;
+      status._bits = bits;
+      return status;
+   }
+
    [[nodiscard]] GripperFault gripperFault() const
    {
       return static_cast<GripperFault>(_bits & register_map::kGripperFaultMask);

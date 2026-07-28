@@ -48,6 +48,7 @@ inline constexpr int kObjectDetectionShift = 6;
 // gSTA values (after shift).
 inline constexpr uint8_t kActivationStateReset = 0x00;
 inline constexpr uint8_t kActivationStateInProgress = 0x01;
+inline constexpr uint8_t kActivationStateReserved = 0x02; // not allocated by the manual
 inline constexpr uint8_t kActivationStateComplete = 0x03;
 
 // gOBJ values (after shift).
