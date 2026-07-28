@@ -35,6 +35,15 @@ TEST(TestGripperCommand, defaults_is_activated_but_motionless)
    EXPECT_EQ(command.force, 0xFF);
 }
 
+TEST(TestGripperCommand, default_construction_is_all_zero)
+{
+   // The safety property behind default construction: a stray default
+   // never activates or moves the gripper.
+   const GripperCommand command;
+   const std::array<uint8_t, 16> zeros{};
+   EXPECT_EQ(std::memcmp(command.data(), zeros.data(), command.size()), 0);
+}
+
 TEST(TestGripperBlocks, equality_compares_the_full_block)
 {
    const GripperCommand command = GripperCommand::defaults();
@@ -60,6 +69,15 @@ TEST(TestGripperCommand, lays_out_the_documented_bytes)
    EXPECT_EQ(bytes[5], 0x80); // FORCE
 }
 
+TEST(TestGripperCommand, emergency_release_bits_land_where_the_manual_says)
+{
+   GripperCommand release;
+   release.action.set(ActionRequestBit::AutoRelease);
+   EXPECT_EQ(release.data()[0], 0x10); // rATR
+   release.action.set(ActionRequestBit::AutoReleaseOpenDirection);
+   EXPECT_EQ(release.data()[0], 0x30); // rATR | rARD
+}
+
 TEST(TestActionRequest, get_and_set_track_the_named_bits)
 {
    ActionRequest action; // empty: all bits clear
@@ -74,6 +92,10 @@ TEST(TestActionRequest, get_and_set_track_the_named_bits)
    action.set(ActionRequestBit::GoTo, false);
    EXPECT_TRUE(action.get(ActionRequestBit::Activate)); // setting one bit leaves the others intact
    EXPECT_FALSE(action.get(ActionRequestBit::GoTo));
+
+   action.set(ActionRequestBit::GoTo);
+   action.unset(ActionRequestBit::GoTo);
+   EXPECT_EQ(action.value(), 0x01);
 }
 
 TEST(TestGripperStatus, decodes_all_documented_fields)
@@ -135,8 +157,7 @@ TEST(TestActionRequest, bits_round_trip_for_all_combinations)
                                          ActionRequestBit::AutoReleaseOpenDirection};
    for(int i = 0; i < 16; ++i)
    {
-      GripperCommand command;
-      std::memset(command.data(), 0, command.size());
+      GripperCommand command; // all-zero, per default_construction_is_all_zero
       for(int b = 0; b < 4; ++b)
       {
          command.action.set(kBits[b], (i & (1 << b)) != 0);
