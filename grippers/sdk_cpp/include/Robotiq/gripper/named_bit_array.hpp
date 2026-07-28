@@ -8,6 +8,9 @@
 
 #pragma once
 
+#include <cassert>
+#include <cstdint>
+#include <limits>
 #include <type_traits>
 
 namespace Robotiq {
@@ -34,9 +37,23 @@ public:
    [[nodiscard]] constexpr bool operator!=(NamedBitArray other) const { return _value != other._value; }
 
 private:
-   static constexpr Underlying mask(BitEnum bit) { return static_cast<Underlying>(1U << static_cast<Underlying>(bit)); }
+   static constexpr Underlying mask(BitEnum bit)
+   {
+      assert(static_cast<unsigned>(bit) < std::numeric_limits<Underlying>::digits);
+      return static_cast<Underlying>(1U << static_cast<unsigned>(bit));
+   }
 
    Underlying _value = 0;
 };
+
+namespace detail {
+enum class SampleBit : uint8_t
+{
+   Zero = 0
+};
+static_assert(std::is_standard_layout_v<NamedBitArray<SampleBit>>
+                 && std::is_trivially_copyable_v<NamedBitArray<SampleBit>> && sizeof(NamedBitArray<SampleBit>) == 1,
+              "NamedBitArray must stay byte-sized and wire-composable");
+} // namespace detail
 
 } // namespace Robotiq
