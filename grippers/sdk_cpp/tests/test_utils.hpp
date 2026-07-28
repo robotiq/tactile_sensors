@@ -13,10 +13,15 @@
 #include <vector>
 
 #include <Robotiq/detail/serial.hpp>
+#include <Robotiq/gripper/connection_config.hpp>
 #include <Robotiq/gripper/logger.hpp>
 #include <Robotiq/gripper/serial_io_exception.hpp>
 
 namespace Robotiq::test {
+
+//! The gripper's slave address, from the single source of truth.
+constexpr uint8_t kSlaveAddress = kDefaultModbusSlaveAddress;
+
 //! Captures every delivered line.
 class CollectingLogger : public Logger
 {
@@ -59,7 +64,8 @@ inline std::vector<uint8_t> withCrc(std::vector<uint8_t> frame)
 
 //! Serial test double: captures everything written and serves reads from a
 //! preloaded byte queue, in whatever chunk sizes the caller asks for.
-//! An exhausted queue throws SerialIOException, like a real read timeout.
+//! An exhausted queue reads empty, which is what a real timeout looks like
+//! to nanomodbus.
 class ScriptedSerial : public detail::Serial
 {
 public:
@@ -69,6 +75,7 @@ public:
 
    [[nodiscard]] std::vector<uint8_t> read(size_t size, std::chrono::milliseconds timeout) override
    {
+      _readTimeouts.push_back(timeout);
       if(timeout.count() == 0)
       {
          return {}; // a drain sees no stale bytes; preloaded data is the future response
@@ -85,11 +92,38 @@ public:
 
    void preloadRead(const std::vector<uint8_t>& data) { _toRead.insert(_toRead.end(), data.begin(), data.end()); }
    [[nodiscard]] const std::vector<uint8_t>& written() const { return _written; }
-   void clearWritten() { _written.clear(); }
+
+   // The timeout handed to each read(), in call order.
+   [[nodiscard]] const std::vector<std::chrono::milliseconds>& readTimeouts() const { return _readTimeouts; }
 
 private:
    bool _open = false;
    std::deque<uint8_t> _toRead;
    std::vector<uint8_t> _written;
+   std::vector<std::chrono::milliseconds> _readTimeouts;
+};
+
+//! Serial test double whose transfers always fail, for the paths that have
+//! to surface a wire-level cause rather than swallow it.
+class ThrowingSerial : public detail::Serial
+{
+public:
+   static constexpr std::string_view kFailure = "the wire is on fire";
+
+   void open() override { _open = true; }
+   [[nodiscard]] bool isOpen() const override { return _open; }
+   void close() override { _open = false; }
+
+   [[nodiscard]] std::vector<uint8_t> read(size_t, std::chrono::milliseconds) override
+   {
+      throw SerialIOException(std::string(kFailure));
+   }
+
+   void write(const std::vector<uint8_t>&) override { throw SerialIOException(std::string(kFailure)); }
+
+   [[nodiscard]] std::chrono::milliseconds getTimeout() const override { return std::chrono::milliseconds{100}; }
+
+private:
+   bool _open = false;
 };
 } // namespace Robotiq::test
