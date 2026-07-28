@@ -13,6 +13,7 @@ endif()
 add_executable(grippers_tests
   mock/mock_serial.hpp
   test_logger.cpp
+  test_typed_layers.cpp
   test_default_serial.cpp
 )
 target_link_libraries(grippers_tests PRIVATE
