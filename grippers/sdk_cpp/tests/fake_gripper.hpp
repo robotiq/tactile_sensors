@@ -40,8 +40,9 @@ public:
 
    static constexpr uint8_t kSimulatedCurrent = 0x2A;
 
-   // Test knob: when set, the status byte is pinned to this value
-   // regardless of the command (e.g. a gripper stuck mid-activation).
+   // Test knob: when set, byte 0 of the status block is pinned to this
+   // value regardless of the command (e.g. a gripper stuck
+   // mid-activation). The rest of the block still follows the command.
    std::optional<uint8_t> forcedStatusByte;
 
    bool previousActivateBit = false;

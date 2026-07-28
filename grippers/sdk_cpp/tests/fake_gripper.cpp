@@ -28,6 +28,27 @@ bool isValidRange(uint16_t address, uint16_t quantity)
    const uint32_t last = static_cast<uint32_t>(address) + quantity - 1;
    return last < mc::kStatusAddress + FakeGripperModbusServer::kBlockRegisters;
 }
+
+// Byte 0 of the status block: what a real gripper would report for this
+// command and activation state.
+uint8_t emulateStatus(ActionRequest action, bool isActivationDone)
+{
+   if(!action.get(ActionRequestBit::Activate))
+   {
+      return 0;
+   }
+   uint8_t status = rm::kActivationStatusMask;
+   if(isActivationDone)
+   {
+      status |= static_cast<uint8_t>(rm::kActivationStateComplete << rm::kActivationStateShift);
+      if(action.get(ActionRequestBit::GoTo))
+      {
+         status |= rm::kGoToEchoMask;
+         status |= static_cast<uint8_t>(rm::kObjectAtRequestedPosition << rm::kObjectDetectionShift);
+      }
+   }
+   return status;
+}
 } // namespace
 
 FakeGripperModbusServer::FakeGripperModbusServer(uint8_t slaveAddress)
@@ -133,11 +154,6 @@ nmbs_error FakeGripperModbusServer::onWriteMultipleRegisters(uint16_t address,
 
 void FakeGripperModbusServer::simulate()
 {
-   if(forcedStatusByte)
-   {
-      registers[mc::kStatusAddress] = static_cast<uint16_t>(*forcedStatusByte << 8);
-      return;
-   }
    const ActionRequest action{static_cast<uint8_t>(registers[mc::kCommandAddress] >> 8)};
    const auto requestedPosition = static_cast<uint8_t>(registers[mc::kCommandAddress + 1] & 0xFF);
    // A (pre-seeded) gripper fault latches until rACT is cleared, like
@@ -158,21 +174,12 @@ void FakeGripperModbusServer::simulate()
       fault = 0;
    }
    previousActivateBit = activateBit;
-   uint8_t status = 0;
-   if(activateBit)
-   {
-      status |= rm::kActivationStatusMask;
-      if(activationDone)
-      {
-         status |= static_cast<uint8_t>(rm::kActivationStateComplete << rm::kActivationStateShift);
-         if(action.get(ActionRequestBit::GoTo))
-         {
-            status |= rm::kGoToEchoMask;
-            status |= static_cast<uint8_t>(rm::kObjectAtRequestedPosition << rm::kObjectDetectionShift);
-         }
-      }
-   }
-   registers[mc::kStatusAddress] = static_cast<uint16_t>(status << 8);
+
+   // The knob pins byte 0 only; the echoes below and the rACT edge above
+   // still follow the command.
+   const uint8_t statusByte = forcedStatusByte ? *forcedStatusByte : emulateStatus(action, activationDone);
+
+   registers[mc::kStatusAddress] = static_cast<uint16_t>(statusByte << 8);
    registers[mc::kStatusAddress + 1] = static_cast<uint16_t>((fault << 8) | requestedPosition); // gFLT | gPR echo
    registers[mc::kStatusAddress + 2] = static_cast<uint16_t>((requestedPosition << 8) | kSimulatedCurrent); // gPO | gCU
 }
