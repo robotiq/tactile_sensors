@@ -81,7 +81,8 @@ struct GripperStatus
    uint8_t position = 0; // byte 4 — gPO: 0 open .. 255 closed
    uint8_t current = 0; // byte 5 — gCU (effort proxy)
 
-   std::array<uint8_t, register_map::kStatusBlockBytes - register_map::kDocumentedBytes> reserved{}; // bytes 6..15
+   std::array<uint8_t, register_map::kStatusBlockBytes - register_map::kStatusDocumentedBytes>
+      reservedTail{}; // bytes 6..15
 
    [[nodiscard]] const uint8_t* data() const { return reinterpret_cast<const uint8_t*>(this); }
    [[nodiscard]] uint8_t* data() { return reinterpret_cast<uint8_t*>(this); }

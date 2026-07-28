@@ -40,7 +40,7 @@ TEST(TestGripperBlocks, equality_compares_the_full_block)
    const GripperCommand command = GripperCommand::defaults();
    GripperCommand other = command;
    EXPECT_EQ(command, other);
-   other.reserved[3] = 1; // reserved bytes count too: the block is the value
+   other.reservedTail[3] = 1; // reserved bytes count too: the block is the value
    EXPECT_NE(command, other);
 
    GripperStatus status;

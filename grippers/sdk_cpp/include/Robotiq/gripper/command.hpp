@@ -43,10 +43,12 @@ struct GripperCommand
    uint8_t speed = 0; // byte 4 — rSP
    uint8_t force = 0; // byte 5 — rFR
 
-   std::array<uint8_t, register_map::kCommandBlockBytes - register_map::kDocumentedBytes> reserved{}; // bytes 6..15
+   std::array<uint8_t, register_map::kCommandBlockBytes - register_map::kCommandDocumentedBytes>
+      reservedTail{}; // bytes 6..15
 
-   // A ready-to-use command: activated (rACT), full speed and force, no
-   // motion. Default construction is all-zero; opt into these values.
+   // A ready-to-use command: activated (rACT), no motion, and the speed
+   // and force the Robotiq URCap defaults to (both maximum). Default
+   // construction is all-zero; opt into these values.
    [[nodiscard]] constexpr static GripperCommand defaults()
    {
       GripperCommand command;
