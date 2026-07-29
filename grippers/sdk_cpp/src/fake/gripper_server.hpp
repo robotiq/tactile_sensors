@@ -2,13 +2,12 @@
 //
 // Licensed under the BSD-3-Clause license; see LICENSE for details.
 
-//! \brief A Modbus RTU server in front of a RegisterModel, and the
-//!        Serial transport that reaches it.
-//! Together with the model these are the three pieces the public
-//! makeFakeGripper() assembles: behaviour (the model), protocol (this
-//! server), transport (the serial). Each does one job, so the exchange above
-//! them — framing, CRC, the typed blocks, the exchange cycle — runs exactly
-//! as it does against hardware.
+//! \brief A Modbus RTU server in front of a RegisterModel.
+//! The second of the three pieces the public makeFakeGripper() assembles —
+//! behaviour (RegisterModel), protocol (this server), transport
+//! (GripperSerial). Each does one job, so the exchange above them — framing,
+//! CRC, the typed blocks, the exchange cycle — runs exactly as it does
+//! against hardware.
 //!
 //! Internal to the library. The supported way to reach it is
 //! Robotiq::makeFakeGripper().
@@ -55,27 +54,4 @@ private:
    std::unique_ptr<Impl> _impl;
 };
 
-//! Serial transport over a GripperServer, synchronous by construction:
-//! each write delivers a request and runs the server, and reads drain the
-//! reply it produced.
-class GripperSerial : public detail::Serial
-{
-public:
-   explicit GripperSerial(GripperServer& gripperServer);
-
-   void open() override;
-   [[nodiscard]] bool isOpen() const override;
-   void close() override;
-
-   [[nodiscard]] std::vector<uint8_t> read(size_t size, std::chrono::milliseconds timeout) override;
-   void write(const std::vector<uint8_t>& data) override;
-
-   [[nodiscard]] std::chrono::milliseconds getTimeout() const override;
-
-protected:
-   GripperServer& _gripperServer;
-
-private:
-   bool _open = false;
-};
 } // namespace Robotiq::fake

@@ -10,6 +10,7 @@
 #include "exchange_period.hpp"
 #include "fake/frequency.hpp"
 #include "fake/register_model.hpp"
+#include "fake/gripper_serial.hpp"
 #include "fake/gripper_server.hpp"
 
 namespace Robotiq {

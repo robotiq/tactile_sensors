@@ -11,6 +11,8 @@ if(GRIPPERS_BUILD_FAKE)
   target_sources(grippers_sdk PRIVATE
     fake/frequency.hpp
     fake/gripper_factory.cpp
+    fake/gripper_serial.hpp
+    fake/gripper_serial.cpp
     fake/gripper_server.hpp
     fake/gripper_server.cpp
     fake/register_model.hpp

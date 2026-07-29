@@ -24,6 +24,7 @@
 #include <Robotiq/gripper/fault_status.hpp>
 #include <Robotiq/gripper/status.hpp>
 
+#include "fake/gripper_serial.hpp"
 #include "fake/gripper_server.hpp"
 #include "fake/register_model.hpp"
 
