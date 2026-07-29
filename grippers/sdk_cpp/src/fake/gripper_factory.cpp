@@ -8,7 +8,7 @@
 #include <utility>
 
 #include "exchange_period.hpp"
-#include "fake/frequency.hpp"
+#include "frequency.hpp"
 #include "fake/register_model.hpp"
 #include "fake/gripper_serial.hpp"
 #include "fake/gripper_server.hpp"
@@ -38,12 +38,15 @@ std::unique_ptr<Gripper> makeFakeGripper(const ConnectionConfig& config, std::sh
    auto sink = logger ? std::move(logger) : makeDefaultLogger();
 
    const double requested = config.connectionFrequency;
-   const double frequency = fake::clampFrequency(requested);
+   const double supported = detail::clampFrequency(requested);
+   // Free-run means "as fast as the link allows"; with no link, that is the
+   // ceiling. Left to the transport, since a real one is paced by the wire.
+   const double frequency = supported == 0.0 ? detail::kMaxFrequency : supported;
    if(requested > 0.0 && frequency != requested)
    {
       sink->log(Logger::Level::Warn,
                 "requested exchange frequency " + std::to_string(requested) + " Hz is outside the fake gripper's "
-                   + std::to_string(fake::kMinFrequency) + " to " + std::to_string(fake::kMaxFrequency)
+                   + std::to_string(detail::kMinFrequency) + " to " + std::to_string(detail::kMaxFrequency)
                    + " Hz range; using " + std::to_string(frequency) + " Hz");
    }
 

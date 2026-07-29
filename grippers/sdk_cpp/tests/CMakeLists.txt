@@ -32,7 +32,6 @@ if(GRIPPERS_BUILD_FAKE)
     test_gripper.cpp
     test_fake_gripper_server.cpp
     test_make_fake_gripper.cpp
-    test_fake_frequency.cpp
   )
 endif()
 target_link_libraries(grippers_tests PRIVATE
