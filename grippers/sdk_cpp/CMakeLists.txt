@@ -9,6 +9,18 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(GNUInstallDirs)
 
+# Examples and tests are for working on the SDK itself: they default on
+# only when this is the top-level project, not when consumed through
+# add_subdirectory(). (CMake 3.16-compatible PROJECT_IS_TOP_LEVEL.)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  set(GRIPPERS_TOP_LEVEL ON)
+else()
+  set(GRIPPERS_TOP_LEVEL OFF)
+endif()
+
+option(GRIPPERS_BUILD_EXAMPLES "Build example programs" ${GRIPPERS_TOP_LEVEL})
+option(GRIPPERS_BUILD_TESTS "Build the unit tests" ${GRIPPERS_TOP_LEVEL})
+
 # --- libserialport ------------------------------------------------------
 # Resolved through cmake/Findserialport.cmake — the same module the
 # installed grippers-config.cmake uses, so the lookup logic lives once.
@@ -37,10 +49,17 @@ add_subdirectory(include/Robotiq)
 add_subdirectory(src)
 add_subdirectory(third_party/nanomodbus)
 
+# --- examples -----------------------------------------------------------
+if(GRIPPERS_BUILD_EXAMPLES)
+  add_subdirectory(examples)
+endif()
+
 # --- tests --------------------------------------------------------------
-include(CTest)
-if(BUILD_TESTING)
-  add_subdirectory(tests)
+if(GRIPPERS_BUILD_TESTS)
+  include(CTest)
+  if(BUILD_TESTING)
+    add_subdirectory(tests)
+  endif()
 endif()
 
 # --- install / export ---------------------------------------------------
