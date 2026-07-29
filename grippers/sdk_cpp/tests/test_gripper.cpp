@@ -78,7 +78,7 @@ public:
       return FakeGripperSerial::read(size, timeout);
    }
 
-   std::atomic<bool> dropReplies{true};
+   std::atomic<bool> dropReplies{false};
 };
 } // namespace
 
@@ -282,6 +282,7 @@ TEST(TestGripperConstruction, fails_when_no_gripper_answers_and_never_writes)
 {
    FakeGripperModbusServer modbusServer;
    auto serial = std::make_unique<ReplyDroppingSerial>(modbusServer);
+   serial->dropReplies.store(true);
 
    // Requests reach the gripper but no reply ever arrives: construction
    // must fail like a dead serial link would...

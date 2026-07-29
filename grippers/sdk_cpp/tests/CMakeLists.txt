@@ -20,6 +20,7 @@ add_executable(grippers_tests
   test_gripper.cpp
   test_typed_layers.cpp
   test_wait.cpp
+  test_frequency.cpp
   test_default_serial.cpp
   test_fake_gripper.cpp
   test_utils.hpp
@@ -31,6 +32,7 @@ target_link_libraries(grippers_tests PRIVATE
 )
 target_include_directories(grippers_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/../src
   ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/nanomodbus
 )
 include(GoogleTest)

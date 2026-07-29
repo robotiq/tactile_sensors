@@ -23,25 +23,44 @@ using Robotiq::GripperCommand;
 using Robotiq::ObjectDetection;
 
 namespace {
+// Any rate a serial link plausibly runs at. Also what catches a negative:
+// stoul("-1") wraps to a huge value rather than throwing.
+constexpr unsigned long kMinBaudrate = 1;
+constexpr unsigned long kMaxBaudrate = 1000000;
+
 bool motionSettled(Gripper& gripper)
 {
    return gripper.getStatus().gripperStatus.objectDetection() != ObjectDetection::Moving;
 }
 
 // Request a position, wait for the gripper to acknowledge the request
-// (gPR echo), then wait for the motion to settle.
-void moveTo(Gripper& gripper, GripperCommand& command, uint8_t position, Robotiq::Logger& logger)
+// (gPR echo), then wait for the motion to settle. False if either wait
+// timed out — a wait result is never worth dropping.
+bool moveTo(Gripper& gripper, GripperCommand& command, uint8_t position, Robotiq::Logger& logger)
 {
    command.positionRequest = position;
    command.action.set(ActionRequestBit::GoTo, true); // execute the move
    gripper.setCommand(command);
-   Robotiq::waitFor([&] { return gripper.getStatus().positionRequestEcho == position; }, 1s);
+   if(!Robotiq::waitFor([&] { return gripper.getStatus().positionRequestEcho == position; }, 1s))
+   {
+      logger.log(Robotiq::Logger::Level::Error, "the gripper never echoed the position request");
+      return false;
+   }
    // Object detection can lag the echo by a few cycles: give the motion
-   // a moment to start (returns early once it does).
-   Robotiq::waitFor([&] { return gripper.getStatus().gripperStatus.objectDetection() == ObjectDetection::Moving; },
-                    200ms);
-   Robotiq::waitFor([&] { return motionSettled(gripper); }, 5s);
+   // a moment to start (returns early once it does). A short move can be
+   // over before it is ever seen moving, so this one is only advisory.
+   if(!Robotiq::waitFor([&] { return gripper.getStatus().gripperStatus.objectDetection() == ObjectDetection::Moving; },
+                        200ms))
+   {
+      logger.log(Robotiq::Logger::Level::Debug, "no motion seen within 200 ms; it may already be done");
+   }
+   if(!Robotiq::waitFor([&] { return motionSettled(gripper); }, 5s))
+   {
+      logger.log(Robotiq::Logger::Level::Error, "the motion never settled");
+      return false;
+   }
    logger.log(Robotiq::Logger::Level::Info, "Position: " + std::to_string(gripper.getStatus().position) + "/255");
+   return true;
 }
 } // namespace
 
@@ -59,7 +78,12 @@ int main(int argc, char* argv[])
    {
       try
       {
-         config.serial.baudrate = static_cast<uint32_t>(std::stoul(argv[2]));
+         const unsigned long parsed = std::stoul(argv[2]);
+         if(parsed < kMinBaudrate || parsed > kMaxBaudrate)
+         {
+            throw std::out_of_range("baudrate outside the supported range");
+         }
+         config.serial.baudrate = static_cast<uint32_t>(parsed);
       }
       catch(const std::exception&)
       {
@@ -107,9 +131,15 @@ int main(int argc, char* argv[])
    GripperCommand command = GripperCommand::defaults(); // GoTo added by moveTo
 
    logger->log(Robotiq::Logger::Level::Info, "Opening...");
-   moveTo(*gripper, command, 0, *logger);
+   if(!moveTo(*gripper, command, 0, *logger))
+   {
+      return EXIT_FAILURE;
+   }
 
    logger->log(Robotiq::Logger::Level::Info, "Closing...");
-   moveTo(*gripper, command, 255, *logger);
+   if(!moveTo(*gripper, command, 255, *logger))
+   {
+      return EXIT_FAILURE;
+   }
    return EXIT_SUCCESS;
 }

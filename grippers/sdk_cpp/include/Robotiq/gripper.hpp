@@ -41,7 +41,8 @@ class Gripper
 public:
    // \param logger Log sink; pass null to use the default stderr logger.
    // \throw SerialIOException when the port cannot be opened/configured;
-   //        DriverException when no gripper answers the initial read.
+   //        DriverException when no gripper answers the initial read, or when
+   //        config.connectionFrequency is invalid.
    explicit Gripper(const ConnectionConfig& config, std::shared_ptr<Logger> logger = nullptr);
 
    // Constructor for unit tests or custom serial implementations.

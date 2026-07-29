@@ -16,9 +16,9 @@ namespace Robotiq {
 // The predicate is evaluated at least once, even past the deadline: an
 // already-true condition never reports a timeout.
 template <typename Predicate>
-bool waitUntil(Predicate predicate,
-               std::chrono::steady_clock::time_point deadline,
-               std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(2))
+[[nodiscard]] bool waitUntil(Predicate predicate,
+                             std::chrono::steady_clock::time_point deadline,
+                             std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(2))
 {
    while(true)
    {
@@ -36,9 +36,9 @@ bool waitUntil(Predicate predicate,
 
 // Poll predicate until it holds (true) or timeout elapses (false).
 template <typename Predicate>
-bool waitFor(Predicate predicate,
-             std::chrono::milliseconds timeout,
-             std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(2))
+[[nodiscard]] bool waitFor(Predicate predicate,
+                           std::chrono::milliseconds timeout,
+                           std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(2))
 {
    return waitUntil(predicate, std::chrono::steady_clock::now() + timeout, pollPeriod);
 }

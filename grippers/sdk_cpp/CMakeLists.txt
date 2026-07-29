@@ -19,6 +19,7 @@ else()
 endif()
 
 option(GRIPPERS_BUILD_EXAMPLES "Build example programs" ${GRIPPERS_TOP_LEVEL})
+option(GRIPPERS_BUILD_TESTS "Build the unit tests" ${GRIPPERS_TOP_LEVEL})
 
 # --- libserialport ------------------------------------------------------
 # Resolved through cmake/Findserialport.cmake — the same module the
@@ -54,7 +55,7 @@ if(GRIPPERS_BUILD_EXAMPLES)
 endif()
 
 # --- tests --------------------------------------------------------------
-if(GRIPPERS_TOP_LEVEL)
+if(GRIPPERS_BUILD_TESTS)
   include(CTest)
   if(BUILD_TESTING)
     add_subdirectory(tests)

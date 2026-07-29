@@ -29,9 +29,10 @@ struct ConnectionConfig
    // Frequency of the background exchange cycle (Gripper), in hertz; 0 =
    // free-run (exchange as fast as the bus allows). The default is
    // conservative for 115200 baud (one FC 0x17 exchange takes ~4 ms
-   // median, ~5 ms p99). Above ~1000 Hz the request rate exceeds what any
-   // supported baud rate can carry, so the cycle degenerates into
-   // free-run; treat 1000 Hz as the useful upper bound.
+   // median, ~5 ms p99). Rates are folded into [0.1, 1000] Hz: below the
+   // floor, procedures that wait on status stall for no reason; above the
+   // ceiling, no supported baud rate can carry the requests. A negative rate,
+   // or NaN, is a caller bug and throws.
    double connectionFrequency = 100.0; // Hz
 };
 } // namespace Robotiq
