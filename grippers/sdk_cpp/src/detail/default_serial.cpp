@@ -119,6 +119,14 @@ void DefaultSerial::open()
                            "sets it at plug time.");
       }
    }
+#elif defined(__APPLE__)
+   if(_config.latencyTimerMs > 0)
+   {
+      _logger->log(Logger::Level::Warn,
+                   "FTDI latency timer left at the macOS default (~16 ms) on " + _config.port
+                      + "; the exchange rate is capped near 60 Hz. macOS has no API to set it from here — "
+                        "configure the FTDI driver instead (see the README's macOS serial-port notes).");
+   }
 #endif
 }
 

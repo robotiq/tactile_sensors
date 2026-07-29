@@ -116,6 +116,14 @@ target_link_libraries(your_target PRIVATE Robotiq::grippers)
 - **Windows**: the FTDI latency timer is a driver setting (Device Manager →
   COM port → Port Settings → Advanced → Latency Timer); set it to 1 ms for
   high-rate control.
+- **macOS**: the FTDI latency timer defaults to 16 ms — capping the exchange
+  rate near ~60 Hz — and macOS offers no way to lower it from the SDK. To run
+  faster, install [FTDI's VCP driver](https://ftdichip.com/drivers/vcp-drivers/)
+  and set its `LatencyTimer` to `1` (in the driver's `Info.plist`); it then
+  applies to every open, including this SDK's. On macOS 11+ also approve the
+  driver in System Settings → Privacy & Security and make sure it — not
+  Apple's built-in FTDI driver — binds your adapter (`kextstat | grep -i ftdi`).
+  Otherwise ~60 Hz is the ceiling on the default driver.
 - Factory-default link settings: 115200 baud, 8N1, Modbus slave 0x09.
 - Port naming: `/dev/ttyUSB0` on Linux, `COM3` on Windows,
   `/dev/tty.usbserial-XXXX` on macOS.
