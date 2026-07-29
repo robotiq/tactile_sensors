@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstring>
 #include <memory>
+#include <ostream>
 #include <vector>
 
 #include <Robotiq/gripper/command.hpp>
@@ -116,6 +117,13 @@ struct Transaction
    std::vector<uint8_t> successfulResponse; // without CRC
    void (*invoke)(detail::GripperModbusClient&);
 };
+
+// Without this gtest dumps the raw parameter bytes into the test listing
+// ctest reads.
+void PrintTo(const Transaction& transaction, std::ostream* out)
+{
+   *out << transaction.name;
+}
 
 const std::vector<Transaction>& transactions()
 {
