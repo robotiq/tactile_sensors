@@ -1,6 +1,5 @@
 target_sources(grippers_sdk PRIVATE
   gripper.hpp
-  fake/gripper_factory.hpp
   gripper/command.hpp
   gripper/named_bit_array.hpp
   gripper/status.hpp
@@ -20,3 +19,9 @@ target_sources(grippers_sdk PRIVATE
   detail/serial.hpp
   detail/default_serial.hpp
 )
+
+if(GRIPPERS_BUILD_FAKE)
+  target_sources(grippers_sdk PRIVATE
+    fake/gripper_factory.hpp
+  )
+endif()

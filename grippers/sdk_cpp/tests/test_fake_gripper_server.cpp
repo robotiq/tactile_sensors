@@ -80,6 +80,16 @@ TEST_F(TestFakeGripperServer, activation_request_completes)
    EXPECT_EQ(status.gripperStatus.activationState(), ActivationState::Complete);
 }
 
+TEST_F(TestFakeGripperServer, exchange_superloop_pattern_control_then_communicate)
+{
+   // The no-thread (microcontroller) usage: a control step computes the
+   // command, a communication step exchanges it for fresh status.
+   const auto status = client.exchange(activateCommand());
+
+   EXPECT_TRUE(status.gripperStatus.activated());
+   EXPECT_EQ(status.gripperStatus.activationState(), ActivationState::Complete);
+}
+
 TEST_F(TestFakeGripperServer, pre_seeded_activation_survives_without_a_rising_edge)
 {
    // A gripper that retained activation from a previous session reports

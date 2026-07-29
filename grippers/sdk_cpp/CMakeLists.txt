@@ -21,6 +21,12 @@ endif()
 option(GRIPPERS_BUILD_EXAMPLES "Build example programs" ${GRIPPERS_TOP_LEVEL})
 option(GRIPPERS_BUILD_TESTS "Build the unit tests" ${GRIPPERS_TOP_LEVEL})
 
+# The fake device is ~30 KB of the library and useful only to consumers that
+# ask for a gripper without hardware. It also cannot serve a target where
+# Gripper's threaded exchange loop does not run, so those builds should be able
+# to leave it out.
+option(GRIPPERS_BUILD_FAKE "Build the fake gripper device" ON)
+
 # --- libserialport ------------------------------------------------------
 # Resolved through cmake/Findserialport.cmake — the same module the
 # installed grippers-config.cmake uses, so the lookup logic lives once.
@@ -70,7 +76,13 @@ install(TARGETS grippers_sdk
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
-install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+if(GRIPPERS_BUILD_FAKE)
+  install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+else()
+  install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    PATTERN "fake" EXCLUDE
+  )
+endif()
 install(EXPORT grippers_targets
   NAMESPACE Robotiq::
   FILE grippers-targets.cmake
