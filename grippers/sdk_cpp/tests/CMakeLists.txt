@@ -11,10 +11,16 @@ if(NOT TARGET GTest::gmock)
 endif()
 
 add_executable(grippers_tests
+  fake_gripper.hpp
+  fake_gripper.cpp
   mock/mock_serial.hpp
+  test_gripper_modbus_client.cpp
+  test_byte_packing.cpp
   test_logger.cpp
   test_typed_layers.cpp
   test_default_serial.cpp
+  test_fake_gripper.cpp
+  test_utils.hpp
 )
 target_link_libraries(grippers_tests PRIVATE
   grippers_sdk

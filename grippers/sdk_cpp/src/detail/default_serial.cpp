@@ -79,6 +79,8 @@ void DefaultSerial::open()
    {
       throw SerialIOException("Cannot open serial port: port path is empty");
    }
+   _logger->log(Logger::Level::Debug,
+                "opening serial port '" + _config.port + "' at " + std::to_string(_config.baudrate) + " baud");
 
    check(sp_get_port_by_name(_config.port.c_str(), &_portHandle), "sp_get_port_by_name(" + _config.port + ")");
    try
