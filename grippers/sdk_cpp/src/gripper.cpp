@@ -237,8 +237,8 @@ ActivationResult waitForActivationComplete(Gripper& gripper, std::chrono::steady
 {
    return waitUntil([&] { return gripper.getStatus().gripperStatus.activationState() == ActivationState::Complete; },
                     deadline)
-             ? ActivationResult::Activated
-             : ActivationResult::Timeout;
+           ? ActivationResult::Activated
+           : ActivationResult::Timeout;
 }
 
 // The manual's reset handshake: an rACT falling edge resets the gripper
