@@ -82,6 +82,9 @@ struct Gripper::Impl
                                      "and the Modbus slave address correct?) — last attempt: "
                                      + std::string(ex.what()));
             }
+            logger->log(Logger::Level::Warn,
+                        "initial status read attempt " + std::to_string(attempt) + " of "
+                           + std::to_string(kInitialReadAttempts) + " failed: " + ex.what());
          }
       }
 
@@ -109,9 +112,12 @@ struct Gripper::Impl
       }
       catch(...)
       {
-         if(consecutiveFailures.fetch_add(1) + 1 >= kFaultThreshold)
+         if(consecutiveFailures.fetch_add(1) + 1 >= kFaultThreshold
+            && state.exchange(ConnectionState::Faulted) != ConnectionState::Faulted)
          {
-            state.store(ConnectionState::Faulted);
+            logger->log(Logger::Level::Warn,
+                        "link faulted after " + std::to_string(kFaultThreshold)
+                           + " consecutive failed exchanges; the process image is now stale");
          }
          throw;
       }
@@ -121,7 +127,10 @@ struct Gripper::Impl
          status = freshStatus;
       }
       consecutiveFailures.store(0);
-      state.store(ConnectionState::Operational);
+      if(state.exchange(ConnectionState::Operational) == ConnectionState::Faulted)
+      {
+         logger->log(Logger::Level::Info, "link recovered; the process image is live again");
+      }
    }
 
    void start()
