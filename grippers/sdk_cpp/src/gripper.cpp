@@ -34,8 +34,8 @@ constexpr uint64_t kInitialReadAttempts = 3;
 
 struct Gripper::Impl
 {
-   detail::GripperModbusClient client;
    std::shared_ptr<Logger> logger;
+   detail::GripperModbusClient client;
    Throttle failureLogThrottle{std::chrono::milliseconds(1000)};
    std::chrono::microseconds period;
 
@@ -52,8 +52,8 @@ struct Gripper::Impl
         uint8_t slaveAddress,
         std::chrono::microseconds exchangePeriod,
         std::shared_ptr<Logger> log)
-      : client(std::move(serial), slaveAddress, log)
-      , logger(log ? std::move(log) : makeDefaultLogger())
+      : logger(log ? std::move(log) : makeDefaultLogger())
+      , client(std::move(serial), slaveAddress, logger)
       , period(exchangePeriod)
    {
    }
@@ -241,20 +241,34 @@ ActivationResult waitForActivationComplete(Gripper& gripper, std::chrono::steady
            : ActivationResult::Timeout;
 }
 
+bool isActivationHandshakeAllowed(std::chrono::steady_clock::time_point deadline, std::chrono::milliseconds timeout)
+{
+   return deadline - std::chrono::steady_clock::now() >= timeout / 2;
+}
+
 // The manual's reset handshake: an rACT falling edge resets the gripper
 // (clearing its fault status); the rising edge runs the calibration
 // sweep.
 ActivationResult runActivationHandshake(Gripper& gripper, std::chrono::steady_clock::time_point deadline)
 {
-   GripperCommand activateCommand = GripperCommand::defaults();
+   const GripperCommand previousCommand = gripper.getCommand();
+
+   GripperCommand activateCommand = previousCommand;
+   // finishing activation should not start a motion:
+   activateCommand.action.set(ActionRequestBit::GoTo, false);
+   activateCommand.action.set(ActionRequestBit::Activate, true);
    GripperCommand deactivateCommand = activateCommand;
    deactivateCommand.action.set(ActionRequestBit::Activate, false);
+
    gripper.setCommand(deactivateCommand);
    if(!waitUntil([&] { return !gripper.getStatus().gripperStatus.activated(); }, deadline))
    {
+      gripper.setCommand(previousCommand);
       return ActivationResult::Timeout;
    }
+
    gripper.setCommand(activateCommand);
+
    return waitForActivationComplete(gripper, deadline);
 }
 } // namespace
@@ -270,8 +284,6 @@ ActivationResult activate(Gripper& gripper, std::chrono::milliseconds timeout)
    const GripperStatus status = gripper.getStatus();
    if(severity(status.faultStatus.gripperFault()) == FaultSeverity::Major)
    {
-      // The reset that clears a latched fault releases any grip and
-      // sweeps the fingers: never run it implicitly.
       return ActivationResult::FaultLatched;
    }
    if(status.gripperStatus.activationState() == ActivationState::Complete)
@@ -283,13 +295,17 @@ ActivationResult activate(Gripper& gripper, std::chrono::milliseconds timeout)
    {
       return waitForActivationComplete(gripper, deadline);
    }
+   if(!isActivationHandshakeAllowed(deadline, timeout))
+   {
+      return ActivationResult::Timeout;
+   }
    return runActivationHandshake(gripper, deadline);
 }
 
 ActivationResult recoverFromFault(Gripper& gripper, std::chrono::milliseconds timeout)
 {
    const auto deadline = std::chrono::steady_clock::now() + timeout;
-   if(!waitOperational(gripper, deadline))
+   if(!waitOperational(gripper, deadline) || !isActivationHandshakeAllowed(deadline, timeout))
    {
       return ActivationResult::Timeout;
    }

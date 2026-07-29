@@ -200,8 +200,10 @@ TEST(TestGripperActivate, latched_major_fault_refuses_activation_until_explicit_
                    kFastPeriod,
                    std::make_shared<NullLogger>());
 
+   const GripperCommand before = gripper.getCommand();
    EXPECT_EQ(activate(gripper, std::chrono::seconds(2)), ActivationResult::FaultLatched);
    EXPECT_EQ(modbusServer.resets.load(), 0);
+   EXPECT_EQ(gripper.getCommand(), before) << "refusing must not touch the command either";
    EXPECT_EQ(gripper.getStatus().faultStatus.gripperFault(), GripperFault::Overcurrent);
 
    // The explicit recovery runs the documented reset and clears it.
@@ -332,6 +334,71 @@ TEST_F(TestGripper, typed_layers_compose_over_the_image)
    EXPECT_EQ(gripper.getStatus().positionRequestEcho, 0x42);
    EXPECT_TRUE(gripper.getStatus().gripperStatus.goToEnabled());
    EXPECT_EQ(gripper.getStatus().gripperStatus.activationState(), ActivationState::Complete);
+}
+
+TEST(TestGripperActivate, handshake_keeps_the_callers_speed_force_and_position)
+{
+   FakeGripperModbusServer modbusServer;
+   modbusServer.registers[mc::kStatusAddress] = 0x0100; // gACT | gSTA reset: needs the handshake
+   modbusServer.previousActivateBit = true;
+   Gripper gripper(std::make_unique<FakeGripperSerial>(modbusServer),
+                   kSlave,
+                   kFastPeriod,
+                   std::make_shared<NullLogger>());
+
+   // An application that has tuned its grip must not silently get full scale
+   // back because a power-cycled gripper needed a handshake.
+   GripperCommand gentle = gripper.getCommand();
+   gentle.speed = 0x20;
+   gentle.force = 0x10;
+   gentle.positionRequest = 0x40;
+   gentle.action.set(ActionRequestBit::GoTo, true);
+   gripper.setCommand(gentle);
+
+   ASSERT_EQ(activate(gripper, std::chrono::seconds(2)), ActivationResult::Activated);
+
+   const GripperCommand after = gripper.getCommand();
+   EXPECT_EQ(after.speed, 0x20);
+   EXPECT_EQ(after.force, 0x10);
+   EXPECT_EQ(after.positionRequest, 0x40);
+   EXPECT_TRUE(after.action.get(ActionRequestBit::Activate));
+   EXPECT_FALSE(after.action.get(ActionRequestBit::GoTo)); // the handshake never commands motion
+}
+
+TEST(TestGripperActivateFailure, recover_from_fault_times_out_while_the_link_is_down)
+{
+   FakeGripperModbusServer modbusServer;
+   auto serial = std::make_unique<WriteFailingSerial>(modbusServer);
+   WriteFailingSerial& link = *serial;
+   Gripper gripper(std::move(serial), kSlave, kFastPeriod, std::make_shared<NullLogger>());
+   const GripperCommand before = gripper.getCommand();
+
+   link.failing.store(true);
+   ASSERT_TRUE(Robotiq::waitFor([&] { return gripper.connectionState() == ConnectionState::Faulted; },
+                                std::chrono::seconds(2),
+                                std::chrono::milliseconds(1)));
+
+   // No status to judge and no way to send: the reset must not be attempted.
+   EXPECT_EQ(recoverFromFault(gripper, std::chrono::milliseconds(30)), ActivationResult::Timeout);
+   EXPECT_EQ(gripper.getCommand(), before);
+}
+
+TEST(TestGripperExchange, a_zero_period_free_runs_instead_of_stalling)
+{
+   // 0 Hz means free-run: sleep_until on an already-past deadline every
+   // iteration. The loop must still exchange, and still be joinable.
+   FakeGripperModbusServer modbusServer;
+   {
+      Gripper gripper(std::make_unique<FakeGripperSerial>(modbusServer),
+                      kSlave,
+                      std::chrono::microseconds{0},
+                      std::make_shared<NullLogger>());
+      ASSERT_TRUE(Robotiq::waitFor([&] { return modbusServer.commandWrites.load() > 10; },
+                                   std::chrono::seconds(2),
+                                   std::chrono::milliseconds(1)));
+      EXPECT_EQ(gripper.connectionState(), ConnectionState::Operational);
+   }
+   EXPECT_GT(modbusServer.statusReads.load(), 0);
 }
 
 TEST(TestGripperActivateFailure, times_out_while_the_link_is_down)

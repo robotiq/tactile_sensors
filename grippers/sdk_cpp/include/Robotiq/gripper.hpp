@@ -77,25 +77,24 @@ private:
 //! Result of the blocking activation procedures.
 enum class ActivationResult
 {
-   Activated, // the activation handshake ran and reported completion
+   Activated, // the gripper reports activation complete — the handshake ran,
+              // or one already under way finished
    AlreadyActive, // already activated and fault-free; nothing was sent
    FaultLatched, // a major fault is latched; activate() refuses the reset
-   Timeout, // the link stayed down or completion never arrived in time
+   Timeout, // the link stayed down, completion never arrived in time, or too
+            // little of the timeout remained to run the handshake
 };
 
 // Ensure the gripper is activated, blocking until it reports
 // completion. A healthy, already-activated gripper is left undisturbed
 // and an activation already in progress is waited on, not restarted.
-// With a major fault latched this refuses and returns FaultLatched:
-// the recovery reset releases any grip and sweeps the fingers, so
-// running it is an application decision — see recoverFromFault().
+// When the handshake rGTO is cleared.
 [[nodiscard]] ActivationResult activate(Gripper& gripper, std::chrono::milliseconds timeout = std::chrono::seconds(15));
 
 // The manual's fault-recovery handshake, run unconditionally: clearing
 // rACT resets the gripper — clearing its fault status — and setting it
 // back runs the calibration sweep. ⚠ Releases any grip and moves the
-// fingers through their full range; the pending command is replaced
-// with GripperCommand::defaults().
+// fingers through their full range. rGTO is cleared, as for activate().
 [[nodiscard]] ActivationResult recoverFromFault(Gripper& gripper,
                                                 std::chrono::milliseconds timeout = std::chrono::seconds(15));
 } // namespace Robotiq
