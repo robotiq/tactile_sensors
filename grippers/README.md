@@ -124,14 +124,6 @@ target_link_libraries(your_target PRIVATE Robotiq::grippers)
   than configured. High-rate control on Windows is currently untuned —
   open an issue if your application needs it.
 
-## Roadmap
-
-1. ~~Foundations: logging, cross-platform serial transport~~ — done
-2. ~~Modbus protocol layer, typed register views~~ — done
-3. ~~Runtime mode: the `Gripper` application API~~ — done
-4. Automatic reconnection; exchange-cycle sync (control loops that run in
-   step with the exchange, without polling)
-
 ## License
 
 BSD-3-Clause. Portions derived from PickNik Robotics'
