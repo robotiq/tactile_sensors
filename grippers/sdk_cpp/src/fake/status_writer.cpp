@@ -18,6 +18,13 @@ namespace rm = register_map;
 constexpr std::size_t kStatusFlagsByte = 0;
 constexpr std::size_t kFaultByte = 2;
 
+// Tie the two offsets to the type rather than to this comment: a field
+// inserted ahead of faultStatus would otherwise move the fault byte out from
+// under kFaultByte and leave every writer below scribbling on reserved1.
+static_assert(offsetof(GripperStatus, gripperStatus) == kStatusFlagsByte,
+              "GRIPPER STATUS must stay byte 0 of the block");
+static_assert(offsetof(GripperStatus, faultStatus) == kFaultByte, "FAULT STATUS must stay byte 2 of the block");
+
 //! Replace the bits under \p mask with \p value, already shifted into place.
 uint8_t withField(uint8_t bits, uint8_t mask, uint8_t value)
 {

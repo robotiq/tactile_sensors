@@ -18,9 +18,11 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 
 #include <Robotiq/detail/modbus_constants.hpp>
 #include <Robotiq/gripper/command.hpp>
+#include <Robotiq/gripper/logger.hpp>
 #include <Robotiq/gripper/status.hpp>
 
 namespace Robotiq::fake {
@@ -38,6 +40,10 @@ public:
    //! One contiguous span, address 0 through the end of the status block,
    //! matching the device's tolerant register map.
    static constexpr uint16_t kRegisterCount = detail::modbus_constants::kStatusAddress + kBlockRegisters;
+
+   //! \param logger Sink for the one thing this class has to report — a
+   //!        register access it had to refuse. Pass null for the default.
+   explicit RegisterModel(std::shared_ptr<Logger> logger = nullptr);
 
    virtual ~RegisterModel() = default;
 
@@ -69,6 +75,7 @@ protected:
    [[nodiscard]] virtual GripperStatus processCommand(const GripperCommand& command,
                                                       const GripperStatus& currentStatus);
 
+   std::shared_ptr<Logger> _logger;
    std::array<uint16_t, kRegisterCount> _registers{};
 
    //! rACT edge tracking. A falling edge resets; a rising edge starts the

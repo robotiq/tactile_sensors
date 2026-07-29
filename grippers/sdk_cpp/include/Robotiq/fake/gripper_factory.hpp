@@ -29,9 +29,11 @@ namespace Robotiq {
 //!        serial settings are ignored, as there is no port to configure.
 //!        connectionFrequency is clamped to [0.1, 1000] Hz — a real link
 //!        paces itself against the wire, a fake one has to be bounded —
-//!        and 0, meaning free-run, gets the top of that range.
+//!        and 0, meaning free-run, gets the top of that range. Clamping is
+//!        logged.
 //! \param logger Log sink; pass null to use the default stderr logger.
-//! \throw DriverException if the fake device cannot be created.
+//! \throw DriverException if the fake device cannot be created, or if
+//!        connectionFrequency is negative.
 [[nodiscard]] std::unique_ptr<Gripper> makeFakeGripper(const ConnectionConfig& config = {},
                                                        std::shared_ptr<Logger> logger = nullptr);
 } // namespace Robotiq

@@ -7,6 +7,8 @@
 
 #include <limits>
 
+#include <Robotiq/gripper/driver_exception.hpp>
+
 #include "exchange_period.hpp"
 #include "fake/frequency.hpp"
 
@@ -39,17 +41,22 @@ TEST(ClampFrequency, ClampsRatherThanStepping)
 
 TEST(ClampFrequency, FreeRunBecomesTheFastestSupportedRate)
 {
-   // 0 means "as fast as the link allows"; with no link, that reads as the
-   // ceiling. Clamping it to the floor would invert the request.
+   // 0 means "as fast as the link allows" for a real gripper; with a fake gripper, that
+   // translates to the ceiling. Clamping it to the floor would invert the request.
    EXPECT_DOUBLE_EQ(kMaxFrequency, clampFrequency(0.0));
-   EXPECT_DOUBLE_EQ(kMaxFrequency, clampFrequency(-1.0));
 }
 
-TEST(ClampFrequency, HandlesAnyRealValue)
+TEST(ClampFrequency, RejectsANegativeRate)
 {
-   // Any real value maps into the supported range and none of it reaches the
-   // exchange loop as a zero or negative period. NaN is out of contract: it
-   // is a bug in the calling code, and absorbing it here would hide it.
+   EXPECT_THROW(clampFrequency(-1.0), DriverException);
+   EXPECT_THROW(clampFrequency(-std::numeric_limits<double>::infinity()), DriverException);
+}
+
+TEST(ClampFrequency, HandlesAnyNonNegativeValue)
+{
+   // Every non-negative value maps into the supported range, and none of it
+   // reaches the exchange loop as a zero period. NaN is out of contract: it is
+   // a bug in the calling code, and absorbing it here would hide it.
    EXPECT_GT(clampFrequency(std::numeric_limits<double>::infinity()), 0.0);
    EXPECT_LE(clampFrequency(std::numeric_limits<double>::infinity()), kMaxFrequency);
    EXPECT_GT(detail::exchangePeriodFromFrequency(clampFrequency(1e300)).count(), 0);

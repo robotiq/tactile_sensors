@@ -34,15 +34,25 @@ private:
 
 std::unique_ptr<Gripper> makeFakeGripper(const ConnectionConfig& config, std::shared_ptr<Logger> logger)
 {
-   auto model = std::make_unique<fake::RegisterModel>();
+   auto sink = logger ? std::move(logger) : makeDefaultLogger();
+
+   const double requested = config.connectionFrequency;
+   const double frequency = fake::clampFrequency(requested);
+   if(requested > 0.0 && frequency != requested)
+   {
+      sink->log(Logger::Level::Warn,
+                "requested exchange frequency " + std::to_string(requested) + " Hz is outside the fake gripper's "
+                   + std::to_string(fake::kMinFrequency) + " to " + std::to_string(fake::kMaxFrequency)
+                   + " Hz range; using " + std::to_string(frequency) + " Hz");
+   }
+
+   auto model = std::make_unique<fake::RegisterModel>(sink);
    auto server = std::make_unique<fake::GripperServer>(*model, config.modbusSlaveAddress);
    auto serial = std::make_unique<OwningFakeGripperSerial>(std::move(model), std::move(server));
-
-   const double frequency = fake::clampFrequency(config.connectionFrequency);
 
    return std::make_unique<Gripper>(std::move(serial),
                                     config.modbusSlaveAddress,
                                     detail::exchangePeriodFromFrequency(frequency),
-                                    std::move(logger));
+                                    std::move(sink));
 }
 } // namespace Robotiq

@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include <Robotiq/gripper/command.hpp>
 #include <Robotiq/gripper/fault_status.hpp>
@@ -160,6 +161,29 @@ TEST_F(TestFakeGripperServer, transaction_counters_track_the_bus_traffic)
 
    EXPECT_EQ(fakeServer.model.commandWrites.load(), 2);
    EXPECT_EQ(fakeServer.model.statusReads.load(), 3);
+}
+
+TEST_F(TestFakeGripperServer, refuses_a_range_outside_the_register_map)
+{
+   // Driven at the server directly: the client only ever asks for the two
+   // documented blocks, so nothing above reaches this path.
+   const uint16_t outside = fake::RegisterModel::kRegisterCount;
+   fakeServer.server.deliver(readHoldingRegistersFrame(kSlaveAddress, outside, 1));
+
+   // FC 0x03 | 0x80 marks an exception response, and 0x02 is illegal data
+   // address.
+   const std::vector<uint8_t> expected = withCrc({kSlaveAddress, 0x83, 0x02});
+   EXPECT_EQ(fakeServer.server.drain(expected.size()), expected);
+   EXPECT_TRUE(fakeServer.server.drain(1).empty()) << "the server answered with more than the exception response";
+}
+
+TEST(RegisterModelRange, covers_the_whole_register_file_and_nothing_past_it)
+{
+   using fake::RegisterModel;
+   EXPECT_TRUE(RegisterModel::containsRange(0, 1));
+   EXPECT_TRUE(RegisterModel::containsRange(mc::kStatusAddress, RegisterModel::kBlockRegisters));
+   EXPECT_FALSE(RegisterModel::containsRange(RegisterModel::kRegisterCount, 1));
+   EXPECT_FALSE(RegisterModel::containsRange(mc::kStatusAddress, RegisterModel::kBlockRegisters + 1));
 }
 
 TEST_F(TestFakeGripperServer, position_echo_and_current_follow_the_request)

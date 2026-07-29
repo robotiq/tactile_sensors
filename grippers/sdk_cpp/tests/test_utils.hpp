@@ -62,6 +62,18 @@ inline std::vector<uint8_t> withCrc(std::vector<uint8_t> frame)
    return frame;
 }
 
+//! An FC 0x03 read-holding-registers request, CRC included. Address and
+//! quantity are 16-bit fields, MSB first as Modbus puts them on the wire.
+inline std::vector<uint8_t> readHoldingRegistersFrame(uint8_t slaveAddress, uint16_t address, uint16_t quantity)
+{
+   return withCrc({slaveAddress,
+                   0x03,
+                   static_cast<uint8_t>(address >> 8),
+                   static_cast<uint8_t>(address & 0xFF),
+                   static_cast<uint8_t>(quantity >> 8),
+                   static_cast<uint8_t>(quantity & 0xFF)});
+}
+
 //! Serial test double: captures everything written and serves reads from a
 //! preloaded byte queue, in whatever chunk sizes the caller asks for.
 //! An exhausted queue reads empty, which is what a real timeout looks like

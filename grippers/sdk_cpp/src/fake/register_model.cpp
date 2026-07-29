@@ -5,6 +5,9 @@
 #include "fake/register_model.hpp"
 
 #include <algorithm>
+#include <cassert>
+#include <string>
+#include <utility>
 
 #include <Robotiq/detail/byte_packing.hpp>
 
@@ -15,14 +18,34 @@ namespace {
 namespace mc = detail::modbus_constants;
 } // namespace
 
+RegisterModel::RegisterModel(std::shared_ptr<Logger> logger)
+   : _logger(logger ? std::move(logger) : makeDefaultLogger())
+{
+}
+
 bool RegisterModel::containsRange(uint16_t address, uint16_t quantity)
 {
    const uint32_t last = static_cast<uint32_t>(address) + quantity - 1;
    return last < kRegisterCount;
 }
 
+namespace {
+std::string outOfRange(const char* access, uint16_t address, uint16_t quantity)
+{
+   return std::string(access) + " of " + std::to_string(quantity) + " registers at " + std::to_string(address)
+        + " reaches past the register file (" + std::to_string(RegisterModel::kRegisterCount) + "); refused";
+}
+} // namespace
+
 void RegisterModel::read(uint16_t address, uint16_t quantity, uint16_t* out) const
 {
+   // The class declares this invariant, so it enforces it here too
+   assert(containsRange(address, quantity));
+   if(!containsRange(address, quantity))
+   {
+      _logger->log(Logger::Level::Error, outOfRange("read", address, quantity));
+      return;
+   }
    for(uint16_t i = 0; i < quantity; ++i)
    {
       const uint16_t reg = address + i;
@@ -33,6 +56,12 @@ void RegisterModel::read(uint16_t address, uint16_t quantity, uint16_t* out) con
 
 void RegisterModel::write(uint16_t address, uint16_t quantity, const uint16_t* values)
 {
+   assert(containsRange(address, quantity)); // as in read(), above
+   if(!containsRange(address, quantity))
+   {
+      _logger->log(Logger::Level::Error, outOfRange("write", address, quantity));
+      return;
+   }
    std::copy_n(values, quantity, _registers.begin() + address);
    setStatus(processCommand(command(), status()));
 }

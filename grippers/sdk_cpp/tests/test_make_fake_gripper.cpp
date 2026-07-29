@@ -59,6 +59,29 @@ TEST(MakeFakeGripper, RefusesTheBroadcastAddressWithTheDocumentedException)
    EXPECT_THROW({ const auto gripper = makeQuietFakeGripper(config); }, DriverException);
 }
 
+TEST(MakeFakeGripper, ActivatesAFreshGripperWithPlainActivate)
+{
+   // The first line an integrator writes: activate() on a gripper that has
+   // just been built, with no fault to recover from first.
+   const auto gripper = makeQuietFakeGripper();
+
+   EXPECT_EQ(ActivationResult::Activated, activate(*gripper, kSettle));
+   EXPECT_TRUE(gripper->getStatus().gripperStatus.activated());
+   EXPECT_EQ(ActivationState::Complete, gripper->getStatus().gripperStatus.activationState());
+}
+
+TEST(MakeFakeGripper, HonoursANonDefaultSlaveAddress)
+{
+   ConnectionConfig config;
+   config.modbusSlaveAddress = 0x25;
+
+   const auto gripper = makeQuietFakeGripper(config);
+
+   ASSERT_NE(nullptr, gripper);
+   EXPECT_EQ(ActivationResult::Activated, activate(*gripper, kSettle));
+   EXPECT_EQ(ConnectionState::Operational, gripper->connectionState());
+}
+
 TEST(MakeFakeGripper, ActivatesInstantly)
 {
    const auto gripper = makeQuietFakeGripper();
@@ -117,11 +140,19 @@ TEST(MakeFakeGripper, ClearingTheCommandBlockDeactivates)
    EXPECT_EQ(ActivationResult::Activated, recoverFromFault(*gripper, kSettle));
 }
 
+TEST(MakeFakeGripper, RejectsANegativeFrequency)
+{
+   ConnectionConfig config;
+   config.connectionFrequency = -5.0;
+
+   EXPECT_THROW({ const auto gripper = makeQuietFakeGripper(config); }, DriverException);
+}
+
 TEST(MakeFakeGripper, AnyRequestedFrequencyYieldsAWorkingGripper)
 {
-   // Requested rates are clamped
-   // 0 or negative rates are free-run with real hardware, but max frequency for a fake gripper
-   for(const double requested : {0.0, -5.0, 20.0, 100.0, 1e9})
+   // Requested rates are clamped; 0 is free-run, which for a fake with no
+   // link to pace against is the top of the range.
+   for(const double requested : {0.0, 20.0, 100.0, 1e9})
    {
       ConnectionConfig config;
       config.connectionFrequency = requested;
