@@ -105,7 +105,7 @@ closes — keep the jaws clear.
 serial port, for bring-up, demos and CI on machines with no hardware attached:
 
 ```cpp
-#include <Robotiq/fake/gripper_factory.hpp>
+#include <Robotiq/gripper/fake/gripper_factory.hpp>
 
 auto gripper = Robotiq::makeFakeGripper();   // no port opened
 ```

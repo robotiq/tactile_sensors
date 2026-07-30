@@ -12,7 +12,7 @@
 #include <chrono>
 #include <memory>
 
-#include <Robotiq/fake/gripper_factory.hpp>
+#include <Robotiq/gripper/fake/gripper_factory.hpp>
 #include <Robotiq/gripper/command.hpp>
 #include <Robotiq/gripper/connection_config.hpp>
 #include <Robotiq/gripper/connection_state.hpp>

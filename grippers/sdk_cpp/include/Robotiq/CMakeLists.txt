@@ -22,6 +22,6 @@ target_sources(grippers_sdk PRIVATE
 
 if(GRIPPERS_BUILD_FAKE)
   target_sources(grippers_sdk PRIVATE
-    fake/gripper_factory.hpp
+    gripper/fake/gripper_factory.hpp
   )
 endif()

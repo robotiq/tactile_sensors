@@ -2,7 +2,7 @@
 //
 // Licensed under the BSD-3-Clause license; see LICENSE for details.
 
-#include <Robotiq/fake/gripper_factory.hpp>
+#include <Robotiq/gripper/fake/gripper_factory.hpp>
 
 #include <memory>
 #include <utility>
