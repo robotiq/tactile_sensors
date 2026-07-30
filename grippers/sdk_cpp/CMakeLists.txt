@@ -21,6 +21,12 @@ endif()
 option(GRIPPERS_BUILD_EXAMPLES "Build example programs" ${GRIPPERS_TOP_LEVEL})
 option(GRIPPERS_BUILD_TESTS "Build the unit tests" ${GRIPPERS_TOP_LEVEL})
 
+# The fake device is ~30 KB of the library and useful only to consumers that
+# ask for a gripper without hardware. It also cannot serve a target where
+# Gripper's threaded exchange loop does not run, so those builds should be able
+# to leave it out.
+option(GRIPPERS_BUILD_FAKE "Build the fake gripper device" ON)
+
 # --- libserialport ------------------------------------------------------
 # Resolved through cmake/Findserialport.cmake — the same module the
 # installed grippers-config.cmake uses, so the lookup logic lives once.
@@ -37,6 +43,7 @@ target_include_directories(grippers_sdk
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
   PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nanomodbus
 )
 
@@ -69,7 +76,13 @@ install(TARGETS grippers_sdk
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
-install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+if(GRIPPERS_BUILD_FAKE)
+  install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+else()
+  install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    PATTERN "fake" EXCLUDE
+  )
+endif()
 install(EXPORT grippers_targets
   NAMESPACE Robotiq::
   FILE grippers-targets.cmake
@@ -94,15 +107,20 @@ install(FILES
 )
 
 # --- convenience targets ------------------------------------------------
-file(GLOB_RECURSE GRIPPERS_FORMAT_SOURCES CONFIGURE_DEPENDS
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/examples/*.cpp
-)
-add_custom_target(format
-  COMMAND clang-format -i ${GRIPPERS_FORMAT_SOURCES}
-  COMMENT "Formatting sources with clang-format"
-)
+# For working on the SDK itself. Target names are global to a CMake project,
+# so a consumer that add_subdirectory()s the SDK would otherwise inherit these
+# — and fail to configure if it defines a target of the same name.
+if(GRIPPERS_TOP_LEVEL)
+  file(GLOB_RECURSE GRIPPERS_FORMAT_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/examples/*.cpp
+  )
+  add_custom_target(format
+    COMMAND clang-format -i ${GRIPPERS_FORMAT_SOURCES}
+    COMMENT "Formatting sources with clang-format"
+  )
+endif()

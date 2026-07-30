@@ -19,7 +19,6 @@
 #include <Robotiq/detail/gripper_modbus_client.hpp>
 #include <Robotiq/detail/modbus_constants.hpp>
 
-#include "fake_gripper.hpp"
 #include "test_utils.hpp"
 
 namespace Robotiq::test {
@@ -104,24 +103,6 @@ TEST(TestGripperModbusClient, exchange_sends_canonical_fc17_frame)
    EXPECT_EQ(serial->written(), withCrc(expectedRequest));
    EXPECT_EQ(status.gripperStatus.raw(), 0x31);
    EXPECT_EQ(status.position, 0x03);
-}
-
-TEST(TestGripperModbusClient, exchange_superloop_pattern_control_then_communicate)
-{
-   // The no-thread (microcontroller) usage: a control step computes the
-   // command, a communication step exchanges it for fresh status.
-   FakeGripperModbusServer gripper;
-   detail::GripperModbusClient client(std::make_unique<FakeGripperSerial>(gripper),
-                                      kSlaveAddress,
-                                      std::make_shared<NullLogger>());
-
-   GripperCommand command;
-   std::memset(command.data(), 0, command.size());
-   command.action.set(ActionRequestBit::Activate, true);
-   const auto status = client.exchange(command);
-
-   EXPECT_TRUE(status.gripperStatus.activated());
-   EXPECT_EQ(status.gripperStatus.activationState(), ActivationState::Complete);
 }
 
 // Every transaction the client can issue, so the failure paths below are

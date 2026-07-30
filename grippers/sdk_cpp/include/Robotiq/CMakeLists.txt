@@ -19,3 +19,9 @@ target_sources(grippers_sdk PRIVATE
   detail/serial.hpp
   detail/default_serial.hpp
 )
+
+if(GRIPPERS_BUILD_FAKE)
+  target_sources(grippers_sdk PRIVATE
+    gripper/fake/gripper_factory.hpp
+  )
+endif()

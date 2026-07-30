@@ -28,6 +28,19 @@ TEST(ClampFrequency, FoldsTheEndsIntoTheRange)
    EXPECT_DOUBLE_EQ(clampFrequency(std::numeric_limits<double>::infinity()), kMaxFrequency);
 }
 
+TEST(ClampFrequency, ClampsRatherThanStepping)
+{
+   // The rate you get is monotonic in the rate you asked for, so asking for
+   // slightly more never hands back dramatically less.
+   double previous = 0.0;
+   for(const double requested : {0.001, 0.05, kMinFrequency, 1.0, 100.0, kMaxFrequency, 1e6})
+   {
+      const double got = clampFrequency(requested);
+      EXPECT_GE(got, previous) << "not monotonic at " << requested;
+      previous = got;
+   }
+}
+
 TEST(ClampFrequency, PassesFreeRunThrough)
 {
    // 0 keeps its meaning here; what free-run costs is the transport's business.
