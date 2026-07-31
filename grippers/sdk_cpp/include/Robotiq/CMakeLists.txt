@@ -1,4 +1,4 @@
-target_sources(grippers_sdk PRIVATE
+target_sources(grippers_objects PRIVATE
   gripper.hpp
   gripper/command.hpp
   gripper/named_bit_array.hpp
@@ -24,7 +24,7 @@ target_sources(grippers_sdk PRIVATE
 )
 
 if(GRIPPERS_BUILD_FAKE)
-  target_sources(grippers_sdk PRIVATE
+  target_sources(grippers_objects PRIVATE
     gripper/fake/gripper_factory.hpp
   )
 endif()

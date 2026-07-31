@@ -1,4 +1,4 @@
-target_sources(grippers_sdk PRIVATE
+target_sources(grippers_objects PRIVATE
   gripper.cpp
   frequency.hpp
   exchange_period.hpp
@@ -9,18 +9,18 @@ target_sources(grippers_sdk PRIVATE
 # TU selection does the platform work: the core above never mentions an OS,
 # and these files supply the defaults (or their freestanding stand-ins).
 if(GRIPPERS_HOSTED)
-  target_sources(grippers_sdk PRIVATE
+  target_sources(grippers_objects PRIVATE
     hosted/std_platform.cpp
     hosted/stderr_logger.cpp
   )
 else()
-  target_sources(grippers_sdk PRIVATE
+  target_sources(grippers_objects PRIVATE
     freestanding/default_logger.cpp
   )
 endif()
 
 if(GRIPPERS_BUILD_FAKE)
-  target_sources(grippers_sdk PRIVATE
+  target_sources(grippers_objects PRIVATE
     fake/gripper_factory.cpp
     fake/gripper_serial.hpp
     fake/gripper_serial.cpp
@@ -35,7 +35,7 @@ endif()
 
 # libserialport-backed transport: desktop only (see GRIPPERS_BUILD_DEFAULT_SERIAL).
 if(GRIPPERS_BUILD_DEFAULT_SERIAL)
-  target_sources(grippers_sdk PRIVATE
+  target_sources(grippers_objects PRIVATE
     default_serial_factory.cpp
     detail/default_serial.cpp
   )
