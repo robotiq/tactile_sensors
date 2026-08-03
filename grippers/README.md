@@ -149,6 +149,35 @@ target_link_libraries(your_target PRIVATE Robotiq::grippers)
   than configured. High-rate control on Windows is currently untuned —
   open an issue if your application needs it.
 
+## Embedded / bare-metal builds
+
+The SDK core — `Gripper` and its threaded exchange loop — compiles for
+freestanding targets (e.g. STM32 microcontrollers, arm-none-eabi). Everything
+OS-flavored is injectable; two CMake options select what ships with it:
+
+- **`GRIPPERS_HOSTED=OFF`** (default ON) drops the hosted conveniences: the
+  `std::thread`-backed `Platform` (`makeDefaultPlatform()`), and
+  the stderr default logger. Construct `Gripper` with its platform-taking
+  constructor and a `Platform` implemented over your RTOS.
+  `ports/threadx/threadx_platform.hpp` is the working reference (Azure RTOS
+  ThreadX, with the exchange task's stack size and priority as constructor
+  arguments); porting to another RTOS means implementing its four members over
+  the native primitives.
+- **`GRIPPERS_BUILD_DEFAULT_SERIAL=OFF`** (default follows `GRIPPERS_HOSTED`)
+  drops the libserialport-backed `DefaultSerial` and its dependency. Inject
+  your own `Serial` (e.g. a UART transport) via the
+  `unique_ptr<Serial>` constructors of `detail::GripperModbusClient` /
+  `Gripper`.
+- **`detail::GripperModbusClient`** is the no-thread layer: one Modbus transaction
+  per call, so a single-threaded superloop schedules the exchange itself. This is
+  the simplest path for small MCUs and needs no RTOS — and no `Platform`.
+
+Two integration caveats, detailed in `ports/threadx/threadx_platform.hpp`
+because each presents as an unexplained hang: the injected `Serial::read` must
+yield the CPU while awaiting bytes (interrupt/DMA + RTOS semaphore, never a
+polled busy-wait), and `std::chrono::steady_clock` must be backed by a real
+monotonic clock on the target.
+
 ## License
 
 BSD-3-Clause. Portions derived from PickNik Robotics'
