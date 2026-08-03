@@ -24,6 +24,8 @@
 #include <cstdint>
 #include <memory>
 
+#include <Robotiq/detail/config.hpp>
+#include <Robotiq/gripper/platform.hpp>
 #include <Robotiq/gripper/connection_config.hpp>
 #include <Robotiq/gripper/connection_state.hpp>
 #include <Robotiq/gripper/logger.hpp>
@@ -32,24 +34,30 @@
 #include <Robotiq/gripper/wait.hpp>
 
 namespace Robotiq {
-namespace detail {
 class Serial;
-} // namespace detail
 
 class Gripper
 {
 public:
+#if GRIPPERS_BUILD_DEFAULT_SERIAL
    // \param logger Log sink; pass null to use the default stderr logger.
    // \throw SerialIOException when the port cannot be opened/configured;
    //        DriverException when no gripper answers the initial read, or when
    //        config.connectionFrequency is invalid.
    explicit Gripper(const ConnectionConfig& config, std::shared_ptr<Logger> logger = nullptr);
+#endif
 
-   // Constructor for unit tests or custom serial implementations.
-   // \throw as the ConnectionConfig overload.
-   Gripper(std::unique_ptr<detail::Serial> serial,
+   // Constructor for custom serial implementations, unit tests, and RTOS
+   // targets. The exchange runs on the given platform — makeDefaultPlatform()
+   // on a hosted runtime, or your RTOS port (see Platform and ports/);
+   // platform must not be null.
+   // \param logger Log sink; pass null to use the build's default logger.
+   // \throw as the ConnectionConfig overload; DriverException when platform
+   //        is null.
+   Gripper(std::unique_ptr<Serial> serial,
            uint8_t slaveAddress,
            std::chrono::microseconds exchangePeriod,
+           std::shared_ptr<Platform> platform,
            std::shared_ptr<Logger> logger = nullptr);
 
    // Stops the exchange cycle and closes the link.
@@ -69,6 +77,11 @@ public:
    // a human-readable form (named fields, decoded bits and fault codes)
 
    [[nodiscard]] ConnectionState connectionState() const;
+
+   // The Platform this gripper runs on — for composing blocking helpers
+   // (as activate() does) that must sleep the way this gripper's target
+   // sleeps.
+   [[nodiscard]] Platform& platform() const noexcept;
 
 private:
    struct Impl; // hides the link, the exchange thread, and the image

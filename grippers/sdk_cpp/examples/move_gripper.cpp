@@ -14,6 +14,7 @@
 #include <string>
 
 #include <Robotiq/gripper.hpp>
+#include <Robotiq/gripper/stderr_logger.hpp>
 
 using namespace std::chrono_literals;
 using Robotiq::ActionRequestBit;

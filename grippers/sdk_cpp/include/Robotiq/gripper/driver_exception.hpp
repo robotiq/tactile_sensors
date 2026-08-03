@@ -9,7 +9,6 @@
 
 #include <exception>
 #include <string>
-#include <sstream>
 
 namespace Robotiq {
 class DriverException : public std::exception
@@ -17,11 +16,12 @@ class DriverException : public std::exception
    std::string _what;
 
 public:
+   // Plain string concatenation, not <sstream>: stringstream drags in the whole
+   // iostream + locale machinery (incl. wide-char printf), which is dead weight
+   // — and unlinkable with newlib-nano — on a freestanding target.
    explicit DriverException(const std::string& description)
+      : _what("DriverException: " + description + ".")
    {
-      std::stringstream ss;
-      ss << "DriverException: " << description << ".";
-      _what = ss.str();
    }
 
    DriverException(const DriverException& other)

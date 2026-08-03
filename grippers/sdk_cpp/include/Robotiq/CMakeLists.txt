@@ -10,13 +10,16 @@ target_sources(grippers_sdk PRIVATE
   gripper/connection_state.hpp
   gripper/driver_exception.hpp
   gripper/logger.hpp
+  gripper/stderr_logger.hpp
   gripper/throttle.hpp
+  gripper/platform.hpp
+  gripper/serial.hpp
   gripper/serial_config.hpp
   gripper/serial_io_exception.hpp
+  detail/config.hpp
   detail/modbus_constants.hpp
   detail/byte_packing.hpp
   detail/gripper_modbus_client.hpp
-  detail/serial.hpp
   detail/default_serial.hpp
 )
 

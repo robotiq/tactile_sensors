@@ -1,12 +1,18 @@
 @PACKAGE_INIT@
 
-# Findserialport.cmake is installed next to this file; libserialport has no
-# CMake package config of its own.
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR})
-
 include(CMakeFindDependencyMacro)
-find_dependency(serialport MODULE)
-find_dependency(Threads)
+
+# The dependencies mirror how this package was built (a freestanding build
+# needs neither serialport nor Threads).
+if(@GRIPPERS_BUILD_DEFAULT_SERIAL@)
+  # Findserialport.cmake is installed next to this file; libserialport has no
+  # CMake package config of its own.
+  list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR})
+  find_dependency(serialport MODULE)
+endif()
+if(@GRIPPERS_HOSTED@)
+  find_dependency(Threads)
+endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/grippers-targets.cmake")
 check_required_components(grippers)

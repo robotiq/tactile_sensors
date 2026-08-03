@@ -18,22 +18,26 @@
 #include <cstdint>
 #include <memory>
 
+#include <Robotiq/detail/config.hpp>
+
 namespace Robotiq {
 class Logger;
+class Serial;
 struct ConnectionConfig;
 struct GripperCommand;
 struct GripperStatus;
 } // namespace Robotiq
 
 namespace Robotiq::detail {
-class Serial;
 
 class GripperModbusClient
 {
 public:
+#if GRIPPERS_BUILD_DEFAULT_SERIAL
    // \param logger Log sink; pass null to use the default stderr logger.
    // \throw SerialIOException when the port cannot be opened/configured.
    explicit GripperModbusClient(const ConnectionConfig& config, std::shared_ptr<Logger> logger = nullptr);
+#endif
 
    // Constructor for unit tests or custom serial implementations; opens
    // the port if needed.

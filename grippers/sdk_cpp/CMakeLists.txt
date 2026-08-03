@@ -21,17 +21,39 @@ endif()
 option(GRIPPERS_BUILD_EXAMPLES "Build example programs" ${GRIPPERS_TOP_LEVEL})
 option(GRIPPERS_BUILD_TESTS "Build the unit tests" ${GRIPPERS_TOP_LEVEL})
 
+# The SDK core is freestanding-clean; everything OS-flavored sits behind this.
+# ON: compile the hosted defaults — the std::thread-backed detail::Platform
+# (and the constructors that supply it), the stderr default logger — and link
+# Threads. OFF (bare-metal / RTOS targets): those TUs are left out; inject a
+# detail::Platform (see ports/threadx/) and an application Logger.
+option(GRIPPERS_HOSTED "Target has a hosted C++ runtime (std::thread, iostream)" ON)
+
 # The fake device is ~30 KB of the library and useful only to consumers that
 # ask for a gripper without hardware. It also cannot serve a target where
 # Gripper's threaded exchange loop does not run, so those builds should be able
 # to leave it out.
-option(GRIPPERS_BUILD_FAKE "Build the fake gripper device" ON)
+option(GRIPPERS_BUILD_FAKE "Build the fake gripper device" ${GRIPPERS_HOSTED})
+
+# The libserialport-backed DefaultSerial is a desktop convenience. Turn it OFF
+# for bare-metal / freestanding targets (e.g. arm-none-eabi microcontrollers)
+# that inject their own Serial implementation; this drops the libserialport
+# dependency and the ConnectionConfig-based constructors that build a DefaultSerial.
+option(GRIPPERS_BUILD_DEFAULT_SERIAL "Build the libserialport-backed DefaultSerial" ${GRIPPERS_HOSTED})
+
+if(GRIPPERS_BUILD_DEFAULT_SERIAL AND NOT GRIPPERS_HOSTED)
+  message(FATAL_ERROR "GRIPPERS_BUILD_DEFAULT_SERIAL needs a hosted runtime (libserialport is a desktop library); set it OFF for freestanding targets")
+endif()
+if(GRIPPERS_BUILD_FAKE AND NOT GRIPPERS_HOSTED)
+  message(FATAL_ERROR "GRIPPERS_BUILD_FAKE needs a hosted runtime (the fake gripper serves the threaded exchange loop)")
+endif()
 
 # --- libserialport ------------------------------------------------------
 # Resolved through cmake/Findserialport.cmake — the same module the
 # installed grippers-config.cmake uses, so the lookup logic lives once.
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
-find_package(serialport MODULE REQUIRED)
+if(GRIPPERS_BUILD_DEFAULT_SERIAL)
+  list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+  find_package(serialport MODULE REQUIRED)
+endif()
 
 # --- SDK library --------------------------------------------------------
 add_library(grippers_sdk)
@@ -47,25 +69,46 @@ target_include_directories(grippers_sdk
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nanomodbus
 )
 
-target_link_libraries(grippers_sdk PRIVATE serialport::serialport)
+# Propagate the choices to the headers: the hosted-only and DefaultSerial-only
+# constructor declarations are guarded on these macros, so a consumer of a
+# freestanding build gets a compile error, not an undefined symbol.
+target_compile_definitions(grippers_sdk PUBLIC
+  GRIPPERS_HOSTED=$<BOOL:${GRIPPERS_HOSTED}>
+  GRIPPERS_BUILD_DEFAULT_SERIAL=$<BOOL:${GRIPPERS_BUILD_DEFAULT_SERIAL}>)
 
-find_package(Threads REQUIRED)
-target_link_libraries(grippers_sdk PUBLIC Threads::Threads)
+if(GRIPPERS_BUILD_DEFAULT_SERIAL)
+  target_link_libraries(grippers_sdk PRIVATE serialport::serialport)
+endif()
+
+if(GRIPPERS_HOSTED)
+  find_package(Threads REQUIRED)
+  target_link_libraries(grippers_sdk PUBLIC Threads::Threads)
+endif()
 
 add_subdirectory(include/Robotiq)
 add_subdirectory(src)
 add_subdirectory(third_party/nanomodbus)
 
 # --- examples -----------------------------------------------------------
+# Examples and tests exercise the DefaultSerial (and through it the hosted
+# runtime), so they only exist when it is built.
 if(GRIPPERS_BUILD_EXAMPLES)
-  add_subdirectory(examples)
+  if(GRIPPERS_BUILD_DEFAULT_SERIAL)
+    add_subdirectory(examples)
+  else()
+    message(STATUS "grippers: examples need GRIPPERS_BUILD_DEFAULT_SERIAL; skipping them")
+  endif()
 endif()
 
 # --- tests --------------------------------------------------------------
 if(GRIPPERS_BUILD_TESTS)
-  include(CTest)
-  if(BUILD_TESTING)
-    add_subdirectory(tests)
+  if(GRIPPERS_BUILD_DEFAULT_SERIAL)
+    include(CTest)
+    if(BUILD_TESTING)
+      add_subdirectory(tests)
+    endif()
+  else()
+    message(STATUS "grippers: tests need GRIPPERS_BUILD_DEFAULT_SERIAL; skipping them")
   endif()
 endif()
 

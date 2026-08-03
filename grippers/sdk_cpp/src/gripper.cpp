@@ -6,26 +6,21 @@
 
 #include <algorithm>
 #include <atomic>
-#include <mutex>
-#include <thread>
+#include <memory>
+#include <mutex> // std::lock_guard — available even where std::mutex is not
 #include <utility>
 
-#include <Robotiq/gripper/connection_config.hpp>
 #include <Robotiq/gripper/connection_state.hpp>
 #include <Robotiq/gripper/command.hpp>
 #include <Robotiq/gripper/driver_exception.hpp>
 #include <Robotiq/gripper/status.hpp>
 #include <Robotiq/gripper/logger.hpp>
 #include <Robotiq/gripper/throttle.hpp>
-#include <Robotiq/detail/default_serial.hpp>
 #include <Robotiq/detail/gripper_modbus_client.hpp>
-#include <Robotiq/detail/serial.hpp>
-
-#include "exchange_period.hpp"
+#include <Robotiq/gripper/platform.hpp>
+#include <Robotiq/gripper/serial.hpp>
 
 namespace Robotiq {
-using detail::DefaultSerial;
-using detail::Serial;
 namespace {
 //! Consecutive exchange failures before state() degrades to Faulted.
 constexpr uint64_t kFaultThreshold = 3;
@@ -36,26 +31,32 @@ constexpr uint64_t kInitialReadAttempts = 3;
 struct Gripper::Impl
 {
    std::shared_ptr<Logger> logger;
+   std::shared_ptr<Platform> platform;
    detail::GripperModbusClient client;
    Throttle failureLogThrottle{std::chrono::milliseconds(1000)};
    std::chrono::microseconds period;
 
-   mutable std::mutex imageMutex;
+   const std::unique_ptr<Mutex> imageMutex;
    GripperCommand command{};
    GripperStatus status{};
 
    std::atomic<ConnectionState> state{ConnectionState::Connecting};
    std::atomic<bool> running{false};
-   std::atomic<uint64_t> consecutiveFailures{0};
-   std::thread exchangeThread;
+   // 32-bit: a 64-bit atomic needs __atomic_*_8 (no native 8-byte atomic on a
+   // 32-bit MCU); a failure counter never needs more than 32 bits.
+   std::atomic<uint32_t> consecutiveFailures{0};
+   std::unique_ptr<Thread> exchangeThread;
 
    Impl(std::unique_ptr<Serial> serial,
         uint8_t slaveAddress,
         std::chrono::microseconds exchangePeriod,
+        std::shared_ptr<Platform> os,
         std::shared_ptr<Logger> log)
       : logger(log ? std::move(log) : makeDefaultLogger())
+      , platform(std::move(os))
       , client(std::move(serial), slaveAddress, logger)
       , period(exchangePeriod)
+      , imageMutex(platform->makeMutex())
    {
    }
 
@@ -89,7 +90,7 @@ struct Gripper::Impl
          }
       }
 
-      const std::lock_guard<std::mutex> lock(imageMutex);
+      const std::lock_guard<Mutex> lock(*imageMutex);
       status = fresh;
       command = GripperCommand::defaults();
       command.action.set(ActionRequestBit::Activate, fresh.gripperStatus.activated());
@@ -102,7 +103,7 @@ struct Gripper::Impl
    {
       GripperCommand commandCopy;
       {
-         const std::lock_guard<std::mutex> lock(imageMutex);
+         const std::lock_guard<Mutex> lock(*imageMutex);
          commandCopy = command;
       }
 
@@ -124,7 +125,7 @@ struct Gripper::Impl
       }
 
       {
-         const std::lock_guard<std::mutex> lock(imageMutex);
+         const std::lock_guard<Mutex> lock(*imageMutex);
          status = freshStatus;
       }
       consecutiveFailures.store(0);
@@ -137,7 +138,7 @@ struct Gripper::Impl
    void start()
    {
       running.store(true);
-      exchangeThread = std::thread([this] {
+      exchangeThread = platform->spawn([this] {
          auto nextCycle = std::chrono::steady_clock::now();
          while(running.load())
          {
@@ -158,7 +159,7 @@ struct Gripper::Impl
             // Overrun cycles (e.g. timeouts during a fault) must not
             // accumulate a backlog that bursts exchanges on recovery.
             nextCycle = std::max(nextCycle + period, std::chrono::steady_clock::now());
-            std::this_thread::sleep_until(nextCycle);
+            platform->sleepUntil(nextCycle);
          }
       });
    }
@@ -166,34 +167,35 @@ struct Gripper::Impl
    void stop() noexcept
    {
       running.store(false);
-      if(exchangeThread.joinable())
+      if(exchangeThread)
       {
-         exchangeThread.join();
+         exchangeThread->join();
+         exchangeThread.reset();
       }
    }
 };
 
 namespace {
-std::unique_ptr<Serial> makeSerial(const ConnectionConfig& config, const std::shared_ptr<Logger>& logger)
+std::shared_ptr<Platform> checkedPlatform(std::shared_ptr<Platform> platform)
 {
-   return std::make_unique<DefaultSerial>(config.serial, logger);
+   if(!platform)
+   {
+      throw DriverException("a null Platform was passed — pass your RTOS platform, or use a hosted constructor");
+   }
+   return platform;
 }
-
 } // namespace
 
-Gripper::Gripper(const ConnectionConfig& config, std::shared_ptr<Logger> logger)
-   : Gripper(makeSerial(config, logger),
-             config.modbusSlaveAddress,
-             detail::exchangePeriodFromFrequency(config.connectionFrequency),
-             logger)
-{
-}
-
-Gripper::Gripper(std::unique_ptr<detail::Serial> serial,
+Gripper::Gripper(std::unique_ptr<Serial> serial,
                  uint8_t slaveAddress,
                  std::chrono::microseconds exchangePeriod,
+                 std::shared_ptr<Platform> platform,
                  std::shared_ptr<Logger> logger)
-   : _impl(std::make_unique<Impl>(std::move(serial), slaveAddress, exchangePeriod, std::move(logger)))
+   : _impl(std::make_unique<Impl>(std::move(serial),
+                                  slaveAddress,
+                                  exchangePeriod,
+                                  checkedPlatform(std::move(platform)),
+                                  std::move(logger)))
 {
    _impl->initializeImage();
    _impl->start();
@@ -203,19 +205,19 @@ Gripper::~Gripper() = default;
 
 void Gripper::setCommand(const GripperCommand& command)
 {
-   const std::lock_guard<std::mutex> lock(_impl->imageMutex);
+   const std::lock_guard<Mutex> lock(*_impl->imageMutex);
    _impl->command = command;
 }
 
 GripperCommand Gripper::getCommand() const
 {
-   const std::lock_guard<std::mutex> lock(_impl->imageMutex);
+   const std::lock_guard<Mutex> lock(*_impl->imageMutex);
    return _impl->command;
 }
 
 GripperStatus Gripper::getStatus() const
 {
-   const std::lock_guard<std::mutex> lock(_impl->imageMutex);
+   const std::lock_guard<Mutex> lock(*_impl->imageMutex);
    return _impl->status;
 }
 
@@ -224,18 +226,30 @@ ConnectionState Gripper::connectionState() const
    return _impl->state.load();
 }
 
+Platform& Gripper::platform() const noexcept
+{
+   return *_impl->platform;
+}
+
 namespace {
+// The blocking procedures sleep on the gripper's own Platform between polls
+// (hosted or RTOS alike, wherever that gripper runs), so the helpers all
+// take it alongside the gripper.
+
 // The exchange cycle must be delivering fresh status before a procedure
 // can judge the gripper: Faulted here is link health, which no command
 // can fix. Gripper faults (gFLT) are the callers' business.
-bool waitOperational(const Gripper& gripper, std::chrono::steady_clock::time_point deadline)
+bool waitOperational(const Gripper& gripper, Platform& platform, std::chrono::steady_clock::time_point deadline)
 {
-   return waitUntil([&] { return gripper.connectionState() == ConnectionState::Operational; }, deadline);
+   return waitUntil([&] { return gripper.connectionState() == ConnectionState::Operational; }, platform, deadline);
 }
 
-ActivationResult waitForActivationComplete(Gripper& gripper, std::chrono::steady_clock::time_point deadline)
+ActivationResult waitForActivationComplete(Gripper& gripper,
+                                           Platform& platform,
+                                           std::chrono::steady_clock::time_point deadline)
 {
    return waitUntil([&] { return gripper.getStatus().gripperStatus.activationState() == ActivationState::Complete; },
+                    platform,
                     deadline)
            ? ActivationResult::Activated
            : ActivationResult::Timeout;
@@ -249,7 +263,9 @@ bool isActivationHandshakeAllowed(std::chrono::steady_clock::time_point deadline
 // The manual's reset handshake: an rACT falling edge resets the gripper
 // (clearing its fault status); the rising edge runs the calibration
 // sweep.
-ActivationResult runActivationHandshake(Gripper& gripper, std::chrono::steady_clock::time_point deadline)
+ActivationResult runActivationHandshake(Gripper& gripper,
+                                        Platform& platform,
+                                        std::chrono::steady_clock::time_point deadline)
 {
    const GripperCommand previousCommand = gripper.getCommand();
 
@@ -261,7 +277,7 @@ ActivationResult runActivationHandshake(Gripper& gripper, std::chrono::steady_cl
    deactivateCommand.action.set(ActionRequestBit::Activate, false);
 
    gripper.setCommand(deactivateCommand);
-   if(!waitUntil([&] { return !gripper.getStatus().gripperStatus.activated(); }, deadline))
+   if(!waitUntil([&] { return !gripper.getStatus().gripperStatus.activated(); }, platform, deadline))
    {
       gripper.setCommand(previousCommand);
       return ActivationResult::Timeout;
@@ -269,14 +285,15 @@ ActivationResult runActivationHandshake(Gripper& gripper, std::chrono::steady_cl
 
    gripper.setCommand(activateCommand);
 
-   return waitForActivationComplete(gripper, deadline);
+   return waitForActivationComplete(gripper, platform, deadline);
 }
 } // namespace
 
 ActivationResult activate(Gripper& gripper, std::chrono::milliseconds timeout)
 {
+   Platform& platform = gripper.platform();
    const auto deadline = std::chrono::steady_clock::now() + timeout;
-   if(!waitOperational(gripper, deadline))
+   if(!waitOperational(gripper, platform, deadline))
    {
       return ActivationResult::Timeout;
    }
@@ -293,23 +310,24 @@ ActivationResult activate(Gripper& gripper, std::chrono::milliseconds timeout)
    }
    if(status.gripperStatus.activationState() == ActivationState::InProgress)
    {
-      return waitForActivationComplete(gripper, deadline);
+      return waitForActivationComplete(gripper, platform, deadline);
    }
    if(!isActivationHandshakeAllowed(deadline, timeout))
    {
       return ActivationResult::Timeout;
    }
-   return runActivationHandshake(gripper, deadline);
+   return runActivationHandshake(gripper, platform, deadline);
 }
 
 ActivationResult recoverFromFault(Gripper& gripper, std::chrono::milliseconds timeout)
 {
+   Platform& platform = gripper.platform();
    const auto deadline = std::chrono::steady_clock::now() + timeout;
-   if(!waitOperational(gripper, deadline) || !isActivationHandshakeAllowed(deadline, timeout))
+   if(!waitOperational(gripper, platform, deadline) || !isActivationHandshakeAllowed(deadline, timeout))
    {
       return ActivationResult::Timeout;
    }
-   return runActivationHandshake(gripper, deadline);
+   return runActivationHandshake(gripper, platform, deadline);
 }
 
 } // namespace Robotiq

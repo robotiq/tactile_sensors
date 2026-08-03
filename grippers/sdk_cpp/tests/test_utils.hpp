@@ -12,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-#include <Robotiq/detail/serial.hpp>
+#include <Robotiq/gripper/serial.hpp>
 #include <Robotiq/gripper/connection_config.hpp>
 #include <Robotiq/gripper/logger.hpp>
 #include <Robotiq/gripper/serial_io_exception.hpp>
@@ -78,7 +78,7 @@ inline std::vector<uint8_t> readHoldingRegistersFrame(uint8_t slaveAddress, uint
 //! preloaded byte queue, in whatever chunk sizes the caller asks for.
 //! An exhausted queue reads empty, which is what a real timeout looks like
 //! to nanomodbus.
-class ScriptedSerial : public detail::Serial
+class ScriptedSerial : public Serial
 {
 public:
    void open() override { _open = true; }
@@ -117,7 +117,7 @@ private:
 
 //! Serial test double whose transfers always fail, for the paths that have
 //! to surface a wire-level cause rather than swallow it.
-class ThrowingSerial : public detail::Serial
+class ThrowingSerial : public Serial
 {
 public:
    static constexpr std::string_view kFailure = "the wire is on fire";

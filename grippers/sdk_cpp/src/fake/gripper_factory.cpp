@@ -57,6 +57,7 @@ std::unique_ptr<Gripper> makeFakeGripper(const ConnectionConfig& config, std::sh
    return std::make_unique<Gripper>(std::move(serial),
                                     config.modbusSlaveAddress,
                                     detail::exchangePeriodFromFrequency(frequency),
+                                    makeDefaultPlatform(),
                                     std::move(sink));
 }
 } // namespace Robotiq
