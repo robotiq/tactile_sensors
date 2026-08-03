@@ -46,6 +46,48 @@ jobs:
           cmake --build build -j 4
           ctest --test-dir build --output-on-failure
 
+  # A bare-metal cross-compile of the freestanding profile. No runner can run
+  # it, so this is a compile-only guard; cortex-m55 stands in for "a real MCU
+  # target" (it is what the SDK was brought up on). The whole core — the
+  # threaded Gripper included — must compile with no threading support at all:
+  # everything OS-flavored sits behind the injected Platform.
+  cortex-m55:
+    runs-on: ubuntu-latest
+    env:
+      CXXFLAGS: -std=c++17 -Isdk_cpp/include -Isdk_cpp/third_party/nanomodbus
+                -mcpu=cortex-m55 -mthumb -fexceptions -Wall -Wextra -Werror
+                -DGRIPPERS_HOSTED=0 -DGRIPPERS_BUILD_DEFAULT_SERIAL=0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the arm-none-eabi toolchain
+        run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi
+
+      - name: Compile the core
+        run: |
+          arm-none-eabi-g++ $CXXFLAGS -c -o /dev/null sdk_cpp/src/logger.cpp
+          arm-none-eabi-g++ $CXXFLAGS -c -o /dev/null sdk_cpp/src/freestanding/default_logger.cpp
+          arm-none-eabi-g++ $CXXFLAGS -c -o /dev/null sdk_cpp/src/detail/gripper_modbus_client.cpp
+          arm-none-eabi-g++ $CXXFLAGS -c -o /dev/null sdk_cpp/src/gripper.cpp
+
+      # The reference ThreadX port, against a compile-only tx_api.h stand-in.
+      - name: Syntax-check the ThreadX port
+        run: |
+          printf '#include <threadx_platform.hpp>\nRobotiq::ports::ThreadXPlatform platform{};\n' > probe.cpp
+          arm-none-eabi-g++ $CXXFLAGS -Isdk_cpp/ports/threadx -Isdk_cpp/ports/threadx/compile_stub -fsyntax-only probe.cpp
+
+  # The CMake wiring of the freestanding profile, with the host compiler: the
+  # configure must not require libserialport or Threads, and must select the
+  # freestanding TUs.
+  freestanding-cmake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure and build the library with the hosted pieces off
+        run: |
+          cmake -S sdk_cpp -B build-freestanding -DCMAKE_BUILD_TYPE=Release \
+            -DGRIPPERS_HOSTED=OFF -DGRIPPERS_BUILD_DEFAULT_SERIAL=OFF -DGRIPPERS_BUILD_FAKE=OFF
+          cmake --build build-freestanding -j 4
+
   format:
     runs-on: ubuntu-latest
     steps:
