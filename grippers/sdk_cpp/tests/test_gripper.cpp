@@ -313,7 +313,7 @@ TEST(TestGripperActivate, power_cycled_gripper_needs_the_full_handshake)
    fake::setActivated(powerCycled, true); // gACT echoed...
    fake::setActivationState(powerCycled, ActivationState::Reset); // ...but gSTA says reset
    fakeServer.model.setStatus(powerCycled);
-   fakeServer.model.setActivationDone(true);
+   fakeServer.model.setActivationHighButIncomplete();
    Gripper gripper(std::make_unique<fake::GripperSerial>(fakeServer.server),
                    kSlave,
                    kFastPeriod,
@@ -476,7 +476,7 @@ TEST(TestGripperActivate, handshake_keeps_the_callers_speed_force_and_position)
    fake::setActivated(powerCycled, true);
    fake::setActivationState(powerCycled, ActivationState::Reset);
    fakeServer.model.setStatus(powerCycled);
-   fakeServer.model.setActivationDone(true);
+   fakeServer.model.setActivationHighButIncomplete();
    Gripper gripper(std::make_unique<fake::GripperSerial>(fakeServer.server),
                    kSlave,
                    kFastPeriod,

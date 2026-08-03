@@ -44,6 +44,12 @@ void InstrumentedRegisterModel::setActivationDone(bool value)
    _activationDone = value;
 }
 
+void InstrumentedRegisterModel::setActivationHighButIncomplete()
+{
+   _previousActivateBit = true;
+   _activationDone = false;
+}
+
 void InstrumentedRegisterModel::read(uint16_t address, uint16_t quantity, uint16_t* out) const
 {
    statusReads.fetch_add(1);

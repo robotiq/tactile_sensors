@@ -51,6 +51,18 @@ public:
    void setPositionRequestEcho(uint8_t position);
    void setActivationDone(bool value);
 
+   //! A gripper whose rACT was already high before the SDK attached, but whose
+   //! activation is not complete — the power-cycled case. rACT is remembered as
+   //! high so the command seeded from the echoed gACT does not read as a rising
+   //! edge, while the activation stays incomplete: only the host's
+   //! clear-then-set handshake can finish it.
+   //!
+   //! setActivationDone(true) cannot express this. It marks the activation done
+   //! as well, so the first exchange recomputes the status as Complete and the
+   //! injected reset state survives only until then — whichever of the exchange
+   //! thread and the caller gets there first decides what activate() sees.
+   void setActivationHighButIncomplete();
+
    void read(uint16_t address, uint16_t quantity, uint16_t* out) const override;
    void write(uint16_t address, uint16_t quantity, const uint16_t* values) override;
 
