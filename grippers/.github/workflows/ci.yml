@@ -70,10 +70,103 @@ jobs:
           arm-none-eabi-g++ $CXXFLAGS -c -o /dev/null sdk_cpp/src/gripper.cpp
 
       # The reference ThreadX port, against a compile-only tx_api.h stand-in.
+      # Keeps the committed stub honest and proves the port needs nothing beyond
+      # the API surface it documents. The link job below is the real check.
       - name: Syntax-check the ThreadX port
         run: |
           printf '#include <threadx_platform.hpp>\nRobotiq::ports::ThreadXPlatform platform{};\n' > probe.cpp
           arm-none-eabi-g++ $CXXFLAGS -Isdk_cpp/ports/threadx -Isdk_cpp/ports/threadx/compile_stub -fsyntax-only probe.cpp
+
+  # Links the threaded stack for an STM32N6-class target against REAL ThreadX,
+  # which a compile cannot check: unresolved symbols, the unwinder -fexceptions
+  # drags in, and the libc backing of steady_clock only appear at link time.
+  # Everything here comes from public sources — no ST tooling, which is why
+  # signing and flashing stay out of CI (see mono_firmware for those).
+  threadx-link:
+    runs-on: ubuntu-latest
+    env:
+      # ubuntu-24.04 ships gcc-arm-none-eabi 13.2; 22.04's 10.3 is too old for
+      # the cortex-m55 flags.
+      THREADX_REF: v6.5.1.202602a_rel
+      FIXTURE: sdk_cpp/ports/threadx/link_test
+      CXXFLAGS: -std=c++17 -mcpu=cortex-m55 -mthumb -Os -ffunction-sections
+                -fdata-sections -fexceptions -fno-rtti -fno-threadsafe-statics
+                -Wall -Wextra -Werror
+                -DGRIPPERS_HOSTED=0 -DGRIPPERS_BUILD_DEFAULT_SERIAL=0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the arm-none-eabi toolchain
+        run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi ninja-build
+
+      - name: Build ThreadX for cortex-m55
+        run: |
+          git clone --depth 1 --branch "$THREADX_REF" \
+            https://github.com/eclipse-threadx/threadx.git threadx-src
+          cp "$FIXTURE/threadx_cortex_m55.cmake" threadx-src/cmake/
+          cmake -S threadx-src -B threadx-build -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/threadx_cortex_m55.cmake
+          cmake --build threadx-build -j 4
+          test -f threadx-build/libthreadx.a
+
+      # steady_clock's backing is a property of the multilib, and nosys.specs
+      # stubs the missing one silently instead of failing the link — so an
+      # unimplemented backing shows up as a frozen clock on hardware, not here.
+      # Assert which symbol this toolchain actually requires.
+      - name: Assert the steady_clock backing the glue must implement
+        run: |
+          lib=$(arm-none-eabi-g++ -mcpu=cortex-m55 -mthumb -print-file-name=libstdc++.a)
+          mkdir -p probe-chrono
+          arm-none-eabi-ar x "$lib" chrono.o --output=probe-chrono
+          undefined=$(arm-none-eabi-nm -C probe-chrono/chrono.o | sed -n 's/^ *U //p')
+          echo "$undefined"
+          if echo "$undefined" | grep -qx gettimeofday; then
+            echo "steady_clock is backed by gettimeofday - newlib_glue.c implements it"
+          elif echo "$undefined" | grep -qx clock_gettime; then
+            echo "steady_clock is backed by clock_gettime - newlib_glue.c implements it"
+          else
+            echo "::error::steady_clock needs neither gettimeofday nor clock_gettime on this"
+            echo "::error::toolchain. Find its backing and implement it in $FIXTURE/newlib_glue.c,"
+            echo "::error::or every SDK timeout will silently stop advancing on hardware."
+            exit 1
+          fi
+
+      - name: Link the freestanding image
+        run: |
+          inc="-Isdk_cpp/include -Isdk_cpp/third_party/nanomodbus -Isdk_cpp/ports/threadx
+               -Ithreadx-src/common/inc -Ithreadx-src/ports/cortex_m55/gnu/inc"
+          cflags="-std=c11 -mcpu=cortex-m55 -mthumb -Os -Wall -Wextra -Werror"
+          mkdir -p obj
+          objects=""
+          for src in sdk_cpp/src/gripper.cpp \
+                     sdk_cpp/src/detail/gripper_modbus_client.cpp \
+                     sdk_cpp/src/logger.cpp \
+                     sdk_cpp/src/freestanding/default_logger.cpp \
+                     "$FIXTURE/main.cpp"; do
+            obj="obj/$(basename "$src").o"
+            arm-none-eabi-g++ $CXXFLAGS $inc -c "$src" -o "$obj"
+            objects="$objects $obj"
+          done
+          for src in sdk_cpp/third_party/nanomodbus/nanomodbus.c "$FIXTURE/newlib_glue.c"; do
+            obj="obj/$(basename "$src").o"
+            arm-none-eabi-gcc $cflags $inc -c "$src" -o "$obj"
+            objects="$objects $obj"
+          done
+          # An explicit object list, never a glob: the steady_clock probe leaves
+          # libstdc++'s own chrono.o lying about, and it must not be linked in.
+          arm-none-eabi-g++ -mcpu=cortex-m55 -mthumb -Os -Wl,--gc-sections \
+            --specs=nosys.specs --specs=nano.specs \
+            $objects threadx-build/libthreadx.a -o n6.elf
+          arm-none-eabi-size n6.elf
+
+      # A link that garbage-collected the stack away would prove nothing.
+      - name: Assert the stack really is in the image
+        run: |
+          symbols=$(arm-none-eabi-nm -C n6.elf)
+          for want in '_tx_thread_create' 'ThreadXPlatform::spawn' 'Gripper::Gripper' '__cxa_throw'; do
+            echo "$symbols" | grep -q "$want" \
+              || { echo "::error::$want missing from the linked image"; exit 1; }
+            echo "present: $want"
+          done
 
   # The CMake wiring of the freestanding profile, with the host compiler: the
   # configure must not require libserialport or Threads, and must select the
