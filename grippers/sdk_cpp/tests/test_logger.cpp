@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <Robotiq/gripper/logger.hpp>
+#include <Robotiq/gripper/stderr_logger.hpp>
 #include <Robotiq/gripper/throttle.hpp>
 
 #include "test_utils.hpp"

@@ -17,7 +17,7 @@
 #include <cstdint>
 #include <vector>
 
-#include <Robotiq/detail/serial.hpp>
+#include <Robotiq/gripper/serial.hpp>
 
 namespace Robotiq::fake {
 
@@ -25,7 +25,7 @@ class GripperServer;
 
 //! Synchronous by construction: each write delivers a request and runs the
 //! server, and reads drain the reply it produced.
-class GripperSerial : public detail::Serial
+class GripperSerial : public Serial
 {
 public:
    explicit GripperSerial(GripperServer& gripperServer);

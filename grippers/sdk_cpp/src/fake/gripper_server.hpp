@@ -20,7 +20,7 @@
 #include <memory>
 #include <vector>
 
-#include <Robotiq/detail/serial.hpp>
+#include <Robotiq/gripper/serial.hpp>
 
 namespace Robotiq::fake {
 

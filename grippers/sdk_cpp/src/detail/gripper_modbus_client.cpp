@@ -13,16 +13,14 @@
 #include <vector>
 
 #include <Robotiq/gripper/command.hpp>
-#include <Robotiq/gripper/connection_config.hpp>
 #include <Robotiq/gripper/driver_exception.hpp>
 #include <Robotiq/gripper/logger.hpp>
 #include <Robotiq/gripper/status.hpp>
 #include <Robotiq/gripper/serial_io_exception.hpp>
 #include <Robotiq/detail/byte_packing.hpp>
-#include <Robotiq/detail/default_serial.hpp>
 #include <Robotiq/detail/gripper_modbus_client.hpp>
 #include <Robotiq/detail/modbus_constants.hpp>
-#include <Robotiq/detail/serial.hpp>
+#include <Robotiq/gripper/serial.hpp>
 
 namespace Robotiq::detail {
 
@@ -106,10 +104,6 @@ void check(nmbs_error err, const std::string& context)
    }
 }
 
-std::unique_ptr<Serial> makeSerial(const ConnectionConfig& config, const std::shared_ptr<Logger>& logger)
-{
-   return std::make_unique<DefaultSerial>(config.serial, logger);
-}
 } // namespace
 
 struct GripperModbusClient::Impl
@@ -119,11 +113,6 @@ struct GripperModbusClient::Impl
    CallbackContext context;
    nmbs_t nmbs{};
 };
-
-GripperModbusClient::GripperModbusClient(const ConnectionConfig& config, std::shared_ptr<Logger> logger)
-   : GripperModbusClient(makeSerial(config, logger), config.modbusSlaveAddress, logger)
-{
-}
 
 GripperModbusClient::GripperModbusClient(std::unique_ptr<Serial> serial,
                                          uint8_t slaveAddress,

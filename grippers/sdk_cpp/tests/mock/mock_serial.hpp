@@ -10,10 +10,10 @@
 #include <chrono>
 #include <vector>
 
-#include <Robotiq/detail/serial.hpp>
+#include <Robotiq/gripper/serial.hpp>
 
 namespace Robotiq::test {
-class MockSerial : public Robotiq::detail::Serial
+class MockSerial : public Robotiq::Serial
 {
 public:
    MOCK_METHOD(void, open, (), (override));

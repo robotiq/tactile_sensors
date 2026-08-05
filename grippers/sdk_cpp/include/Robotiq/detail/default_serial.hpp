@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-#include <Robotiq/detail/serial.hpp>
+#include <Robotiq/gripper/serial.hpp>
 #include <Robotiq/gripper/serial_config.hpp>
 
 struct sp_port; // opaque port handle from libserialport

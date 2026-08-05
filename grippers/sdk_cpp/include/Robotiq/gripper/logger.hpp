@@ -12,13 +12,11 @@
 
 #pragma once
 
-#include <chrono>
 #include <memory>
-#include <mutex>
 #include <string_view>
-#include <utility>
 
 namespace Robotiq {
+
 class Logger
 {
 public:
@@ -36,18 +34,6 @@ public:
    virtual void log(Level level, std::string_view message) = 0;
 };
 
-//! \brief Default Logger implementation that writes to stderr.
-//! Thread-safe: a single std::mutex serializes writes so interleaved log
-//! lines from concurrent threads aren't garbled.
-class StderrLogger : public Logger
-{
-public:
-   void log(Level level, std::string_view message) override;
-
-private:
-   std::mutex _mutex;
-};
-
 //! \brief A do-nothing Logger, useful in tight benchmarks or tests.
 class NullLogger : public Logger
 {
@@ -55,7 +41,10 @@ public:
    void log(Level, std::string_view) override;
 };
 
-//! Build the default logger used when callers don't inject one.
+// Build the default logger used when callers don't inject one: StderrLogger
+// on a hosted runtime, NullLogger on a freestanding target (no console —
+// pass an application Logger, e.g. a UART sink, to get real logs). The
+// choice is made at build time by which TU is compiled in.
 std::shared_ptr<Logger> makeDefaultLogger();
 
 } // namespace Robotiq

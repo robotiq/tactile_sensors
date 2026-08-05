@@ -3,13 +3,18 @@
 //
 // Licensed under the BSD-3-Clause license; see LICENSE for details.
 
-//! \brief Byte-level transport to the gripper hardware.
-//! The driver talks to the hardware through an implementation of this
-//! interface, which lets tests substitute a scripted or mocked connection
-//! to verify the exact byte sequences on the wire.
+//! \brief Byte-level transport to the gripper hardware — the transport
+//! extension point. The driver talks to the hardware through an
+//! implementation of this interface: the built-in libserialport transport
+//! on a desktop, an application's own (a TCP-serial bridge, an MCU
+//! UART/DMA transport), or a scripted connection in tests.
 //! Link parameters (port, baud rate, timeout, ...) are fixed at
 //! construction of the implementation — see SerialConfig — so a connection
 //! cannot be silently reconfigured while open.
+//! ⚠ On an RTOS, read() MUST yield the CPU while awaiting bytes (e.g.
+//! interrupt/DMA completion signalled through a semaphore): it runs on the
+//! exchange thread, and a busy-wait there starves lower-priority tasks —
+//! see the caveats in ports/threadx/threadx_platform.hpp.
 
 #pragma once
 
@@ -17,7 +22,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace Robotiq::detail {
+namespace Robotiq {
 class Serial
 {
 public:
@@ -47,4 +52,4 @@ public:
    // \return Read/write timeout in milliseconds.
    [[nodiscard]] virtual std::chrono::milliseconds getTimeout() const = 0;
 };
-} // namespace Robotiq::detail
+} // namespace Robotiq

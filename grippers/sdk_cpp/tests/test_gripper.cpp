@@ -7,8 +7,12 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <functional>
 #include <memory>
+#include <utility>
 #include <vector>
+
+#include <Robotiq/gripper/platform.hpp>
 
 #include <Robotiq/gripper.hpp>
 #include <Robotiq/gripper/connection_state.hpp>
@@ -79,6 +83,66 @@ public:
 
    std::atomic<bool> dropReplies{false};
 };
+
+//! Thread that counts its joins on the way through to the real one.
+class JoinCountingThread : public Thread
+{
+public:
+   JoinCountingThread(std::unique_ptr<Thread> real, std::atomic<int>& joins)
+      : _real(std::move(real))
+      , _joins(joins)
+   {
+   }
+
+   void join() override
+   {
+      _real->join();
+      ++_joins;
+   }
+
+private:
+   std::unique_ptr<Thread> _real;
+   std::atomic<int>& _joins;
+};
+
+//! Platform that delegates to the default std-backed one but counts
+//! what the gripper asks of it — the seam a real RTOS port implements.
+class InstrumentedPlatform : public Platform
+{
+public:
+   std::atomic<int> mutexesCreated{0};
+   std::atomic<int> threadsSpawned{0};
+   std::atomic<int> threadsJoined{0};
+   std::atomic<int> sleepUntils{0};
+   std::atomic<int> sleepFors{0};
+
+   std::unique_ptr<Mutex> makeMutex() override
+   {
+      ++mutexesCreated;
+      return _real->makeMutex();
+   }
+
+   std::unique_ptr<Thread> spawn(std::function<void()> fn) override
+   {
+      ++threadsSpawned;
+      return std::make_unique<JoinCountingThread>(_real->spawn(std::move(fn)), threadsJoined);
+   }
+
+   void sleepUntil(std::chrono::steady_clock::time_point timePoint) override
+   {
+      ++sleepUntils;
+      _real->sleepUntil(timePoint);
+   }
+
+   void sleepFor(std::chrono::milliseconds duration) override
+   {
+      ++sleepFors;
+      _real->sleepFor(duration);
+   }
+
+private:
+   std::shared_ptr<Platform> _real = makeDefaultPlatform();
+};
 } // namespace
 
 class TestGripper : public ::testing::Test
@@ -88,6 +152,7 @@ protected:
       : gripper(std::make_unique<fake::GripperSerial>(fakeServer.server),
                 kSlave,
                 kFastPeriod,
+                makeDefaultPlatform(),
                 std::make_shared<NullLogger>())
    {
    }
@@ -123,6 +188,7 @@ TEST(TestGripperActivate, default_speed_and_force_reach_the_gripper)
       Gripper gripper(std::make_unique<fake::GripperSerial>(fakeServer.server),
                       kSlave,
                       kFastPeriod,
+                      makeDefaultPlatform(),
                       std::make_shared<NullLogger>());
       EXPECT_EQ(activate(gripper, std::chrono::seconds(2)), ActivationResult::Activated);
    }
@@ -138,6 +204,7 @@ TEST(TestGripperActivate, redundant_activate_keeps_the_command_and_never_resets)
    Gripper gripper(std::make_unique<fake::GripperSerial>(fakeServer.server),
                    kSlave,
                    kFastPeriod,
+                   makeDefaultPlatform(),
                    std::make_shared<NullLogger>());
    ASSERT_EQ(activate(gripper, std::chrono::seconds(2)), ActivationResult::Activated);
 
@@ -168,6 +235,7 @@ TEST(TestGripperActivate, already_activated_gripper_is_left_undisturbed)
       Gripper gripper(std::make_unique<fake::GripperSerial>(fakeServer.server),
                       kSlave,
                       kFastPeriod,
+                      makeDefaultPlatform(),
                       std::make_shared<NullLogger>());
 
       EXPECT_EQ(activate(gripper, std::chrono::seconds(2)), ActivationResult::AlreadyActive);
@@ -197,6 +265,7 @@ TEST(TestGripperActivate, latched_major_fault_refuses_activation_until_explicit_
    Gripper gripper(std::make_unique<fake::GripperSerial>(fakeServer.server),
                    kSlave,
                    kFastPeriod,
+                   makeDefaultPlatform(),
                    std::make_shared<NullLogger>());
 
    const GripperCommand before = gripper.getCommand();
@@ -223,6 +292,7 @@ TEST(TestGripperActivate, minor_fault_does_not_trigger_a_reset)
    Gripper gripper(std::make_unique<fake::GripperSerial>(fakeServer.server),
                    kSlave,
                    kFastPeriod,
+                   makeDefaultPlatform(),
                    std::make_shared<NullLogger>());
 
    EXPECT_EQ(activate(gripper, std::chrono::seconds(2)), ActivationResult::AlreadyActive);
@@ -243,10 +313,11 @@ TEST(TestGripperActivate, power_cycled_gripper_needs_the_full_handshake)
    fake::setActivated(powerCycled, true); // gACT echoed...
    fake::setActivationState(powerCycled, ActivationState::Reset); // ...but gSTA says reset
    fakeServer.model.setStatus(powerCycled);
-   fakeServer.model.setActivationDone(true);
+   fakeServer.model.setActivationHighButIncomplete();
    Gripper gripper(std::make_unique<fake::GripperSerial>(fakeServer.server),
                    kSlave,
                    kFastPeriod,
+                   makeDefaultPlatform(),
                    std::make_shared<NullLogger>());
 
    EXPECT_EQ(activate(gripper, std::chrono::seconds(2)), ActivationResult::Activated);
@@ -266,6 +337,7 @@ TEST(TestGripperCommandImage, is_seeded_from_the_status_echoes_at_construction)
    Gripper gripper(std::make_unique<fake::GripperSerial>(fakeServer.server),
                    kSlave,
                    kFastPeriod,
+                   makeDefaultPlatform(),
                    std::make_shared<NullLogger>());
 
    // The construction-time read already seeded the image: no waiting.
@@ -288,11 +360,68 @@ TEST(TestGripperConstruction, fails_when_no_gripper_answers_and_never_writes)
 
    // Requests reach the gripper but no reply ever arrives: construction
    // must fail like a dead serial link would...
-   EXPECT_THROW(Gripper(std::move(serial), kSlave, kFastPeriod, std::make_shared<NullLogger>()), DriverException);
+   EXPECT_THROW(Gripper(std::move(serial), kSlave, kFastPeriod, makeDefaultPlatform(), std::make_shared<NullLogger>()),
+                DriverException);
 
    // ...after retrying the status read, without ever writing a command.
    EXPECT_GE(fakeServer.model.statusReads.load(), 2);
    EXPECT_EQ(fakeServer.model.commandWrites.load(), 0);
+}
+
+TEST(TestGripperConstruction, fails_on_a_null_platform_before_touching_the_bus)
+{
+   InstrumentedFakeGripperServer fakeServer;
+   auto serial = std::make_unique<ReplyDroppingSerial>(fakeServer.server);
+
+   EXPECT_THROW(Gripper(std::move(serial), kSlave, kFastPeriod, nullptr, std::make_shared<NullLogger>()),
+                DriverException);
+   EXPECT_EQ(fakeServer.model.statusReads.load(), 0);
+}
+
+TEST(TestGripperPlatform, exchange_runs_entirely_on_the_injected_platform)
+{
+   InstrumentedFakeGripperServer fakeServer;
+   const auto platform = std::make_shared<InstrumentedPlatform>();
+   {
+      Gripper gripper(std::make_unique<fake::GripperSerial>(fakeServer.server),
+                      kSlave,
+                      kFastPeriod,
+                      platform,
+                      std::make_shared<NullLogger>());
+      // The gripper runs on — and reports — the platform it was given.
+      EXPECT_EQ(&gripper.platform(), platform.get());
+      // One exchange thread, one image lock — and nothing else.
+      EXPECT_EQ(platform->threadsSpawned.load(), 1);
+      EXPECT_EQ(platform->mutexesCreated.load(), 1);
+      // The loop paces every cycle through the platform's sleep.
+      ASSERT_TRUE(Robotiq::waitFor([&] { return platform->sleepUntils.load() >= 3; },
+                                   std::chrono::seconds(2),
+                                   std::chrono::milliseconds(1)));
+      EXPECT_EQ(platform->threadsJoined.load(), 0);
+   }
+   // Destruction joined the exchange thread it spawned.
+   EXPECT_EQ(platform->threadsJoined.load(), 1);
+}
+
+TEST(TestGripperPlatform, activate_sleeps_on_the_grippers_own_platform)
+{
+   // A gripper stuck mid-activation forces activate() to poll: every sleep
+   // between those polls must come from the injected platform — on an RTOS a
+   // std sleep here would be the app-task starvation bug all over again.
+   InstrumentedFakeGripperServer fakeServer;
+   GripperStatus stuck;
+   fake::setActivated(stuck, true);
+   fake::setActivationState(stuck, ActivationState::InProgress);
+   fakeServer.model.pinnedStatus = stuck;
+   const auto platform = std::make_shared<InstrumentedPlatform>();
+   Gripper gripper(std::make_unique<fake::GripperSerial>(fakeServer.server),
+                   kSlave,
+                   kFastPeriod,
+                   platform,
+                   std::make_shared<NullLogger>());
+
+   EXPECT_EQ(activate(gripper, std::chrono::milliseconds(30)), ActivationResult::Timeout);
+   EXPECT_GT(platform->sleepFors.load(), 0);
 }
 
 TEST_F(TestGripper, commands_reach_the_gripper_and_status_returns)
@@ -347,10 +476,11 @@ TEST(TestGripperActivate, handshake_keeps_the_callers_speed_force_and_position)
    fake::setActivated(powerCycled, true);
    fake::setActivationState(powerCycled, ActivationState::Reset);
    fakeServer.model.setStatus(powerCycled);
-   fakeServer.model.setActivationDone(true);
+   fakeServer.model.setActivationHighButIncomplete();
    Gripper gripper(std::make_unique<fake::GripperSerial>(fakeServer.server),
                    kSlave,
                    kFastPeriod,
+                   makeDefaultPlatform(),
                    std::make_shared<NullLogger>());
 
    // An application that has tuned its grip must not silently get full scale
@@ -377,7 +507,7 @@ TEST(TestGripperActivateFailure, recover_from_fault_times_out_while_the_link_is_
    InstrumentedFakeGripperServer fakeServer;
    auto serial = std::make_unique<WriteFailingSerial>(fakeServer.server);
    WriteFailingSerial& link = *serial;
-   Gripper gripper(std::move(serial), kSlave, kFastPeriod, std::make_shared<NullLogger>());
+   Gripper gripper(std::move(serial), kSlave, kFastPeriod, makeDefaultPlatform(), std::make_shared<NullLogger>());
    const GripperCommand before = gripper.getCommand();
 
    link.failing.store(true);
@@ -399,6 +529,7 @@ TEST(TestGripperExchange, a_zero_period_free_runs_instead_of_stalling)
       Gripper gripper(std::make_unique<fake::GripperSerial>(fakeServer.server),
                       kSlave,
                       std::chrono::microseconds{0},
+                      makeDefaultPlatform(),
                       std::make_shared<NullLogger>());
       ASSERT_TRUE(Robotiq::waitFor([&] { return fakeServer.model.commandWrites.load() > 10; },
                                    std::chrono::seconds(2),
@@ -413,7 +544,7 @@ TEST(TestGripperActivateFailure, times_out_while_the_link_is_down)
    InstrumentedFakeGripperServer fakeServer;
    auto serial = std::make_unique<WriteFailingSerial>(fakeServer.server);
    WriteFailingSerial& link = *serial;
-   Gripper gripper(std::move(serial), kSlave, kFastPeriod, std::make_shared<NullLogger>());
+   Gripper gripper(std::move(serial), kSlave, kFastPeriod, makeDefaultPlatform(), std::make_shared<NullLogger>());
 
    // The link dies after construction: activate() must not judge the
    // gripper through a stale image.
@@ -436,6 +567,7 @@ TEST(TestGripperActivateFailure, times_out_when_activation_never_completes)
    Gripper gripper(std::make_unique<fake::GripperSerial>(fakeServer.server),
                    kSlave,
                    kFastPeriod,
+                   makeDefaultPlatform(),
                    std::make_shared<NullLogger>());
 
    EXPECT_EQ(activate(gripper, std::chrono::milliseconds(30)), ActivationResult::Timeout);
@@ -459,7 +591,7 @@ TEST(TestGripperHealth, repeated_exchange_failures_degrade_the_state_to_faulted)
    InstrumentedFakeGripperServer fakeServer;
    auto serial = std::make_unique<WriteFailingSerial>(fakeServer.server);
    WriteFailingSerial& link = *serial;
-   Gripper gripper(std::move(serial), kSlave, kFastPeriod, std::make_shared<NullLogger>());
+   Gripper gripper(std::move(serial), kSlave, kFastPeriod, makeDefaultPlatform(), std::make_shared<NullLogger>());
    ASSERT_EQ(gripper.connectionState(), ConnectionState::Operational);
 
    // The link dies: every exchange fails from here on.
@@ -474,7 +606,7 @@ TEST(TestGripperHealth, faulted_state_recovers_to_operational_on_the_next_succes
    InstrumentedFakeGripperServer fakeServer;
    auto serial = std::make_unique<WriteFailingSerial>(fakeServer.server);
    WriteFailingSerial& link = *serial;
-   Gripper gripper(std::move(serial), kSlave, kFastPeriod, std::make_shared<NullLogger>());
+   Gripper gripper(std::move(serial), kSlave, kFastPeriod, makeDefaultPlatform(), std::make_shared<NullLogger>());
 
    link.failing.store(true);
    ASSERT_TRUE(Robotiq::waitFor([&] { return gripper.connectionState() == ConnectionState::Faulted; },
