@@ -34,6 +34,17 @@ TEST(TestStderrLogger, log_writes_the_message_to_stderr)
    EXPECT_NE(out.find("boom"), std::string::npos);
 }
 
+TEST(TestStderrLogger, name_tags_every_line)
+{
+   StderrLogger logger("robotiq");
+
+   testing::internal::CaptureStderr();
+   logger.log(Logger::Level::Info, "boom");
+   const std::string out = testing::internal::GetCapturedStderr();
+
+   EXPECT_NE(out.find("[robotiq] boom"), std::string::npos);
+}
+
 TEST(TestThrottle, executes_at_most_once_per_period)
 {
    Throttle throttle(std::chrono::milliseconds(200));

@@ -6,8 +6,12 @@
 //! Hosted-only: it needs <iostream> and a wall clock, neither of which a
 //! freestanding target has — provide an application Logger (e.g. a UART
 //! sink) there instead.
-//! Thread-safe: a single std::mutex serializes writes so interleaved log
-//! lines from concurrent threads aren't garbled.
+//! Thread-safe: writes are serialized across all instances, so they
+//! share the stream without garbling lines. The optional name tags
+//! every line: inject one instance into the SDK and keep another for
+//! application messages to tell them apart (a real integration gets the
+//! same separation from its injected adapter, e.g. a named rclcpp
+//! logger).
 
 #pragma once
 
@@ -17,7 +21,7 @@
 #error "StderrLogger is hosted-only: on a freestanding target, implement a Logger over your own sink instead."
 #endif
 
-#include <mutex>
+#include <string>
 #include <string_view>
 
 #include <Robotiq/gripper/logger.hpp>
@@ -27,10 +31,12 @@ namespace Robotiq {
 class StderrLogger : public Logger
 {
 public:
+   explicit StderrLogger(std::string name = {});
+
    void log(Level level, std::string_view message) override;
 
 private:
-   std::mutex _mutex;
+   std::string _name;
 };
 
 } // namespace Robotiq

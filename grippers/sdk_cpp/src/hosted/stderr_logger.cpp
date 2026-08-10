@@ -15,6 +15,7 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <utility>
 
 namespace Robotiq {
 namespace {
@@ -54,17 +55,27 @@ void writeTimestamp(std::ostream& out)
 
 } // namespace
 
+StderrLogger::StderrLogger(std::string name)
+   : _name(std::move(name))
+{
+}
+
 void StderrLogger::log(Level level, std::string_view message)
 {
-   std::lock_guard<std::mutex> lock(_mutex);
+   // All instances share the stream, so they share one mutex.
+   static std::mutex mutex;
+   const std::lock_guard<std::mutex> lock(mutex);
    writeTimestamp(std::cerr);
-   std::cerr << '[' << toString(level) << "] " << message << '\n';
+   std::cerr << '[' << toString(level) << "] ";
+   if(!_name.empty())
+   {
+      std::cerr << '[' << _name << "] ";
+   }
+   std::cerr << message << '\n';
 }
 
 std::shared_ptr<Logger> makeDefaultLogger()
 {
-   // One shared instance: fallback users share a single mutex, so their
-   // stderr lines stay serialized against each other.
    static const auto instance = std::make_shared<StderrLogger>();
    return instance;
 }
