@@ -102,7 +102,6 @@ enum class ActivationResult
 // Ensure the gripper is activated, blocking until it reports
 // completion. A healthy, already-activated gripper is left undisturbed
 // and an activation already in progress is waited on, not restarted.
-// When the handshake rGTO is cleared.
 [[nodiscard]] ActivationResult activate(Gripper& gripper, std::chrono::milliseconds timeout = std::chrono::seconds(15));
 
 // The manual's fault-recovery handshake, run unconditionally: clearing

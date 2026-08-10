@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(grippers VERSION 0.1.0 LANGUAGES C CXX)
+project(grippers VERSION 1.0.0 LANGUAGES C CXX)
 
 if(NOT DEFINED CMAKE_CXX_STANDARD)
    set(CMAKE_CXX_STANDARD 17)
