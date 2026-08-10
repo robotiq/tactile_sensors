@@ -45,3 +45,6 @@ target_include_directories(grippers_tests PRIVATE
 )
 include(GoogleTest)
 gtest_discover_tests(grippers_tests)
+
+# Not a gtest: it asserts a linking property of the object-library form.
+add_subdirectory(grippers_objects)
