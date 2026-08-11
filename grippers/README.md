@@ -1,9 +1,5 @@
 # Robotiq Grippers C++ SDK
 
-> ⚠️ **In development — alpha.** APIs are subject to change without notice
-> until v1.0.0. If you build on this today, pin an exact commit and expect
-> breakage.
-
 A standalone, ROS-independent C++ SDK for controlling Robotiq 2F adaptive
 grippers (2F-85 / 2F-140 / Hand-E class) over their Modbus RTU serial link.
 Cross-platform: Linux, Windows, macOS.
@@ -177,6 +173,17 @@ because each presents as an unexplained hang: the injected `Serial::read` must
 yield the CPU while awaiting bytes (interrupt/DMA + RTOS semaphore, never a
 polled busy-wait), and `std::chrono::steady_clock` must be backed by a real
 monotonic clock on the target.
+
+## Versioning
+
+[Semantic versioning](https://semver.org) from 1.0.0 on: patch releases fix
+bugs, minor releases add API, and a breaking change to the documented API takes
+a major release. The documented API is what this README and the public headers
+describe — `Gripper`, the command/status blocks and the register map,
+`ConnectionConfig`, `Serial`, `Platform`, `Logger`, and
+`detail::GripperModbusClient` for the no-thread path. Anything under
+`Robotiq/detail/` that is not described here is internal and may change in any
+release.
 
 ## License
 
