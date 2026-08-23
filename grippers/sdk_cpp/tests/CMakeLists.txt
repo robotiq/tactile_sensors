@@ -15,6 +15,7 @@ add_executable(grippers_tests
   test_gripper_modbus_client.cpp
   test_byte_packing.cpp
   test_logger.cpp
+  test_platform.cpp
   test_typed_layers.cpp
   test_units.cpp
   test_to_string.cpp

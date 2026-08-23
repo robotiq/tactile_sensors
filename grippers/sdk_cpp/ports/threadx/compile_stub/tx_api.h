@@ -13,6 +13,7 @@ typedef void VOID;
 
 #define TX_SUCCESS 0x00u
 #define TX_NO_INHERIT 0u
+#define TX_NO_WAIT 0u
 #define TX_WAIT_FOREVER 0xFFFFFFFFu
 #define TX_NO_TIME_SLICE 0u
 #define TX_AUTO_START 1u
@@ -26,6 +27,11 @@ typedef struct TX_MUTEX_STRUCT
    ULONG tx_stub_unused;
 } TX_MUTEX;
 
+typedef struct TX_SEMAPHORE_STRUCT
+{
+   ULONG tx_stub_unused;
+} TX_SEMAPHORE;
+
 typedef struct TX_THREAD_STRUCT
 {
    ULONG tx_stub_unused;
@@ -35,6 +41,11 @@ UINT tx_mutex_create(TX_MUTEX* mutex, CHAR* name, UINT inherit);
 UINT tx_mutex_delete(TX_MUTEX* mutex);
 UINT tx_mutex_get(TX_MUTEX* mutex, ULONG waitOption);
 UINT tx_mutex_put(TX_MUTEX* mutex);
+
+UINT tx_semaphore_create(TX_SEMAPHORE* semaphore, CHAR* name, ULONG initialCount);
+UINT tx_semaphore_delete(TX_SEMAPHORE* semaphore);
+UINT tx_semaphore_get(TX_SEMAPHORE* semaphore, ULONG waitOption);
+UINT tx_semaphore_put(TX_SEMAPHORE* semaphore);
 
 UINT tx_thread_create(TX_THREAD* thread,
                       CHAR* name,

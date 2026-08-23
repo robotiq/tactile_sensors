@@ -39,6 +39,14 @@ functions, `DeviceProfile` and the SI unit conversions, and
 for people, not parsers: its layout may change in any release. Everything
 under `Robotiq/detail/` is internal and may change in any release.
 
+The injectable interfaces are the exception, and only for the side that
+implements them: a minor release may add a member `Platform`, `Serial` or
+`Logger` requires, since what they have to cover grows with every new target
+and transport. Calling them keeps the major-release guarantee. If you maintain
+an implementation out of tree — an RTOS `Platform`, a UART `Serial` — pin the
+minor version; moving up gives a compile error naming the new member, and the
+in-tree implementations show what to return.
+
 Two paths this section named at 1.0.0 have moved: the register map to
 `Robotiq/detail/register_map.hpp`, and the Modbus client from
 `detail/gripper_modbus_client.hpp` to `gripper/modbus_client.hpp`. Both old

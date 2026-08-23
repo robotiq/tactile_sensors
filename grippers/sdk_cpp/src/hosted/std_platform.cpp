@@ -7,6 +7,7 @@
 // platform default argument is bound at hosted call sites, never here.
 
 #include <chrono>
+#include <condition_variable>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -105,6 +106,29 @@ private:
    std::mutex _mutex;
 };
 
+class StdConditionVariable final : public ConditionVariable
+{
+public:
+   void waitUntil(Mutex& mutex, std::chrono::steady_clock::time_point timePoint) override
+   {
+      LockableMutex lockable{mutex};
+      _condition.wait_until(lockable, timePoint);
+   }
+
+   void notifyAll() override { _condition.notify_all(); }
+
+private:
+   struct LockableMutex
+   {
+      Mutex& mutex;
+
+      void lock() { mutex.lock(); }
+      void unlock() { mutex.unlock(); }
+   };
+
+   std::condition_variable_any _condition;
+};
+
 class StdThread final : public Thread
 {
 public:
@@ -133,6 +157,11 @@ class StdPlatform final : public Platform
 {
 public:
    std::unique_ptr<Mutex> makeMutex() override { return std::make_unique<StdMutex>(); }
+
+   std::unique_ptr<ConditionVariable> makeConditionVariable() override
+   {
+      return std::make_unique<StdConditionVariable>();
+   }
 
    std::unique_ptr<Thread> spawn(std::function<void()> fn) override
    {
