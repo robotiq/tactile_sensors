@@ -7,7 +7,6 @@
 #include "gripper_state.hpp"
 
 #include <memory>
-#include <mutex> // std::lock_guard — available even where std::mutex is not
 #include <utility>
 
 #include <Robotiq/gripper/connection_state.hpp>
@@ -52,30 +51,27 @@ Gripper::~Gripper() = default;
 
 void Gripper::setCommand(const GripperCommand& command)
 {
-   const std::lock_guard<Mutex> lock(*_impl->imageMutex);
-   _impl->command = command;
+   _impl->setCommand(command);
 }
 
 GripperCommand Gripper::getCommand() const
 {
-   const std::lock_guard<Mutex> lock(*_impl->imageMutex);
-   return _impl->command;
+   return _impl->command();
 }
 
 GripperStatus Gripper::getStatus() const
 {
-   const std::lock_guard<Mutex> lock(*_impl->imageMutex);
-   return _impl->status;
+   return _impl->status();
 }
 
 ConnectionState Gripper::connectionState() const
 {
-   return _impl->state.load();
+   return _impl->connectionState();
 }
 
 Platform& Gripper::platform() const noexcept
 {
-   return *_impl->platform;
+   return _impl->platform();
 }
 
 namespace {
