@@ -1,5 +1,7 @@
 target_sources(grippers_objects PRIVATE
   gripper.cpp
+  gripper_state.hpp
+  gripper_state.cpp
   frequency.hpp
   exchange_period.hpp
   logger.cpp

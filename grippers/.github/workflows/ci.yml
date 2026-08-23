@@ -141,6 +141,7 @@ jobs:
           mkdir -p obj
           objects=""
           for src in sdk_cpp/src/gripper.cpp \
+                     sdk_cpp/src/gripper_state.cpp \
                      sdk_cpp/src/modbus_client.cpp \
                      sdk_cpp/src/logger.cpp \
                      sdk_cpp/src/to_string.cpp \
