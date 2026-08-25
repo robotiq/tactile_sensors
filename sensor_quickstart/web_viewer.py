@@ -21,7 +21,8 @@ from pathlib import Path
 import websockets
 
 from protocol import NUM_FINGERS
-DISPLAY_POINTS = 500  # max points sent to browser for time-series
+DISPLAY_POINTS = 300  # max points sent to browser for time-series
+                      # (every stream is sent on every frame now, so keep it modest)
 BROADCAST_HZ = 5      # display refresh rate
 
 
@@ -203,7 +204,6 @@ class WebViewer:
         self.port = port
         self.buffer = SensorDataBuffer()
         self.clients = set()
-        self.active_tab = "static"
         self._had_client = False
 
     def serial_callback(self, sensor_data):
@@ -218,9 +218,7 @@ class WebViewer:
         try:
             async for message in websocket:
                 msg = json.loads(message)
-                if msg.get("type") == "tab_change":
-                    self.active_tab = msg["tab"]
-                elif msg.get("type") == "reset_baseline":
+                if msg.get("type") == "reset_baseline":
                     self.buffer.reset_baseline()
                 elif msg.get("type") == "set_raw_mode":
                     self.buffer.use_baseline = not msg.get("raw", False)
@@ -272,23 +270,21 @@ class WebViewer:
                             if b.push_total[f] else "0/0"
                             for f in range(NUM_FINGERS)
                         ]
-                    print(f"[diag] tab={self.active_tab}  clients={len(self.clients)}  "
+                    print(f"[diag] clients={len(self.clients)}  "
                           f"dyn={dyn_sizes}  accel={acc_sizes}  gyro={gyr_sizes}  "
                           f"corrupt={corrupt}")
                 if self.clients:
-                    tab = self.active_tab
-                    msg = {"type": "data", "tab": tab}
-
-                    if tab == "static":
-                        values, max_ranges = self.buffer.get_static_snapshot()
-                        msg["static"] = values
-                        msg["maxRange"] = max_ranges
-                    elif tab == "dynamic":
-                        msg["dynamic"] = self.buffer.get_dynamic_snapshot()
-                    elif tab == "imu":
-                        acc, gyr = self.buffer.get_imu_snapshot()
-                        msg["accel"] = acc
-                        msg["gyro"] = gyr
+                    # Single-page viewer: send every stream on every frame.
+                    values, max_ranges = self.buffer.get_static_snapshot()
+                    acc, gyr = self.buffer.get_imu_snapshot()
+                    msg = {
+                        "type": "data",
+                        "static": values,
+                        "maxRange": max_ranges,
+                        "dynamic": self.buffer.get_dynamic_snapshot(),
+                        "accel": acc,
+                        "gyro": gyr,
+                    }
 
                     payload = json.dumps(msg)
                     for client in self.clients.copy():
@@ -306,7 +302,7 @@ class WebViewer:
         while True:
             try:
                 fft_result = await loop.run_in_executor(None, self.buffer.compute_fft)
-                if self.clients and self.active_tab == "dynamic":
+                if self.clients:
                     payload = json.dumps({"type": "fft", "fft": fft_result})
                     await asyncio.gather(
                         *[c.send(payload) for c in self.clients.copy()],

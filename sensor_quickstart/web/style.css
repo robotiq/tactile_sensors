@@ -1,130 +1,154 @@
+/*
+ * Single-page layout: everything (static, dynamic, FFT, IMU) is visible at once.
+ * The page always fits the browser window (no scrolling) so the viewer can be
+ * docked to part of a 1280x800 screen while another tool (e.g. the force/torque
+ * viewer) uses the rest.
+ */
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
-body {
-    background: #1a1a2e;
-    color: #e0e0e0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+:root {
+    --bg: #1a1a2e;
+    --panel: #16213e;
+    --line: #0f3460;
+    --accent: #e94560;
+    --ax-x: #1f77b4;
+    --ax-y: #ff7f0e;
+    --ax-z: #2ca02c;
+    /* Below this the charts stop shrinking and the page scrolls instead. */
+    --min-row: 150px;
 }
 
-header {
-    background: #16213e;
-    padding: 12px 24px;
+html, body { height: 100%; }
+
+body {
+    background: var(--bg);
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     display: flex;
-    justify-content: space-between;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Header ------------------------------------------------------------------ */
+
+header {
+    flex: none;
+    background: var(--panel);
+    padding: 6px 12px;
+    display: flex;
     align-items: center;
-    border-bottom: 1px solid #0f3460;
+    gap: 20px;
+    border-bottom: 1px solid var(--line);
 }
 
 header h1 {
-    font-size: 18px;
+    font-size: 14px;
     font-weight: 600;
+    white-space: nowrap;
 }
 
 #status-bar {
+    margin-left: auto;
     display: flex;
-    gap: 20px;
-    font-size: 13px;
+    gap: 16px;
+    font-size: 12px;
+    white-space: nowrap;
 }
 
 .status-connected { color: #4caf50; }
 .status-disconnected { color: #f44336; }
 
-/* Tabs */
-.tabs {
-    display: flex;
-    background: #0f3460;
-}
-
-.tab {
-    padding: 10px 28px;
-    background: none;
-    border: none;
-    border-bottom: 3px solid transparent;
-    color: #8899aa;
-    font-size: 14px;
-    cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
-}
-
-.tab:hover { color: #ccc; }
-.tab.active { color: #fff; border-bottom-color: #e94560; }
-
-/* Tab content */
-.tab-content { display: none; padding: 16px 24px; }
-.tab-content.active { display: block; }
-
-.tab-content h2 {
-    font-size: 15px;
-    font-weight: 600;
-    margin: 12px 0 8px;
-    color: #aab;
-}
-
-.tab-content h3 {
-    font-size: 13px;
-    font-weight: 500;
-    margin-bottom: 4px;
-    color: #99a;
-}
-
-/* Controls */
 .controls {
     display: flex;
-    gap: 16px;
+    gap: 12px;
     align-items: center;
-    margin-bottom: 12px;
 }
 
 .controls button {
-    padding: 6px 16px;
-    background: #0f3460;
+    padding: 3px 10px;
+    background: var(--line);
     color: #e0e0e0;
     border: 1px solid #1a4a8a;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12px;
+    white-space: nowrap;
 }
 
 .controls button:hover { background: #1a4a8a; }
 
 .controls label {
-    font-size: 13px;
+    font-size: 12px;
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
+    white-space: nowrap;
 }
 
-/* Chart layout */
-.chart-row {
-    display: flex;
-    gap: 16px;
-    margin-bottom: 12px;
-}
+/* Chart grid -------------------------------------------------------------- */
 
-.chart-container {
+.grid {
     flex: 1;
+    min-height: 0;
+    display: grid;
+    /* row label | static (narrow, 4:7 sensor) | dynamic | fft | accel | gyro */
+    grid-template-columns: 16px minmax(110px, 0.55fr) repeat(4, minmax(0, 1fr));
+    grid-template-rows: auto minmax(var(--min-row), 1fr) minmax(var(--min-row), 1fr);
+    gap: 6px;
+    padding: 6px 10px 8px;
+    overflow: auto;
+}
+
+.col-head {
+    font-size: 12px;
+    font-weight: 600;
+    color: #aab;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.col-head .unit { color: #778; font-weight: 400; }
+
+.axis-key { margin-left: 6px; font-weight: 400; color: #889; }
+.axis-key i {
+    display: inline-block;
+    width: 8px;
+    height: 2px;
+    margin-right: 2px;
+    vertical-align: middle;
+}
+.axis-key .ax-x { background: var(--ax-x); }
+.axis-key .ax-y { background: var(--ax-y); }
+.axis-key .ax-z { background: var(--ax-z); }
+
+.row-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+}
+
+.row-label span {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: #99a;
+    white-space: nowrap;
+}
+
+.cell {
     min-width: 0;
+    min-height: 0;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    overflow: hidden;
 }
 
-/* Make Plotly charts fill their containers */
-.chart-container > div {
-    width: 100% !important;
-    height: 350px;
-}
-
-/* Smaller charts for dynamic FFT and IMU (4 charts visible at once) */
-#tab-dynamic .chart-container > div { height: 280px; }
-#tab-imu .chart-container > div { height: 260px; }
-
-/* Static heatmap: match the sensor's 7 rows x 4 columns aspect ratio instead of a fixed height */
-#tab-static .chart-container {
-    flex: 0 1 320px;
-    max-width: 320px;
-}
-
-#tab-static .chart-container > div {
-    height: auto !important;
-    aspect-ratio: 4 / 7;
-    max-height: calc(100vh - 210px);
-}
+.plot { width: 100%; height: 100%; }

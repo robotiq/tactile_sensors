@@ -10,90 +10,42 @@
 <body>
     <header>
         <h1>Robotiq Tactile Sensor Viewer</h1>
+        <div class="controls">
+            <button id="reset-baseline">Reset Baseline</button>
+            <label><input type="checkbox" id="raw-values"> Raw</label>
+            <label><input type="checkbox" id="adaptive-range" checked> Adaptive scale</label>
+            <button id="reset-imu-axes">Reset IMU Y</button>
+        </div>
         <div id="status-bar">
             <span id="connection-status" class="status-disconnected">Disconnected</span>
-            <span id="sample-count">Samples: 0</span>
+            <span id="sample-count">Frame: 0</span>
         </div>
     </header>
 
-    <nav class="tabs">
-        <button class="tab active" data-tab="static">Static Sensors</button>
-        <button class="tab" data-tab="dynamic">Dynamic Sensors</button>
-        <button class="tab" data-tab="imu">IMU</button>
-    </nav>
+    <main class="grid">
+        <!-- Column headers -->
+        <div class="corner"></div>
+        <div class="col-head">Static pressure</div>
+        <div class="col-head">Dynamic <span class="unit">(mV)</span></div>
+        <div class="col-head">FFT <span class="unit">(Hz)</span></div>
+        <div class="col-head">Accelerometer <span class="axis-key"><i class="ax-x"></i>X <i class="ax-y"></i>Y <i class="ax-z"></i>Z</span></div>
+        <div class="col-head">Gyroscope <span class="axis-key"><i class="ax-x"></i>X <i class="ax-y"></i>Y <i class="ax-z"></i>Z</span></div>
 
-    <main>
-        <!-- Static Sensors Tab -->
-        <section id="tab-static" class="tab-content active">
-            <div class="controls">
-                <button id="reset-baseline">Reset Baseline</button>
-                <label><input type="checkbox" id="raw-values"> Raw Values</label>
-                <label><input type="checkbox" id="adaptive-range" checked> Adaptive Scale</label>
-            </div>
-            <div class="chart-row">
-                <div class="chart-container">
-                    <h3>Finger 0</h3>
-                    <div id="static-finger-0"></div>
-                </div>
-                <div class="chart-container">
-                    <h3>Finger 1</h3>
-                    <div id="static-finger-1"></div>
-                </div>
-            </div>
-        </section>
+        <!-- Finger 0 -->
+        <div class="row-label"><span>Finger 0</span></div>
+        <div class="cell static-cell"><div id="static-finger-0" class="plot"></div></div>
+        <div class="cell"><div id="dynamic-time-0" class="plot"></div></div>
+        <div class="cell"><div id="dynamic-fft-0" class="plot"></div></div>
+        <div class="cell"><div id="imu-accel-0" class="plot"></div></div>
+        <div class="cell"><div id="imu-gyro-0" class="plot"></div></div>
 
-        <!-- Dynamic Sensors Tab -->
-        <section id="tab-dynamic" class="tab-content">
-            <div class="chart-row">
-                <div class="chart-container">
-                    <h3>Finger 0 - Time Domain</h3>
-                    <div id="dynamic-time-0"></div>
-                </div>
-                <div class="chart-container">
-                    <h3>Finger 1 - Time Domain</h3>
-                    <div id="dynamic-time-1"></div>
-                </div>
-            </div>
-            <div class="chart-row">
-                <div class="chart-container">
-                    <h3>Finger 0 - FFT</h3>
-                    <div id="dynamic-fft-0"></div>
-                </div>
-                <div class="chart-container">
-                    <h3>Finger 1 - FFT</h3>
-                    <div id="dynamic-fft-1"></div>
-                </div>
-            </div>
-        </section>
-
-        <!-- IMU Tab -->
-        <section id="tab-imu" class="tab-content">
-            <div class="controls">
-                <button id="reset-imu-axes">Reset Y Axes</button>
-            </div>
-            <h2>Accelerometer</h2>
-            <div class="chart-row">
-                <div class="chart-container">
-                    <h3>Finger 0</h3>
-                    <div id="imu-accel-0"></div>
-                </div>
-                <div class="chart-container">
-                    <h3>Finger 1</h3>
-                    <div id="imu-accel-1"></div>
-                </div>
-            </div>
-            <h2>Gyroscope</h2>
-            <div class="chart-row">
-                <div class="chart-container">
-                    <h3>Finger 0</h3>
-                    <div id="imu-gyro-0"></div>
-                </div>
-                <div class="chart-container">
-                    <h3>Finger 1</h3>
-                    <div id="imu-gyro-1"></div>
-                </div>
-            </div>
-        </section>
+        <!-- Finger 1 -->
+        <div class="row-label"><span>Finger 1</span></div>
+        <div class="cell static-cell"><div id="static-finger-1" class="plot"></div></div>
+        <div class="cell"><div id="dynamic-time-1" class="plot"></div></div>
+        <div class="cell"><div id="dynamic-fft-1" class="plot"></div></div>
+        <div class="cell"><div id="imu-accel-1" class="plot"></div></div>
+        <div class="cell"><div id="imu-gyro-1" class="plot"></div></div>
     </main>
 
     <script src="app.js"></script>

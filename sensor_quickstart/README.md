@@ -36,11 +36,14 @@ cd sensor_quickstart
 run_web_viewer.bat
 ```
 
-The script sets up the environment, connects to the sensor, and opens your browser to `http://localhost:8080`. The dashboard has three tabs:
+The script sets up the environment, connects to the sensor, and opens your browser to `http://localhost:8080`. Everything is on a single page — one row per finger, one column per signal:
 
-- **Static** — live tactile heatmap (7x4 grid per finger) with baseline subtraction
-- **Dynamic** — dynamic tactile time-series and FFT spectrum
-- **IMU** — accelerometer and gyroscope plots
+- **Static pressure** — live tactile heatmap (7x4 grid per finger) with baseline subtraction
+- **Dynamic** — dynamic tactile time-series
+- **FFT** — dynamic tactile spectrum
+- **Accelerometer** / **Gyroscope** — IMU plots (X/Y/Z)
+
+The layout fills whatever window it is given and never scrolls, so you can size the window to part of the screen (e.g. the top half of a 1280x800 display) and keep another tool visible alongside it.
 
 The server shuts down automatically when you close the browser tab.
 

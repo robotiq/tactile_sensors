@@ -1,5 +1,7 @@
 // Robotiq Tactile Sensor Web Viewer
-// WebSocket client + Plotly.js chart rendering
+// WebSocket client + Plotly.js chart rendering.
+// All sensors are shown on a single page — the server streams every stream on
+// every frame, so there is no tab state to keep in sync.
 
 "use strict";
 
@@ -17,11 +19,29 @@ const TACTILE_COLORSCALE = [
     [1.0,  'rgb(128,0,0)']
 ];
 
-const COMPACT_MARGIN = { t: 10, b: 40, l: 50, r: 20 };
 const IMU_COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c'];
 
+// Tight chrome: with 10 charts on screen every pixel of plot area counts.
+const COMPACT_MARGIN = { t: 6, b: 20, l: 36, r: 6 };
+const AXIS_STYLE = {
+    gridcolor: '#243b6b',
+    zerolinecolor: '#2f4a86',
+    linecolor: '#2f4a86',
+    tickfont: { size: 9 },
+    automargin: false
+};
+
+function baseLayout(extra) {
+    return Object.assign({
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor: '#0e1630',
+        font: { color: '#8fa0c0', size: 9 },
+        margin: COMPACT_MARGIN,
+        showlegend: false
+    }, extra);
+}
+
 let ws = null;
-let activeTab = 'static';
 let frameCount = 0;
 
 // --- WebSocket ---
@@ -32,7 +52,6 @@ function connect() {
     ws.onopen = () => {
         document.getElementById('connection-status').textContent = 'Connected';
         document.getElementById('connection-status').className = 'status-connected';
-        ws.send(JSON.stringify({ type: 'tab_change', tab: activeTab }));
     };
     ws.onclose = () => {
         // Server stopped — try to close the tab, otherwise show overlay
@@ -51,16 +70,18 @@ function connect() {
     };
 }
 
+function send(msg) {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+}
+
 // --- Data Handling (just render server snapshots directly) ---
 
 function handleData(msg) {
     frameCount++;
     document.getElementById('sample-count').textContent = `Frame: ${frameCount}`;
-    switch (msg.tab) {
-        case 'static':  renderStatic(msg.static, msg.maxRange); break;
-        case 'dynamic': renderDynamic(msg.dynamic); break;
-        case 'imu':     renderIMU(msg.accel, msg.gyro); break;
-    }
+    renderStatic(msg.static, msg.maxRange);
+    renderDynamic(msg.dynamic);
+    renderIMU(msg.accel, msg.gyro);
 }
 
 // --- Static Heatmaps ---
@@ -75,12 +96,14 @@ function initStaticChart(divId) {
         colorscale: TACTILE_COLORSCALE,
         zsmooth: 'best',
         zmin: 0, zmax: 3000,
-        colorbar: { title: 'Pressure', len: 0.9 }
-    }], {
-        xaxis: { title: 'Column', dtick: 1, range: [0, 4] },
-        yaxis: { title: 'Row', dtick: 1, range: [7, 0], scaleanchor: 'x', scaleratio: 1, constrain: 'domain' },
-        margin: COMPACT_MARGIN
-    }, PLOTLY_CONFIG);
+        colorbar: { thickness: 7, outlinewidth: 0, tickfont: { size: 8 }, len: 1 }
+    }], baseLayout({
+        xaxis: Object.assign({}, AXIS_STYLE, { dtick: 1, range: [0, 4] }),
+        yaxis: Object.assign({}, AXIS_STYLE, {
+            dtick: 1, range: [7, 0], scaleanchor: 'x', scaleratio: 1, constrain: 'domain'
+        }),
+        margin: { t: 6, b: 18, l: 20, r: 4 }
+    }), PLOTLY_CONFIG);
 }
 
 function renderStatic(data, maxRanges) {
@@ -99,22 +122,22 @@ function initDynamicChart(divId) {
     Plotly.newPlot(divId, [{
         y: [], type: 'scattergl', mode: 'lines',
         line: { width: 1, color: '#1f77b4' }
-    }], {
-        xaxis: { title: 'Sample' },
-        yaxis: { title: 'mV', range: [-1, 1] },
-        margin: COMPACT_MARGIN
-    }, PLOTLY_CONFIG);
+    }], baseLayout({
+        xaxis: Object.assign({}, AXIS_STYLE, { showticklabels: false }),
+        yaxis: Object.assign({}, AXIS_STYLE, { range: [-1, 1] })
+    }), PLOTLY_CONFIG);
 }
 
 function initFFTChart(divId) {
     Plotly.newPlot(divId, [{
         y: [], type: 'scattergl', mode: 'lines',
         line: { width: 1, color: '#ff7f0e' }
-    }], {
-        xaxis: { title: 'Hz', type: 'log', range: [Math.log10(0.5), Math.log10(500)] },
-        yaxis: { title: 'Magnitude' },
-        margin: COMPACT_MARGIN
-    }, PLOTLY_CONFIG);
+    }], baseLayout({
+        xaxis: Object.assign({}, AXIS_STYLE, {
+            type: 'log', range: [Math.log10(0.5), Math.log10(500)]
+        }),
+        yaxis: AXIS_STYLE
+    }), PLOTLY_CONFIG);
 }
 
 function renderDynamic(dynData) {
@@ -140,17 +163,17 @@ function renderFFT(fftData) {
 
 const imuRange = {};  // global min/max per chart: { divId: { min, max } }
 
-function initIMUChart(divId, yTitle) {
+function initIMUChart(divId) {
     imuRange[divId] = { min: Infinity, max: -Infinity };
+    // Legend lives in the column header (see .axis-key in style.css) to keep
+    // the plot area as tall as possible.
     Plotly.newPlot(divId, ['X', 'Y', 'Z'].map((axis, i) => ({
         y: [], name: axis, type: 'scattergl', mode: 'lines',
         line: { width: 1, color: IMU_COLORS[i] }
-    })), {
-        xaxis: { title: 'Sample' },
-        yaxis: { title: yTitle },
-        margin: COMPACT_MARGIN,
-        legend: { orientation: 'h', y: 1.12 }
-    }, PLOTLY_CONFIG);
+    })), baseLayout({
+        xaxis: Object.assign({}, AXIS_STYLE, { showticklabels: false }),
+        yaxis: AXIS_STYLE
+    }), PLOTLY_CONFIG);
 }
 
 function renderIMU(accelData, gyroData) {
@@ -182,57 +205,43 @@ function resetIMUAxes() {
     }
 }
 
-// --- Tab Switching ---
+// --- Resizing ---
 
-function switchTab(tab) {
-    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
-    document.querySelector(`.tab[data-tab="${tab}"]`).classList.add('active');
-    document.getElementById(`tab-${tab}`).classList.add('active');
-    activeTab = tab;
-    if (ws && ws.readyState === WebSocket.OPEN)
-        ws.send(JSON.stringify({ type: 'tab_change', tab }));
+// Plotly's built-in `responsive` config relies on its own ResizeObserver, which
+// doesn't reliably re-fire when a grid cell grows back after shrinking. Observe
+// the cells ourselves and force a resize pass.
+let resizeTimeout = null;
+function resizeAllPlots() {
+    document.querySelectorAll('.js-plotly-plot').forEach(el => {
+        Plotly.Plots.resize(el);
+        // The static heatmaps use scaleanchor/constrain to lock a 4:7 aspect
+        // ratio; repeated resize passes can drift the axis range instead of
+        // just the domain, so pin it back to the sensor's fixed grid each time.
+        if (el.id.startsWith('static-finger-'))
+            Plotly.relayout(el, { 'xaxis.range': [0, 4], 'yaxis.range': [7, 0] });
+    });
 }
+
+function scheduleResize() {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(resizeAllPlots, 100);
+}
+
+window.addEventListener('resize', scheduleResize);
+new ResizeObserver(scheduleResize).observe(document.querySelector('.grid'));
 
 // --- Controls ---
 
-document.querySelectorAll('.tab').forEach(btn =>
-    btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+document.getElementById('reset-baseline').addEventListener('click',
+    () => send({ type: 'reset_baseline' }));
 
-// Plotly's built-in `responsive` config relies on its own ResizeObserver, which
-// doesn't reliably re-fire when a CSS aspect-ratio/vh-driven container grows back
-// after shrinking. Force a resize pass on window resize as a reliable fallback.
-let resizeTimeout = null;
-window.addEventListener('resize', () => {
-    clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(() => {
-        document.querySelectorAll('.tab-content.active .js-plotly-plot').forEach(el => {
-            Plotly.Plots.resize(el);
-            // The static heatmaps use scaleanchor/constrain to lock a 4:7 aspect
-            // ratio; repeated resize passes can drift the axis range instead of
-            // just the domain, so pin it back to the sensor's fixed grid each time.
-            if (el.id.startsWith('static-finger-'))
-                Plotly.relayout(el, { 'xaxis.range': [0, 4], 'yaxis.range': [7, 0] });
-        });
-    }, 100);
-});
+document.getElementById('raw-values').addEventListener('change',
+    (e) => send({ type: 'set_raw_mode', raw: e.target.checked }));
 
-document.getElementById('reset-baseline').addEventListener('click', () => {
-    if (ws && ws.readyState === WebSocket.OPEN)
-        ws.send(JSON.stringify({ type: 'reset_baseline' }));
-});
+document.getElementById('adaptive-range').addEventListener('change',
+    (e) => send({ type: 'set_adaptive_range', adaptive: e.target.checked }));
 
-document.getElementById('raw-values').addEventListener('change', (e) => {
-    if (ws && ws.readyState === WebSocket.OPEN)
-        ws.send(JSON.stringify({ type: 'set_raw_mode', raw: e.target.checked }));
-});
-
-document.getElementById('adaptive-range').addEventListener('change', (e) => {
-    if (ws && ws.readyState === WebSocket.OPEN)
-        ws.send(JSON.stringify({ type: 'set_adaptive_range', adaptive: e.target.checked }));
-});
-
-document.getElementById('reset-imu-axes')?.addEventListener('click', resetIMUAxes);
+document.getElementById('reset-imu-axes').addEventListener('click', resetIMUAxes);
 
 // --- Init ---
 
@@ -245,8 +254,8 @@ function init() {
         initStaticChart(`static-finger-${f}`);
         initDynamicChart(`dynamic-time-${f}`);
         initFFTChart(`dynamic-fft-${f}`);
-        initIMUChart(`imu-accel-${f}`, 'Accel');
-        initIMUChart(`imu-gyro-${f}`, 'Gyro');
+        initIMUChart(`imu-accel-${f}`);
+        initIMUChart(`imu-gyro-${f}`);
         Plotly.restyle(`dynamic-fft-${f}`, { x: [FFT_FREQS] });
     }
     connect();
