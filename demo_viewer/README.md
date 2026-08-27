@@ -92,6 +92,13 @@ here, so those modes are not implemented. It probes 19200 and
 115200 baud and uses whichever replies, and never writes to the sensor's
 configuration beyond starting and stopping the stream.
 
+**The sensor is zeroed at startup.** It sits under the gripper, so it feels the
+gripper's own weight — around 9 N of constant downward load before anything
+touches the fingers. The first hundred samples are averaged and subtracted, the
+same idea as the tactile baseline, and nothing is drawn until that completes.
+That zero holds only for the orientation it was taken in: turn the gripper over
+and gravity lands on different axes, so use **Zero Force** to re-zero.
+
 `ft_source.py` holds just the interface, so the simulator and the real reader
 are interchangeable. A missing or unplugged sensor is reported and stepped over:
 the gripper keeps posing and the readout says there is no sensor.

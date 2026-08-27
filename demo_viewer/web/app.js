@@ -594,6 +594,11 @@ if (gripperHost) new ResizeObserver(() => resizeGripperView()).observe(gripperHo
 document.getElementById('reset-baseline').addEventListener('click',
     () => send({ type: 'reset_baseline' }));
 
+// The sensor carries the gripper's weight, and that load changes with the
+// gripper's orientation — so re-zeroing is a thing you do, not a one-off.
+document.getElementById('zero-wrench').addEventListener('click',
+    () => send({ type: 'zero_wrench' }));
+
 document.getElementById('raw-values').addEventListener('change',
     (e) => send({ type: 'set_raw_mode', raw: e.target.checked }));
 

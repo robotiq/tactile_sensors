@@ -90,6 +90,13 @@ FT_ORIGIN_MM = [0.0, 0.0, -20.0]
 # a wrench rather than leave the last one frozen on screen.
 FT_STALE_AFTER_S = 0.5
 
+# The sensor is mounted under the gripper, so it feels the gripper's own weight —
+# a couple of kilos of constant load before anything touches the fingers. Those
+# first samples are averaged and subtracted, the same idea as the tactile
+# baseline. Note this only holds for the orientation it was zeroed in: turn the
+# gripper over and gravity lands on different axes, so re-zero.
+FT_ZERO_SAMPLES = 100
+
 
 class SensorDataBuffer:
     """Thread-safe circular buffers for sensor data."""
@@ -118,6 +125,10 @@ class SensorDataBuffer:
         self.wrench = None
         self.wrench_time = 0.0
         self.wrench_error = None
+        self.wrench_zero = [0.0] * 6
+        self._wrench_zero_sum = [0.0] * 6
+        self._wrench_zero_count = 0
+        self.wrench_zeroed = False
 
     def _update_tip_angle(self, f, accel, gyro, now):
         """Estimate one fingertip's angle from its IMU. Caller holds the lock."""
@@ -224,13 +235,29 @@ class SensorDataBuffer:
 
     def push_wrench(self, values, now=None):
         with self._lock:
-            self.wrench = list(values)
+            if not self.wrench_zeroed:
+                for i in range(6):
+                    self._wrench_zero_sum[i] += values[i]
+                self._wrench_zero_count += 1
+                if self._wrench_zero_count >= FT_ZERO_SAMPLES:
+                    self.wrench_zero = [v / self._wrench_zero_count
+                                        for v in self._wrench_zero_sum]
+                    self.wrench_zeroed = True
+            self.wrench = [values[i] - self.wrench_zero[i] for i in range(6)]
             self.wrench_time = now if now is not None else time.monotonic()
+
+    def zero_wrench(self):
+        """Take the load sitting on the sensor right now as the new zero."""
+        with self._lock:
+            self._wrench_zero_sum = [0.0] * 6
+            self._wrench_zero_count = 0
+            self.wrench_zeroed = False
 
     def get_wrench_snapshot(self):
         """Latest force/torque, or None when there is nothing trustworthy."""
         with self._lock:
-            if self.wrench is None:
+            # Nothing worth drawing until the gripper's own weight is measured.
+            if self.wrench is None or not self.wrench_zeroed:
                 return None
             if time.monotonic() - self.wrench_time > FT_STALE_AFTER_S:
                 return None
