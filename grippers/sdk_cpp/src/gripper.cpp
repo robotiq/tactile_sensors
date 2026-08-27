@@ -80,8 +80,9 @@ struct Gripper::Impl
          {
             if(attempt >= kInitialReadAttempts)
             {
-               throw DriverException("no gripper answered the initial status read (is it powered, "
-                                     "and the Modbus slave address correct?) — last attempt: "
+               throw DriverException("no gripper answered the initial status read (is it powered, and "
+                                     "do its baud rate and Modbus slave address match this "
+                                     "connection?) — last attempt: "
                                      + std::string(ex.what()));
             }
             logger->log(Logger::Level::Warn,
