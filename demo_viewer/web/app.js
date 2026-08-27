@@ -550,7 +550,11 @@ function resizeGripperView() {
     if (!renderer || !host) return;
     const { clientWidth: width, clientHeight: height } = host;
     if (!width || !height) return;
-    renderer.setSize(width, height, false);
+    // Let three.js set the canvas's CSS size as well as its buffer. Skipping
+    // that leaves the canvas laid out at width * devicePixelRatio, so on any
+    // scaled display — or in fullscreen — it stops matching its container and
+    // the gripper drifts off centre.
+    renderer.setSize(width, height);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
 }
@@ -579,6 +583,11 @@ function scheduleResize() {
 
 window.addEventListener('resize', scheduleResize);
 new ResizeObserver(scheduleResize).observe(document.querySelector('.grid'));
+// The gripper panel gets its own observer: it is the element whose size
+// actually matters here, and this fires on fullscreen and on layout changes
+// that leave the grid's own box alone.
+const gripperHost = document.getElementById('gripper-view');
+if (gripperHost) new ResizeObserver(() => resizeGripperView()).observe(gripperHost);
 
 // --- Controls ---
 
