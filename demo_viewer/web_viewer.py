@@ -47,11 +47,20 @@ TIP_AXIS_TOLERANCE = 0.30    # |g . rotation axis| above this => assumptions bro
 TIP_FILTER_TAU_S = 0.05
 
 # Which IMU axes lie in the plane the finger rotates in, and which one is the
-# rotation axis itself. This is the nominal mounting; confirm it against a real
-# sensor mounted on a gripper — an IMU rotated in its pocket only changes these
-# indices and TIP_ANGLE_SIGN, not the maths.
-TIP_IN_PLANE_AXES = (0, 2)   # IMU x and z span the linkage plane
-TIP_ROTATION_AXIS = 1        # IMU y is the finger's rotation axis
+# rotation axis itself.
+#
+# Measured on hardware (tools/imu_axes.py): with the gripper upright and still,
+# gravity sits at 1.00 g on IMU y on both fingers. So y points along the palm's
+# vertical and cannot be the axis a finger turns about, which is horizontal —
+# it is x or z.
+#
+# Which of the two is still open: telling them apart needs the gripper actually
+# rotating, and gravity alone cannot do it. Either choice gives a stable, valid
+# angle while the gripper is still, and they differ only once a fingertip moves.
+# Run `tools/imu_axes.py --motion` when someone can rock the gripper, and if the
+# angle then moves the wrong way, flip TIP_ANGLE_SIGN.
+TIP_IN_PLANE_AXES = (1, 2)   # IMU y and z span the linkage plane
+TIP_ROTATION_AXIS = 0        # IMU x is the finger's rotation axis (provisional)
 # Sign per finger. A positive reported angle always means the fingertip has
 # rotated *inward*, towards the other finger — the direction the distal phalanx
 # wraps in an encompassing grip — so a symmetric grasp reads the same on both
