@@ -87,10 +87,13 @@ def decode_stream_frame(frame):
 class ModbusRTUStreamSource(FTSource):
     """Streams compensated force/torque from a Robotiq FT sensor."""
 
-    def __init__(self, port=None, baudrate=None, timeout=0.5):
+    def __init__(self, port=None, baudrate=None, timeout=0.5, skip_ports=()):
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
+        # Ports already in use by something else — the tactile sensor holds one,
+        # and probing it just yields a permission error on Windows.
+        self.skip_ports = {str(p).upper() for p in skip_ports if p}
         self._serial = None
 
     # -- connection --
@@ -100,8 +103,9 @@ class ModbusRTUStreamSource(FTSource):
         import serial  # pyserial
 
         ports = [self.port] if self.port else self._candidate_ports()
+        ports = [p for p in ports if p.upper() not in self.skip_ports]
         if not ports:
-            raise ModbusError("no serial ports found")
+            raise ModbusError("no serial ports left to try")
         bauds = [self.baudrate] if self.baudrate else list(BAUD_RATES)
 
         attempts = []

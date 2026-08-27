@@ -899,7 +899,7 @@ class FieldTracker:
         if self.serial_port and self.serial_port.is_open:
             self.serial_port.close()
 
-def connect_ft_sensor(args):
+def connect_ft_sensor(args, skip_ports=()):
     """Connect the force/torque sensor, or return None if it is not there.
 
     The gripper and the tactile pads are the point of this viewer; the wrench
@@ -914,7 +914,7 @@ def connect_ft_sensor(args):
         print(f"Force/torque: reader unavailable ({exc}); running without it")
         return None
 
-    source = ModbusRTUStreamSource(port=args.ft_port)
+    source = ModbusRTUStreamSource(port=args.ft_port, skip_ports=skip_ports)
     try:
         device, baud, kind = source.connect()
     except ModbusError as exc:
@@ -1045,7 +1045,7 @@ def main():
             if args.web:
                 from web_viewer import run_web_viewer
                 run_web_viewer(monitor, port=args.port,
-                               ft_source=connect_ft_sensor(args))
+                               ft_source=connect_ft_sensor(args, [port]))
             else:
                 monitor.run()
         finally:
