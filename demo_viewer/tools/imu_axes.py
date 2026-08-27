@@ -10,12 +10,15 @@ angles that swing wildly and are marked invalid.
 This measures it instead. Run it, follow the two prompts, and paste the
 constants it prints into web_viewer.py.
 
-    python3 tools/imu_axes.py
+    python3 tools/imu_axes.py            passive: just reads gravity
+    python3 tools/imu_axes.py --motion   needs someone at the gripper
 
-The reasoning: a rotation about an axis leaves that axis alone. So while a
-fingertip is flexed back and forth, the gyroscope axis it turns about carries
-the signal and the other two stay near zero, and the accelerometer component
-along it barely changes while the other two swing.
+Passively, a static gravity reading says which IMU axis points up or down, which
+is enough to rule an axis out. To pin it down outright someone has to move the
+gripper: a rotation about an axis leaves that axis alone, so while the gripper
+is rocked about the axis its fingers pivot around, the gyroscope axis it turns
+about carries the signal and the accelerometer component along it barely changes
+while the other two swing.
 """
 
 import math
@@ -115,7 +118,41 @@ def report_flex(samples):
     return verdict
 
 
+def interpret_still(samples):
+    """Say what a static gravity reading already rules in or out."""
+    print("What that means:\n")
+    for f, finger in enumerate(samples):
+        if not finger:
+            continue
+        accel = [mean([s[0][i] for s in finger]) for i in range(3)]
+        norm = math.hypot(*accel)
+        if not norm:
+            continue
+        share = [abs(a) / norm for a in accel]
+        vertical = max(range(3), key=lambda i: share[i])
+        if share[vertical] > 0.9:
+            others = [AXES[i] for i in range(3) if i != vertical]
+            print(f"  finger {f}: gravity is almost entirely on {AXES[vertical]} "
+                  f"({share[vertical]:.2f}), so IMU {AXES[vertical]} points up or down.")
+            print(f"             If the gripper is upright, the finger turns about "
+                  f"{others[0]} or {others[1]},")
+            print(f"             never {AXES[vertical]} — the current "
+                  f"TIP_ROTATION_AXIS = {web_viewer.TIP_ROTATION_AXIS} "
+                  f"({AXES[web_viewer.TIP_ROTATION_AXIS]}) "
+                  + ("is wrong." if web_viewer.TIP_ROTATION_AXIS == vertical
+                     else "is at least possible."))
+        else:
+            print(f"  finger {f}: gravity is spread across axes "
+                  f"({', '.join(f'{AXES[i]}={share[i]:.2f}' for i in range(3))}),")
+            print("             so the gripper is not sitting square to gravity. "
+                  "That is fine,")
+            print("             but the rotation axis cannot be inferred from it "
+                  "alone.")
+    print()
+
+
 def main():
+    motion = "--motion" in sys.argv
     monitor = SensorMonitor()
     port = monitor.find_sensor()
     if not port:
@@ -124,20 +161,31 @@ def main():
     if not monitor.connect(port) or not monitor.start_autosend(period_ms=1):
         return 1
 
+    # read_serial_data loops on this; it starts False.
+    monitor.running = True
+
     print("\n" + "=" * 72)
-    print("Step 1 of 2 — hold the gripper still, fingers pointing up.")
+    print("Reading gravity — nobody needs to touch anything, the gripper just")
+    print("has to be sitting still.")
     print("=" * 72)
-    time.sleep(1.0)
     still = collect(monitor, STILL_SECONDS, "measuring")
     report_still(still)
+    interpret_still(still)
+
+    if not motion:
+        print("Run again with --motion when someone can put hands on the gripper:")
+        print("that pins the rotation axis outright instead of inferring it.")
+        monitor.cleanup()
+        return 0
 
     print("=" * 72)
-    print("Step 2 of 2 — flex both fingertips back and forth by hand,")
-    print("through as much travel as they have, for the next few seconds.")
+    print("Now rock the whole gripper back and forth about the axis its fingers")
+    print("pivot around — the way they swing when it opens and closes. A few")
+    print("degrees is not enough; make it obvious.")
     print("=" * 72)
-    time.sleep(1.0)
+    time.sleep(2.0)
     monitor.running = True
-    flex = collect(monitor, FLEX_SECONDS, "keep flexing")
+    flex = collect(monitor, FLEX_SECONDS, "keep rocking")
     axes = report_flex(flex)
 
     print("=" * 72)
