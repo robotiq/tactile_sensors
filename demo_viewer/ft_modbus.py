@@ -94,6 +94,7 @@ class ModbusRTUStreamSource(FTSource):
         # Ports already in use by something else — the tactile sensor holds one,
         # and probing it just yields a permission error on Windows.
         self.skip_ports = {str(p).upper() for p in skip_ports if p}
+        self.already_streaming = False
         self._serial = None
 
     # -- connection --
@@ -121,8 +122,16 @@ class ModbusRTUStreamSource(FTSource):
                     continue
 
                 self._serial = handle
-                # The sensor may still be streaming from a previous run, in
-                # which case it answers nothing until taken out of stream mode.
+                # If it is already streaming frames we can decode, that is all
+                # the confirmation needed — no need to interrupt it and ask.
+                # This is the common case when a previous run left it streaming,
+                # and it does not depend on the sensor accepting a command.
+                if self._hears_stream():
+                    self.port, self.baudrate = port, baud
+                    self.already_streaming = True
+                    return port, baud, "force/torque sensor (already streaming)"
+
+                # Otherwise take it out of stream mode and ask what it is.
                 for attempt in range(2):
                     try:
                         self.stop_stream()
@@ -137,6 +146,22 @@ class ModbusRTUStreamSource(FTSource):
 
         raise ModbusError("no force/torque sensor found. Tried:\n  "
                           + "\n  ".join(attempts))
+
+    def _hears_stream(self, seconds=0.4):
+        """True if the port is already carrying frames we can decode."""
+        self._serial.reset_input_buffer()
+        deadline = time.monotonic() + seconds
+        data = bytearray()
+        while time.monotonic() < deadline:
+            data += self._serial.read(max(1, self._serial.in_waiting))
+        good = 0
+        for i in range(len(data) - STREAM_FRAME_BYTES + 1):
+            if data[i] != STREAM_HEADER[0] or data[i + 1] != STREAM_HEADER[1]:
+                continue
+            frame = bytes(data[i:i + STREAM_FRAME_BYTES])
+            if crc16(frame[:-2]) == frame[-2:]:
+                good += 1
+        return good >= 3
 
     @staticmethod
     def _candidate_ports():
@@ -223,7 +248,10 @@ class ModbusRTUStreamSource(FTSource):
     def read(self, callback):
         if self._serial is None:
             self.connect()
-        self.start_stream()
+        # Already streaming: leave it alone rather than risk a command it may
+        # not be listening for.
+        if not self.already_streaming:
+            self.start_stream()
 
         buffer = bytearray()
         while True:
