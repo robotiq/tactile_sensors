@@ -2,10 +2,11 @@
 
 A single page showing what the sensors on a 2F-85 can tell you at once:
 
-- **Static pressure** — the 7x4 tactile heatmap per finger, baseline-subtracted
-- **Dynamic** — both fingers' dynamic tactile traces on one plot
-- **Finger proprioception** — a 3D 2F-85 whose five-bar linkage is posed from the
-  fingertip IMUs, with the force/torque wrench drawn at its base
+- **Finger 0** / **Finger 1** — each finger's 7x4 tactile heatmap,
+  baseline-subtracted, with its own dynamic tactile trace directly beneath it
+- **Gripper config and load** — a 3D 2F-85 whose five-bar linkage is posed from
+  the fingertip IMUs, with the force/torque wrench drawn at its base. The panel
+  states on its face which half is estimated and which is measured.
 
 This is a demo, not the general-purpose tool. For plain sensor bring-up — raw
 IMU traces, FFT, per-finger plots — use `../sensor_quickstart`, which stays

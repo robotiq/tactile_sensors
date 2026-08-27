@@ -93,13 +93,13 @@ header h1 {
     flex: 1;
     min-height: 0;
     display: grid;
-    /* row label | static (narrow, 4:7 sensor) | dynamic | gripper.
-       Both fingers share one dynamic plot, so that column only needs to be
-       readable, not wide. The gripper drawing is roughly square and spans both
-       rows, so its column is sized to match that height. */
-    grid-template-columns:
-        16px minmax(120px, 0.7fr) minmax(100px, 0.55fr) minmax(240px, 1.75fr);
-    grid-template-rows: auto minmax(var(--min-row), 1fr) minmax(var(--min-row), 1fr);
+    /* One column per finger, then the gripper. Each pad gets the tall row with
+       its own dynamic trace directly beneath it. The pads hold a fixed 4:7
+       aspect — the shape of the real sensor — so past a point they are limited
+       by row height, not column width; the columns are sized to just fit them
+       and the surplus goes to the gripper rather than to empty margins. */
+    grid-template-columns: repeat(2, minmax(150px, 0.95fr)) minmax(240px, 1.9fr);
+    grid-template-rows: auto minmax(220px, 3.4fr) minmax(80px, 1fr);
     gap: 6px;
     padding: 6px 10px 8px;
     overflow: auto;
@@ -117,35 +117,6 @@ header h1 {
 
 .col-head .unit { color: #778; font-weight: 400; }
 
-/* Which trace is which finger, in the shared dynamic plot */
-.finger-key { margin-left: 6px; font-weight: 400; color: #889; }
-.finger-key i {
-    display: inline-block;
-    width: 8px;
-    height: 2px;
-    margin-right: 2px;
-    vertical-align: middle;
-}
-.finger-key .f0 { background: var(--finger-0); }
-.finger-key .f1 { background: var(--finger-1); }
-
-.row-label {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 0;
-}
-
-.row-label span {
-    writing-mode: vertical-rl;
-    transform: rotate(180deg);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    color: #99a;
-    white-space: nowrap;
-}
-
 .cell {
     min-width: 0;
     min-height: 0;
@@ -157,15 +128,25 @@ header h1 {
 
 .plot { width: 100%; height: 100%; }
 
-/* Gripper view ------------------------------------------------------------ */
+/* A label inside the cell, for plots whose column heading names the finger
+   rather than the signal. */
+.captioned { position: relative; }
 
-.dynamic-cell {
-    grid-column: 3;
-    grid-row: 2 / span 2;
+.caption {
+    position: absolute;
+    top: 4px;
+    left: 10px;
+    z-index: 1;
+    font-size: 11px;
+    font-weight: 600;
+    color: #8b97b5;
+    pointer-events: none;
 }
 
+/* Gripper view ------------------------------------------------------------ */
+
 .gripper-cell {
-    grid-column: 4;
+    grid-column: 3;
     grid-row: 2 / span 2;
     position: relative;
 }
@@ -174,6 +155,20 @@ header h1 {
    not scale with the scene the way SVG text did. */
 #gripper-view { width: 100%; height: 100%; }
 #gripper-view canvas { display: block; }
+
+/* What is measured and what is inferred, said plainly on the picture: at a
+   show people read a live drawing as fact unless told otherwise. */
+.overlay-note {
+    position: absolute;
+    top: 8px;
+    left: 12px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #8b97b5;
+    pointer-events: none;
+}
+
+.overlay-note .dim { color: #66708c; }
 
 #gripper-readout {
     position: absolute;

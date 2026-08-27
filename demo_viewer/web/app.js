@@ -95,13 +95,13 @@ function initStaticChart(divId) {
         colorscale: TACTILE_COLORSCALE,
         zsmooth: 'best',
         zmin: 0, zmax: 3000,
-        colorbar: { thickness: 7, outlinewidth: 0, tickfont: { size: 8 }, len: 1 }
+        colorbar: { thickness: 6, outlinewidth: 0, tickfont: { size: 8 }, len: 1, x: 1.02 }
     }], baseLayout({
         xaxis: Object.assign({}, AXIS_STYLE, { dtick: 1, range: [0, 4] }),
         yaxis: Object.assign({}, AXIS_STYLE, {
             dtick: 1, range: [7, 0], scaleanchor: 'x', scaleratio: 1, constrain: 'domain'
         }),
-        margin: { t: 6, b: 18, l: 20, r: 4 }
+        margin: { t: 6, b: 18, l: 18, r: 0 }
     }), PLOTLY_CONFIG);
 }
 
@@ -117,30 +117,29 @@ function renderStatic(data, maxRanges) {
 
 // --- Dynamic Time-Domain ---
 
-// Both fingers share one plot, so their traces are colour-coded in the column
-// header (see .finger-key in style.css) rather than by a legend inside it.
+// One plot per finger, sitting under that finger's pad, so each keeps its own
+// colour rather than needing a legend.
 const FINGER_COLORS = ['#4fa3e3', '#f2a541'];
 
-function initDynamicChart(divId) {
-    Plotly.newPlot(divId, FINGER_COLORS.map((color, f) => ({
-        y: [], name: `F${f}`, type: 'scattergl', mode: 'lines',
-        line: { width: 1, color }
-    })), baseLayout({
+function initDynamicChart(divId, finger) {
+    Plotly.newPlot(divId, [{
+        y: [], type: 'scattergl', mode: 'lines',
+        line: { width: 1, color: FINGER_COLORS[finger] }
+    }], baseLayout({
         xaxis: Object.assign({}, AXIS_STYLE, { showticklabels: false }),
-        yaxis: Object.assign({}, AXIS_STYLE, { range: [-1, 1] })
+        yaxis: Object.assign({}, AXIS_STYLE, { range: [-1, 1] }),
+        margin: { t: 18, b: 20, l: 36, r: 6 }
     }), PLOTLY_CONFIG);
 }
 
 function renderDynamic(dynData) {
     if (!dynData) return;
-    const traces = [];
     for (let f = 0; f < 2; f++) {
         const samples = dynData[f];
         const mV = new Float32Array(samples.length);
         for (let i = 0; i < samples.length; i++) mV[i] = samples[i] * 1.024 / 32767;
-        traces.push(mV);
+        Plotly.restyle(`dynamic-time-${f}`, { y: [mV] });
     }
-    Plotly.restyle('dynamic-time', { y: traces });
 }
 
 // --- Gripper view ---
@@ -595,8 +594,10 @@ document.getElementById('adaptive-range').addEventListener('change',
 // --- Init ---
 
 function init() {
-    for (let f = 0; f < 2; f++) initStaticChart(`static-finger-${f}`);
-    initDynamicChart('dynamic-time');
+    for (let f = 0; f < 2; f++) {
+        initStaticChart(`static-finger-${f}`);
+        initDynamicChart(`dynamic-time-${f}`, f);
+    }
     initGripperView();
     connect();
 }

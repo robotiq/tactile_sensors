@@ -25,19 +25,21 @@
     </header>
 
     <main class="grid">
-        <!-- Column headers -->
-        <div class="corner"></div>
-        <div class="col-head">Static pressure</div>
-        <div class="col-head">Dynamic <span class="unit">(mV)</span><span class="finger-key"><i class="f0"></i>F0 <i class="f1"></i>F1</span></div>
-        <div class="col-head">Finger proprioception <span class="unit">(2F-85)</span></div>
+        <!-- A column per finger — its pad, and that finger's dynamic trace
+             directly beneath it — then the gripper, spanning both rows. -->
+        <div class="col-head">Finger 0</div>
+        <div class="col-head">Finger 1</div>
+        <div class="col-head">Gripper config and load <span class="unit">(2F-85)</span></div>
 
-        <!-- Both span the two finger rows — one carries both fingers' traces,
-             the other shows both fingertips. Explicitly placed so the per-finger
-             cells auto-flow around them. -->
-        <div class="cell dynamic-cell"><div id="dynamic-time" class="plot"></div></div>
+        <div class="cell"><div id="static-finger-0" class="plot"></div></div>
+        <div class="cell"><div id="static-finger-1" class="plot"></div></div>
 
         <div class="cell gripper-cell">
             <div id="gripper-view"></div>
+            <div class="overlay-note">
+                Finger tilt estimated from the fingertip IMUs<br>
+                <span class="dim">force and moment measured from the force/torque sensor (FT-300)</span>
+            </div>
             <div id="gripper-readout">
                 <span id="tip-readout-0"></span>
                 <span id="wrench-readout"></span>
@@ -45,13 +47,14 @@
             </div>
         </div>
 
-        <!-- Finger 0 -->
-        <div class="row-label"><span>Finger 0</span></div>
-        <div class="cell static-cell"><div id="static-finger-0" class="plot"></div></div>
-
-        <!-- Finger 1 -->
-        <div class="row-label"><span>Finger 1</span></div>
-        <div class="cell static-cell"><div id="static-finger-1" class="plot"></div></div>
+        <div class="cell captioned">
+            <span class="caption">Dynamic <span class="unit">(mV)</span></span>
+            <div id="dynamic-time-0" class="plot"></div>
+        </div>
+        <div class="cell captioned">
+            <span class="caption">Dynamic <span class="unit">(mV)</span></span>
+            <div id="dynamic-time-1" class="plot"></div>
+        </div>
     </main>
 
     <script src="gripper_geometry.js"></script>
