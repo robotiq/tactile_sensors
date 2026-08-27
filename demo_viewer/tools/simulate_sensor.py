@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import protocol  # noqa: E402
 import web_viewer  # noqa: E402
+from ft_source import FTSource  # noqa: E402
 
 NUM = protocol.NUM_FINGERS
 # Same scales the finger pad firmware programs into the ICM-20948.
@@ -45,6 +46,72 @@ class FakeFrame:
         self.fingers = [FakeFinger() for _ in range(NUM)]
 
 
+# Where a fingertip pad sits at the fully-open pose, and what it turns about,
+# in the gripper frame in mm (see gripper_geometry.js / build_gripper_geometry).
+PAD_CENTRE_MM = (45.68, 0.0, 130.32)
+DISTAL_PIVOT_MM = (67.76, 0.0, 98.33)
+
+
+class SimulatedFingertipForce(FTSource):
+    """A force pressed onto one fingertip, as the FT sensor would feel it.
+
+    Everything the sensor reports at its own origin follows from one contact:
+    `M = r x F`. Drawing that back out should put the force's line of action
+    on the fingertip it is being applied to, which is the whole point of the
+    visualisation — so the simulator is built to make that check meaningful.
+
+    The contact point rides with the fingertip as it flexes. Only the distal
+    rotation is applied, not the few millimetres the pivot itself travels; the
+    exact line-of-action maths is checked separately against exact points.
+    """
+
+    def __init__(self, monitor, finger=0, rate_hz=100.0, peak_n=25.0, twist_nm=0.4):
+        self.monitor = monitor
+        self.finger = finger
+        self.rate_hz = rate_hz
+        self.peak_n = peak_n
+        self.twist_nm = twist_nm
+
+    def contact_point_m(self):
+        """Contact point in the gripper frame, in metres, at the current pose."""
+        inward = math.radians(self.monitor.current_inward[self.finger])
+        # Inward flex turns the +x fingertip towards -x, i.e. negatively about y.
+        angle = -inward if self.finger == 0 else inward
+        side = 1.0 if self.finger == 0 else -1.0
+        px, _, pz = DISTAL_PIVOT_MM
+        cx, _, cz = PAD_CENTRE_MM
+        dx, dz = (cx - px), (cz - pz)
+        rx = dx * math.cos(angle) + dz * math.sin(angle)
+        rz = -dx * math.sin(angle) + dz * math.cos(angle)
+        return ((px + rx) * side / 1000.0, 0.0, (pz + rz) / 1000.0)
+
+    def read(self, callback):
+        period = 1.0 / self.rate_hz
+        n = 0
+        next_t = time.monotonic()
+        while True:
+            # A press that builds and releases, so the low-force fallback and
+            # the line of action both get exercised.
+            press = 0.5 - 0.5 * math.cos(n / 260.0)
+            force = (0.0, 0.0, -self.peak_n * press)
+            twist = self.twist_nm * math.sin(n / 170.0)
+
+            contact = self.contact_point_m()
+            origin = [v / 1000.0 for v in web_viewer.FT_ORIGIN_MM]
+            r = [contact[i] - origin[i] for i in range(3)]
+            moment = [r[1] * force[2] - r[2] * force[1],
+                      r[2] * force[0] - r[0] * force[2],
+                      r[0] * force[1] - r[1] * force[0]]
+            # A twist about the force direction: the part of the moment no
+            # translation can remove, and the only thing the curved arrow shows.
+            moment[2] += twist
+
+            callback(time.monotonic(), tuple(force) + tuple(moment))
+            n += 1
+            next_t += period
+            time.sleep(max(0.0, next_t - time.monotonic()))
+
+
 class FakeMonitor:
     """Stands in for SensorMonitor: same baseline attribute and read loop."""
 
@@ -55,6 +122,9 @@ class FakeMonitor:
         self.tilt_deg = tilt_deg
         self._last_inward = [0.0] * NUM
         self._last_time = [None] * NUM
+        # Shared with the simulated force source, so the contact point rides
+        # with the fingertip instead of floating in space.
+        self.current_inward = [0.0] * NUM
 
     def tip_angle_deg(self, n, f):
         """Fingertip angle the simulated IMU should report.
@@ -105,6 +175,7 @@ class FakeMonitor:
                 # and the two fingers are mirror images: closing inward by the
                 # same amount therefore turns the two IMUs opposite ways.
                 inward = self.tip_angle_deg(n, f)
+                self.current_inward[f] = inward
                 angle = math.radians(inward * (1.0 if f == 0 else -1.0))
                 # --tilt leans the whole gripper off vertical, putting gravity
                 # on the finger's rotation axis: the angle then stops being
@@ -131,16 +202,25 @@ def main():
     parser.add_argument("--tilt", type=float, default=0.0,
                         help="lean the gripper this many degrees off vertical, to "
                              "exercise the 'angle not observable' path")
+    parser.add_argument("--force-finger", type=int, choices=(0, 1), default=0,
+                        help="which fingertip the simulated force presses on")
+    parser.add_argument("--peak-force", type=float, default=25.0,
+                        help="peak of the simulated press in N (default: 25)")
+    parser.add_argument("--no-force", action="store_true",
+                        help="no force/torque source, as if the sensor were absent")
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
 
     if args.no_browser:
         webbrowser.open = lambda *a, **k: None
 
-    web_viewer.run_web_viewer(
-        FakeMonitor(tip_sweep_deg=args.tip_sweep, hold_deg=args.tip_hold,
-                    tilt_deg=args.tilt),
-        port=args.port)
+    monitor = FakeMonitor(tip_sweep_deg=args.tip_sweep, hold_deg=args.tip_hold,
+                          tilt_deg=args.tilt)
+    ft_source = None if args.no_force else SimulatedFingertipForce(
+        monitor, finger=args.force_finger, peak_n=args.peak_force)
+
+    web_viewer.run_web_viewer(monitor, port=args.port, ft_source=ft_source,
+                              open_browser=not args.no_browser)
 
 
 if __name__ == "__main__":

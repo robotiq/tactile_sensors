@@ -899,6 +899,31 @@ class FieldTracker:
         if self.serial_port and self.serial_port.is_open:
             self.serial_port.close()
 
+def connect_ft_sensor(args):
+    """Connect the force/torque sensor, or return None if it is not there.
+
+    The gripper and the tactile pads are the point of this viewer; the wrench
+    is extra. A missing or unplugged FT sensor is reported and stepped over,
+    never fatal.
+    """
+    if args.no_ft:
+        return None
+    try:
+        from ft_modbus import ModbusRTUStreamSource, ModbusError
+    except ImportError as exc:
+        print(f"Force/torque: reader unavailable ({exc}); running without it")
+        return None
+
+    source = ModbusRTUStreamSource(port=args.ft_port)
+    try:
+        device, baud, kind = source.connect()
+    except ModbusError as exc:
+        print(f"Force/torque: not connected ({exc})")
+        return None
+    print(f"Force/torque: {kind} on {device} @ {baud} baud")
+    return source
+
+
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description="Robotiq Tactile Sensor Monitor")
@@ -908,6 +933,10 @@ def main():
                         help='Web server port (default: 8080)')
     parser.add_argument('--debug', type=bool, default=False,
                     help='Toggle Sensor outputs vs feedback debugger')
+    parser.add_argument('--ft-port', metavar='DEV',
+                        help='force/torque sensor serial port (default: autodetect)')
+    parser.add_argument('--no-ft', action='store_true',
+                        help='skip the force/torque sensor entirely')
     args = parser.parse_args()
 
     print("=" * 80)
@@ -1015,7 +1044,8 @@ def main():
         try:
             if args.web:
                 from web_viewer import run_web_viewer
-                run_web_viewer(monitor, port=args.port)
+                run_web_viewer(monitor, port=args.port,
+                               ft_source=connect_ft_sensor(args))
             else:
                 monitor.run()
         finally:

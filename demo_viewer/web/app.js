@@ -80,6 +80,7 @@ function handleData(msg) {
     renderStatic(msg.static, msg.maxRange);
     renderDynamic(msg.dynamic);
     renderGripper(msg.tipAngle, msg.tipAngleValid);
+    renderWrench(msg.wrench, msg.wrenchError, msg.ftOrigin);
 }
 
 // --- Static Heatmaps ---
@@ -244,7 +245,7 @@ async function initGripperView() {
     camera = new THREE.PerspectiveCamera(35, 1, 0.01, 10);
     // Start looking straight down the joint axis, which is the view the flat
     // drawing showed and the side the key light is on. The user can orbit away.
-    camera.position.set(0, -0.34, 0.075);
+    camera.position.set(0, -0.40, 0.065);
     camera.up.set(0, 0, 1);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -252,7 +253,7 @@ async function initGripperView() {
     host.appendChild(renderer.domElement);
 
     controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, 0, 0.075);
+    controls.target.set(0, 0, 0.065);
     controls.enablePan = false;
     controls.minDistance = 0.15;
     controls.maxDistance = 2.0;
@@ -267,6 +268,7 @@ async function initGripperView() {
     scene.add(fill);
 
     await loadMeshes();
+    initWrench();
     resizeGripperView();
     renderer.setAnimationLoop(() => {
         controls.update();
@@ -327,7 +329,6 @@ function tintLink(name, invalid) {
 
 function renderGripper(angles, valid) {
     if (!meshesReady || !angles) return;
-    const readouts = document.getElementById('gripper-readout').children;
 
     for (let f = 0; f < 2; f++) {
         const side = FINGER_TO_SIDE[f];
@@ -357,10 +358,192 @@ function renderGripper(angles, valid) {
 
         tintLink(`${side}_finger_tip`, !ok);
         // A stale angle is worse than no angle: say why it is not trustworthy.
-        readouts[f].textContent = `F${f} ` + (ok ? `${angle.toFixed(1)}°`
+        // Addressed by id, not by position: the wrench readout sits between
+        // the two finger ones.
+        const readout = document.getElementById(`tip-readout-${f}`);
+        readout.textContent = `F${f} ` + (ok ? `${angle.toFixed(1)}°`
             : (reachable ? 'no ref' : 'unreachable'));
-        readouts[f].classList.toggle('invalid', !ok);
+        readout.classList.toggle('invalid', !ok);
     }
+}
+
+// --- Force/torque wrench ---
+//
+// A wrench is a force along a line plus a twist about that same line. Drawing
+// it that way — rather than as two arrows sharing an origin — makes the lever
+// arm visible as geometry: press off-centre and the arrow slides towards where
+// the load actually acts.
+//
+//   Fhat = F / |F|
+//   Mpar = (M . Fhat) Fhat      the twist no translation can remove
+//   r    = (F x M) / |F|^2      offset to the line of action
+//
+// r grows as 1/|F|^2, so below a force floor the line of action is meaningless
+// and jittery; there the arrow falls back to the sensor origin carrying the
+// whole moment as a twist.
+
+const FORCE_FLOOR_N = 3.0;      // below this, no usable line of action
+// The gripper is only 150 mm tall, so the arrow has to stay well short of that
+// to read as an annotation on it rather than as another part of the scene.
+const FORCE_SCALE = 0.002;      // metres of arrow per newton
+const FORCE_MAX_LEN = 0.10;
+// A couple of newtons would draw a 4 mm stub, too small to read a direction
+// off. The arrow's job is to show which way the load points; the number beside
+// it carries the magnitude.
+const FORCE_MIN_LEN = 0.014;
+const OFFSET_MAX_M = 0.15;      // keep the arrow in frame at low force
+const TWIST_SCALE = 2.0;        // radians of arc per newton-metre
+const TWIST_MIN_NM = 0.02;
+const LINE_HALF_LEN = 0.22;     // how far the line of action is drawn either way
+// The wrench's anchor is the point on the line closest to the sensor, which
+// sits below the gripper and drags the arrow out of frame. The line itself
+// already says *where* the load acts, so the arrow is slid along it to the
+// height of the fingers, where it can be seen against the thing it is pushing.
+const WRENCH_FOCUS_Z = 0.10;
+
+let wrenchGroup, forceArrow, twistArc, anchorDot, actionLine;
+
+function wrenchGeometry(force, moment, origin) {
+    const f = new THREE.Vector3().fromArray(force);
+    const m = new THREE.Vector3().fromArray(moment);
+    const magnitude = f.length();
+    if (magnitude < 1e-9) return null;
+
+    if (magnitude < FORCE_FLOOR_N) {
+        // Too little force for the offset to mean anything: anchor at the
+        // sensor and let the whole moment be the twist.
+        return { anchor: origin.clone(), force: f, twist: m, onLine: false };
+    }
+    const direction = f.clone().divideScalar(magnitude);
+    const twist = direction.clone().multiplyScalar(m.dot(direction));
+    const offset = new THREE.Vector3().crossVectors(f, m).divideScalar(magnitude * magnitude);
+    if (offset.length() > OFFSET_MAX_M) offset.setLength(OFFSET_MAX_M);
+    return { anchor: origin.clone().add(offset), force: f, twist, onLine: true };
+}
+
+// THREE.ArrowHelper draws its shaft as a line, which stays one pixel wide
+// however close the camera gets — a hairline body under a solid cone head. This
+// builds the arrow from real geometry so both parts scale together.
+function makeArrow(color) {
+    const group = new THREE.Group();
+    const material = new THREE.MeshStandardMaterial(
+        { color, roughness: 0.35, metalness: 0.0 });
+    // Unit cylinder and cone, both along +y and centred on the origin, so they
+    // can be scaled and shifted into place without rebuilding geometry.
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 20), material);
+    const head = new THREE.Mesh(new THREE.ConeGeometry(1, 1, 24), material);
+    group.add(shaft, head);
+    return { group, shaft, head, material };
+}
+
+function aimArrow(arrow, from, direction, length) {
+    const headLength = Math.min(0.018, length * 0.25);
+    const headRadius = headLength * 0.45;
+    const shaftRadius = headRadius * 0.4;
+    const shaftLength = Math.max(length - headLength, 1e-4);
+
+    arrow.shaft.scale.set(shaftRadius, shaftLength, shaftRadius);
+    arrow.shaft.position.set(0, shaftLength / 2, 0);
+    arrow.head.scale.set(headRadius, headLength, headRadius);
+    arrow.head.position.set(0, shaftLength + headLength / 2, 0);
+
+    arrow.group.position.copy(from);
+    arrow.group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+}
+
+function initWrench() {
+    wrenchGroup = new THREE.Group();
+    wrenchGroup.visible = false;
+    scene.add(wrenchGroup);
+
+    forceArrow = makeArrow(0xffd166);
+    wrenchGroup.add(forceArrow.group);
+
+    // The line of action, drawn through the whole scene: it is what makes the
+    // lever arm legible, since you can see which finger the force runs through.
+    actionLine = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
+        new THREE.LineDashedMaterial({ color: 0xffd166, dashSize: 0.006, gapSize: 0.004,
+                                       transparent: true, opacity: 0.55 }));
+    wrenchGroup.add(actionLine);
+
+    anchorDot = new THREE.Mesh(
+        new THREE.SphereGeometry(0.0035, 16, 12),
+        new THREE.MeshBasicMaterial({ color: 0xffd166 }));
+    wrenchGroup.add(anchorDot);
+
+    twistArc = new THREE.Mesh(
+        new THREE.TorusGeometry(0.026, 0.0025, 8, 40, Math.PI),
+        new THREE.MeshBasicMaterial({ color: 0x7ee0c0 }));
+    wrenchGroup.add(twistArc);
+}
+
+function renderWrench(wrench, error, ftOrigin) {
+    const readout = document.getElementById('wrench-readout');
+    if (!wrenchGroup) return;
+    if (!wrench) {
+        wrenchGroup.visible = false;
+        readout.textContent = error ? `F/T: ${error}` : 'F/T: no sensor';
+        readout.classList.add('invalid');
+        return;
+    }
+
+    // The anchor comes from the server so there is one definition of where the
+    // sensor sits, not a copy here that can drift from it.
+    const origin = new THREE.Vector3().fromArray(ftOrigin).multiplyScalar(MM);
+    const solved = wrenchGeometry(wrench.slice(0, 3), wrench.slice(3), origin);
+    if (!solved) {
+        wrenchGroup.visible = false;
+        return;
+    }
+    wrenchGroup.visible = true;
+
+    const magnitude = solved.force.length();
+    const direction = solved.force.clone().normalize();
+    const length = Math.min(Math.max(magnitude * FORCE_SCALE, FORCE_MIN_LEN),
+                            FORCE_MAX_LEN);
+
+    // On the line of action, slide along it to finger height so the arrow is
+    // drawn against what it is acting on rather than under the gripper. Below
+    // the force floor there is no line to slide along — the point of the
+    // fallback is that the load cannot be located — so the arrow stays put at
+    // the sensor origin, which is where the reading is actually taken.
+    let head = solved.anchor.clone();
+    if (solved.onLine) {
+        const focus = new THREE.Vector3(0, 0, WRENCH_FOCUS_Z);
+        head.addScaledVector(direction, focus.clone().sub(solved.anchor).dot(direction));
+    }
+
+    aimArrow(forceArrow, head.clone().addScaledVector(direction, -length),
+             direction, length);
+    anchorDot.position.copy(head);
+
+    const ends = [
+        solved.anchor.clone().addScaledVector(direction, -LINE_HALF_LEN),
+        solved.anchor.clone().addScaledVector(direction, LINE_HALF_LEN),
+    ];
+    actionLine.geometry.dispose();
+    actionLine.geometry = new THREE.BufferGeometry().setFromPoints(ends);
+    actionLine.computeLineDistances();
+    actionLine.visible = solved.onLine;
+
+    const twistMagnitude = solved.twist.length();
+    twistArc.visible = twistMagnitude > TWIST_MIN_NM;
+    if (twistArc.visible) {
+        const arc = Math.min(twistMagnitude * TWIST_SCALE, 4.5);
+        twistArc.geometry.dispose();
+        twistArc.geometry = new THREE.TorusGeometry(0.026, 0.0025, 8, 40, arc);
+        twistArc.position.copy(head);
+        // The torus turns about its own +z; align that with the twist so the
+        // arc sweeps the way the right-hand rule says it should.
+        const axis = solved.twist.clone().normalize();
+        twistArc.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), axis);
+    }
+
+    const moment = new THREE.Vector3().fromArray(wrench.slice(3)).length();
+    readout.textContent = `${magnitude.toFixed(1)} N   ${moment.toFixed(2)} Nm`
+        + (solved.onLine ? '' : '  (at sensor)');
+    readout.classList.remove('invalid');
 }
 
 function resizeGripperView() {

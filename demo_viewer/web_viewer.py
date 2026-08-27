@@ -69,6 +69,18 @@ TIP_ANGLE_SIGN = (1.0, -1.0)
 ACCEL_LSB_PER_G = 32768.0 / 2.0     # 16384; only used for reporting, not the angle
 GYRO_LSB_PER_DPS = 32768.0 / 250.0  # 131.072
 
+# --- Force/torque -----------------------------------------------------------
+#
+# The FT sensor mounts between the robot flange and the gripper coupling, so its
+# origin sits below the gripper's base_link. This offset is approximate: the
+# adapter is 11 mm, but the sensor's own stack height is not documented in any
+# repo to hand. It only shifts where the wrench is anchored in the drawing.
+FT_ORIGIN_MM = [0.0, 0.0, -20.0]
+
+# Older readings than this are stale — a disconnected sensor should stop drawing
+# a wrench rather than leave the last one frozen on screen.
+FT_STALE_AFTER_S = 0.5
+
 
 class SensorDataBuffer:
     """Thread-safe circular buffers for sensor data."""
@@ -93,6 +105,10 @@ class SensorDataBuffer:
         self._tip_ref_norm = [None] * NUM_FINGERS    # 1 g in raw counts
         self._tip_last_time = [None] * NUM_FINGERS
         self._tip_raw_angle = [0.0] * NUM_FINGERS    # radians, in the IMU's own frame
+        # Latest force/torque reading: (fx, fy, fz) N, (mx, my, mz) Nm
+        self.wrench = None
+        self.wrench_time = 0.0
+        self.wrench_error = None
 
     def _update_tip_angle(self, f, accel, gyro, now):
         """Estimate one fingertip's angle from its IMU. Caller holds the lock."""
@@ -197,6 +213,20 @@ class SensorDataBuffer:
                 result.append(values)
             return result, list(self.max_range)
 
+    def push_wrench(self, values, now=None):
+        with self._lock:
+            self.wrench = list(values)
+            self.wrench_time = now if now is not None else time.monotonic()
+
+    def get_wrench_snapshot(self):
+        """Latest force/torque, or None when there is nothing trustworthy."""
+        with self._lock:
+            if self.wrench is None:
+                return None
+            if time.monotonic() - self.wrench_time > FT_STALE_AFTER_S:
+                return None
+            return list(self.wrench)
+
     def get_tip_snapshot(self):
         """Return (angles in degrees, per-finger validity)."""
         with self._lock:
@@ -230,8 +260,9 @@ def _subsample_deque(d, max_points):
 
 
 class WebViewer:
-    def __init__(self, monitor, port=8080):
+    def __init__(self, monitor, port=8080, ft_source=None):
         self.monitor = monitor
+        self.ft_source = ft_source
         self.port = port
         self.buffer = SensorDataBuffer()
         self.clients = set()
@@ -308,8 +339,12 @@ class WebViewer:
                     # Single-page viewer: send every stream on every frame.
                     values, max_ranges = self.buffer.get_static_snapshot()
                     tip_angles, tip_valid = self.buffer.get_tip_snapshot()
+                    wrench = self.buffer.get_wrench_snapshot()
                     msg = {
                         "type": "data",
+                        "wrench": wrench,
+                        "ftOrigin": FT_ORIGIN_MM,
+                        "wrenchError": self.buffer.wrench_error,
                         "static": values,
                         "maxRange": max_ranges,
                         "dynamic": self.buffer.get_dynamic_snapshot(),
@@ -353,8 +388,8 @@ class QuietHTTPHandler(SimpleHTTPRequestHandler):
         super().end_headers()
 
 
-def run_web_viewer(monitor, port=8080):
-    viewer = WebViewer(monitor, port)
+def run_web_viewer(monitor, port=8080, ft_source=None, open_browser=True):
+    viewer = WebViewer(monitor, port, ft_source)
 
     # Seed buffer baseline from the calibration done in main()
     for f in range(NUM_FINGERS):
@@ -367,11 +402,25 @@ def run_web_viewer(monitor, port=8080):
     )
     serial_thread.start()
 
+    if ft_source is not None:
+        def read_ft():
+            # The force/torque sensor is a separate device on a separate bus.
+            # If it is missing or unplugged the gripper must keep working, so
+            # the failure is recorded and shown, not raised.
+            try:
+                ft_source.read(lambda t, values: viewer.buffer.push_wrench(values, t))
+            except Exception as exc:
+                viewer.buffer.wrench_error = f"{type(exc).__name__}: {exc}"
+                traceback.print_exc(file=sys.stderr)
+
+        threading.Thread(target=read_ft, daemon=True).start()
+
     url = f"http://localhost:{port}"
     print(f"Web viewer starting...")
     print(f"  URL: {url}")
     print("  Press Ctrl+C to stop.\n")
-    webbrowser.open(url)
+    if open_browser:
+        webbrowser.open(url)
 
     # All threads are daemon — hard exit on Ctrl+C is safe and responsive
     signal.signal(signal.SIGINT, lambda *_: os._exit(0))
