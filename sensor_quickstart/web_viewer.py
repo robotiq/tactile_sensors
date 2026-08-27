@@ -330,6 +330,13 @@ class QuietHTTPHandler(SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
+    def end_headers(self):
+        # The page and its assets change while the viewer is being worked on,
+        # and a browser that reuses a cached app.js just looks like the change
+        # did not happen. Nothing here is worth caching.
+        self.send_header("Cache-Control", "no-store, must-revalidate")
+        super().end_headers()
+
 
 def run_web_viewer(monitor, port=8080):
     viewer = WebViewer(monitor, port)
