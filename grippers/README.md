@@ -4,7 +4,11 @@ A standalone, ROS-independent C++ SDK for controlling Robotiq 2F adaptive
 grippers (2F-85 / 2F-140 / Hand-E class) over their Modbus RTU serial link.
 Cross-platform: Linux, Windows, macOS.
 
-The [ROS 2 driver](https://github.com/robotiq/ros) will consume this SDK.
+Developed and maintained by Robotiq; questions and bug reports go to
+[Robotiq/grippers/issues](https://github.com/Robotiq/grippers/issues).
+
+Robotiq's [ROS 2 driver](https://github.com/robotiq/ros) is built on this SDK — it
+is where `robotiq_driver` gets its serial link and Modbus exchange.
 
 ## Design
 
@@ -187,7 +191,8 @@ release.
 
 ## License
 
-BSD-3-Clause. Portions derived from PickNik Robotics'
+BSD-3-Clause. Robotiq develops and maintains this SDK; parts of it started from
+PickNik Robotics'
 [ros2_robotiq_gripper](https://github.com/PickNikRobotics/ros2_robotiq_gripper)
-driver (BSD-3-Clause); original copyright notices are preserved in the
-affected files and full history is preserved in git.
+driver (BSD-3-Clause), whose original copyright notices are preserved in the
+affected files, with the full history preserved in git.
