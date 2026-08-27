@@ -1,8 +1,11 @@
 # Robotiq Grippers C++ SDK
 
-A standalone, ROS-independent C++ SDK for controlling Robotiq 2F adaptive
-grippers (2F-85 / 2F-140 / Hand-E class) over their Modbus RTU serial link.
-Cross-platform: Linux, Windows, macOS.
+A standalone, ROS-independent C++ SDK for controlling Robotiq adaptive grippers
+over their Modbus RTU serial link. Cross-platform: Linux, Windows, macOS.
+
+The 2F-85, 2F-140 and Hand-E share one Modbus register map, so the SDK speaks to
+all of them and nothing in it is model-specific. Hardware validation to date is
+on a 2F-85.
 
 Developed and maintained by Robotiq; questions and bug reports go to
 [Robotiq/grippers/issues](https://github.com/Robotiq/grippers/issues).
