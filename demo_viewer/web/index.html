@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robotiq Tactile Sensor Viewer</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+    <script type="importmap">
+    { "imports": { "three": "./vendor/three.module.js" } }
+    </script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Robotiq Tactile Sensor Viewer</h1>
+        <div class="controls">
+            <button id="reset-baseline">Reset Baseline</button>
+            <label><input type="checkbox" id="raw-values"> Raw</label>
+            <label><input type="checkbox" id="adaptive-range" checked> Adaptive scale</label>
+        </div>
+        <div id="status-bar">
+            <span id="connection-status" class="status-disconnected">Disconnected</span>
+            <span id="sample-count">Frame: 0</span>
+        </div>
+    </header>
+
+    <main class="grid">
+        <!-- Column headers -->
+        <div class="corner"></div>
+        <div class="col-head">Static pressure</div>
+        <div class="col-head">Dynamic <span class="unit">(mV)</span><span class="finger-key"><i class="f0"></i>F0 <i class="f1"></i>F1</span></div>
+        <div class="col-head">Finger proprioception <span class="unit">(2F-85)</span></div>
+
+        <!-- Both span the two finger rows — one carries both fingers' traces,
+             the other shows both fingertips. Explicitly placed so the per-finger
+             cells auto-flow around them. -->
+        <div class="cell dynamic-cell"><div id="dynamic-time" class="plot"></div></div>
+
+        <div class="cell gripper-cell">
+            <div id="gripper-view"></div>
+            <div id="gripper-readout"><span></span><span></span></div>
+        </div>
+
+        <!-- Finger 0 -->
+        <div class="row-label"><span>Finger 0</span></div>
+        <div class="cell static-cell"><div id="static-finger-0" class="plot"></div></div>
+
+        <!-- Finger 1 -->
+        <div class="row-label"><span>Finger 1</span></div>
+        <div class="cell static-cell"><div id="static-finger-1" class="plot"></div></div>
+    </main>
+
+    <script src="gripper_geometry.js"></script>
+    <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,193 @@
+/*
+ * Single-page layout: every signal is visible at once, next to a drawing of the
+ * gripper the sensors are mounted on.
+ * The page always fits the browser window (no scrolling) so the viewer can be
+ * docked to part of a 1280x800 screen while another tool (e.g. the force/torque
+ * viewer) uses the rest.
+ */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --bg: #1a1a2e;
+    --panel: #16213e;
+    --line: #0f3460;
+    --accent: #e94560;
+    --finger-0: #4fa3e3;
+    --finger-1: #f2a541;
+    /* Below this the charts stop shrinking and the page scrolls instead. */
+    --min-row: 150px;
+}
+
+html, body { height: 100%; }
+
+body {
+    background: var(--bg);
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Header ------------------------------------------------------------------ */
+
+header {
+    flex: none;
+    background: var(--panel);
+    padding: 6px 12px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    border-bottom: 1px solid var(--line);
+}
+
+header h1 {
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+#status-bar {
+    margin-left: auto;
+    display: flex;
+    gap: 16px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.status-connected { color: #4caf50; }
+.status-disconnected { color: #f44336; }
+
+.controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.controls button {
+    padding: 3px 10px;
+    background: var(--line);
+    color: #e0e0e0;
+    border: 1px solid #1a4a8a;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.controls button:hover { background: #1a4a8a; }
+
+.controls label {
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+/* Chart grid -------------------------------------------------------------- */
+
+.grid {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    /* row label | static (narrow, 4:7 sensor) | dynamic | gripper.
+       Both fingers share one dynamic plot, so that column only needs to be
+       readable, not wide. The gripper drawing is roughly square and spans both
+       rows, so its column is sized to match that height. */
+    grid-template-columns:
+        16px minmax(120px, 0.7fr) minmax(100px, 0.55fr) minmax(240px, 1.75fr);
+    grid-template-rows: auto minmax(var(--min-row), 1fr) minmax(var(--min-row), 1fr);
+    gap: 6px;
+    padding: 6px 10px 8px;
+    overflow: auto;
+}
+
+.col-head {
+    font-size: 12px;
+    font-weight: 600;
+    color: #aab;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.col-head .unit { color: #778; font-weight: 400; }
+
+/* Which trace is which finger, in the shared dynamic plot */
+.finger-key { margin-left: 6px; font-weight: 400; color: #889; }
+.finger-key i {
+    display: inline-block;
+    width: 8px;
+    height: 2px;
+    margin-right: 2px;
+    vertical-align: middle;
+}
+.finger-key .f0 { background: var(--finger-0); }
+.finger-key .f1 { background: var(--finger-1); }
+
+.row-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+}
+
+.row-label span {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: #99a;
+    white-space: nowrap;
+}
+
+.cell {
+    min-width: 0;
+    min-height: 0;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.plot { width: 100%; height: 100%; }
+
+/* Gripper view ------------------------------------------------------------ */
+
+.dynamic-cell {
+    grid-column: 3;
+    grid-row: 2 / span 2;
+}
+
+.gripper-cell {
+    grid-column: 4;
+    grid-row: 2 / span 2;
+    position: relative;
+}
+
+/* The three.js canvas fills the cell; the readouts float over it so they do
+   not scale with the scene the way SVG text did. */
+#gripper-view { width: 100%; height: 100%; }
+#gripper-view canvas { display: block; }
+
+#gripper-readout {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 18px;
+    font-size: 13px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: #c3cde6;
+    pointer-events: none;
+}
+
+#gripper-readout .invalid { color: #6a7490; font-weight: 400; }
