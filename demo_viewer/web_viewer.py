@@ -64,11 +64,27 @@ TIP_ROTATION_AXIS = 0        # IMU x is the finger's rotation axis (provisional)
 # Sign per finger. A positive reported angle always means the fingertip has
 # rotated *inward*, towards the other finger — the direction the distal phalanx
 # wraps in an encompassing grip — so a symmetric grasp reads the same on both
-# fingers. The entries are opposite because the two fingertips are mirror
-# images while their IMUs are mounted identically, so the same physical inward
-# motion turns the two sensors in opposite directions. Mirroring for the
-# drawing is the viewer's job, not this estimate's.
-TIP_ANGLE_SIGN = (1.0, -1.0)
+# fingers.
+#
+# The entries are equal because there are two mirrors here and they cancel. The
+# fingertips are mirror images, so an inward turn is opposite in world terms on
+# the two fingers; but the right finger's IMU is itself the left one's turned
+# 180 degrees about the world vertical, so it measures that opposite turn about
+# an axis that also points the opposite way. The two sign flips undo each other
+# and the raw readings come out identical.
+#
+# That is not obvious and it is worth saying why it went unnoticed: at rest the
+# mirror is invisible. Both IMUs report the same 1.00 g on y whether or not one
+# is turned about the vertical, because the vertical is the axis it is turned
+# about. Only a moving fingertip distinguishes them.
+#
+# Checked against all four right-handed mountings that put +1 g on IMU y — the
+# one thing hardware has actually confirmed — and a symmetric grasp reads
+# identically on both fingers in every one of them. So the entries being equal
+# does not depend on resolving the x-versus-z ambiguity below. Whether they are
+# both +1 or both -1 does: that is the same open question as before, and shows
+# up as a grasp reading negative when the fingers close.
+TIP_ANGLE_SIGN = (1.0, 1.0)
 
 # Sensor scales. The IMU is an ICM-20948, configured for +-2 g and +-250 dps,
 # and what reaches the viewer is its raw int16 counts: unscaled, unbiased, in
