@@ -27,13 +27,17 @@
 
     <main class="grid">
         <!-- A column per finger — its pad, and that finger's dynamic trace
-             directly beneath it — then the gripper, spanning both rows. -->
-        <div class="col-head">Finger 0</div>
+             directly beneath it — then the gripper, spanning both rows.
+             Finger 1 is on the left: the columns are ordered to match the
+             hardware, not the index. The ids stay bound to the finger index,
+             so this is purely a matter of where each column sits and nothing
+             in app.js has to know about it. -->
         <div class="col-head">Finger 1</div>
+        <div class="col-head">Finger 0</div>
         <div class="col-head">Gripper config and load <span class="unit">(2F-85)</span></div>
 
-        <div class="cell"><div id="static-finger-0" class="plot"></div></div>
         <div class="cell"><div id="static-finger-1" class="plot"></div></div>
+        <div class="cell"><div id="static-finger-0" class="plot"></div></div>
 
         <div class="cell gripper-cell">
             <div id="gripper-view"></div>
@@ -50,11 +54,11 @@
 
         <div class="cell captioned">
             <span class="caption">Dynamic <span class="unit">(mV)</span></span>
-            <div id="dynamic-time-0" class="plot"></div>
+            <div id="dynamic-time-1" class="plot"></div>
         </div>
         <div class="cell captioned">
             <span class="caption">Dynamic <span class="unit">(mV)</span></span>
-            <div id="dynamic-time-1" class="plot"></div>
+            <div id="dynamic-time-0" class="plot"></div>
         </div>
     </main>
 
