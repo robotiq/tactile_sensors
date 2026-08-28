@@ -121,15 +121,33 @@ function renderStatic(data, maxRanges) {
 // colour rather than needing a legend.
 const FINGER_COLORS = ['#4fa3e3', '#f2a541'];
 
+// The dynamic signal spans four orders of magnitude between a brush of a
+// fingertip and a knock, so a fixed axis either flattens the quiet end or
+// clips the loud one. The axis follows the window's own peak instead, but
+// never closes tighter than +-DYN_MIN_HALF_RANGE: below that the trace is
+// noise, and zooming into noise makes a still finger look busy.
+const DYN_FULL_SCALE_MV = 1.024;    // what a full-scale sample is worth
+const DYN_MIN_HALF_RANGE = 0.5;     // mV, the floor
+const DYN_HEADROOM = 1.15;          // keep the peak off the frame edge
+const dynRange = [0, 0];            // what each chart is currently showing
+
+// Snapping to a step keeps the axis from creeping a little on every frame,
+// which reads as the trace breathing rather than as the scale changing. The
+// step is 0.1 mV rather than a 1/2/5 ladder because the whole span from the
+// floor to full scale is only 0.5 mV wide — a ladder would have two rungs in it.
+const DYN_RANGE_STEP = 0.1;
+
 function initDynamicChart(divId, finger) {
     Plotly.newPlot(divId, [{
         y: [], type: 'scattergl', mode: 'lines',
         line: { width: 1, color: FINGER_COLORS[finger] }
     }], baseLayout({
         xaxis: Object.assign({}, AXIS_STYLE, { showticklabels: false }),
-        yaxis: Object.assign({}, AXIS_STYLE, { range: [-1, 1] }),
+        yaxis: Object.assign({}, AXIS_STYLE,
+                             { range: [-DYN_MIN_HALF_RANGE, DYN_MIN_HALF_RANGE] }),
         margin: { t: 18, b: 20, l: 36, r: 6 }
     }), PLOTLY_CONFIG);
+    dynRange[finger] = DYN_MIN_HALF_RANGE;
 }
 
 function renderDynamic(dynData) {
@@ -137,8 +155,21 @@ function renderDynamic(dynData) {
     for (let f = 0; f < 2; f++) {
         const samples = dynData[f];
         const mV = new Float32Array(samples.length);
-        for (let i = 0; i < samples.length; i++) mV[i] = samples[i] * 1.024 / 32767;
+        let peak = 0;
+        for (let i = 0; i < samples.length; i++) {
+            mV[i] = samples[i] * DYN_FULL_SCALE_MV / 32767;
+            if (Math.abs(mV[i]) > peak) peak = Math.abs(mV[i]);
+        }
         Plotly.restyle(`dynamic-time-${f}`, { y: [mV] });
+
+        // Clamped at full scale: no reading can land outside it, so a wider
+        // axis would only add empty space.
+        const wanted = Math.ceil(peak * DYN_HEADROOM / DYN_RANGE_STEP) * DYN_RANGE_STEP;
+        const half = Math.min(Math.max(wanted, DYN_MIN_HALF_RANGE), DYN_FULL_SCALE_MV);
+        if (half !== dynRange[f]) {
+            dynRange[f] = half;
+            Plotly.relayout(`dynamic-time-${f}`, { 'yaxis.range': [-half, half] });
+        }
     }
 }
 

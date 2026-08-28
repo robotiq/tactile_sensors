@@ -86,6 +86,15 @@ GYRO_LSB_PER_DPS = 32768.0 / 250.0  # 131.072
 # repo to hand. It only shifts where the wrench is anchored in the drawing.
 FT_ORIGIN_MM = [0.0, 0.0, -20.0]
 
+# The sensor's own frame is not the scene's. Seen from the viewer's default
+# camera the sensor's z points up the gripper — which the scene already calls z
+# — and its y points to the right, which the scene calls x. That leaves the
+# sensor's x along the scene's -y. The map is a rotation, so the moment (a
+# pseudovector) turns with it exactly as the force does.
+def ft_to_scene(vector):
+    """(x, y, z) in the sensor's frame -> the same vector in the scene's."""
+    return [vector[1], -vector[0], vector[2]]
+
 # Older readings than this are stale — a disconnected sensor should stop drawing
 # a wrench rather than leave the last one frozen on screen.
 FT_STALE_AFTER_S = 0.5
@@ -261,7 +270,8 @@ class SensorDataBuffer:
                 return None
             if time.monotonic() - self.wrench_time > FT_STALE_AFTER_S:
                 return None
-            return list(self.wrench)
+            wrench = self.wrench
+        return ft_to_scene(wrench[:3]) + ft_to_scene(wrench[3:])
 
     def get_tip_snapshot(self):
         """Return (angles in degrees, per-finger validity)."""
