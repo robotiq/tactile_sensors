@@ -36,24 +36,32 @@ feed(0.0, 0.0, 1.0)                       # startup calibration, tips at zero
 angles, valid = buf.get_tip_snapshot()
 print(f"  at rest:            F0 {angles[0]:+6.2f}  F1 {angles[1]:+6.2f}   valid={valid}")
 
+# The tips turn opposite ways in world terms — that is what makes the grasp
+# symmetric — and both must report the same angle. The sense below is the one
+# the estimator reports positive; which of the two is physically inward is the
+# open polarity question, and is not what this checks. Angles stay inside the
+# joint's travel so the clamp cannot mask a disagreement by pinning both to zero.
 failures = []
-for deg in (5, 10, 20, 35):
+for deg in (5, 10, 20, 33):
     th = math.radians(deg)
-    feed(th, -th, 1.0)                    # symmetric: left +phi, right -phi
+    feed(-th, th, 1.0)
     angles, valid = buf.get_tip_snapshot()
     agree = abs(angles[0] - angles[1]) < 0.05
+    right = all(abs(a - deg) < 0.05 for a in angles)
     print(f"  symmetric {deg:2d} deg:    F0 {angles[0]:+6.2f}  F1 {angles[1]:+6.2f}"
-          f"   {'agree' if agree else 'DISAGREE'}   valid={valid}")
+          f"   {'agree' if agree else 'DISAGREE'}"
+          f"{'' if right else '  WRONG MAGNITUDE'}   valid={valid}")
     if not agree: failures.append(f"symmetric {deg} deg read {angles}")
+    if not right: failures.append(f"symmetric {deg} deg magnitude {angles}")
     if not all(valid): failures.append(f"symmetric {deg} deg marked invalid")
 
 # Asymmetric: only the left tip moves. The fingers must NOT track together.
-feed(math.radians(25), 0.0, 1.0)
+feed(math.radians(-25), 0.0, 1.0)
 angles, _ = buf.get_tip_snapshot()
 print(f"\n  left tip only:      F0 {angles[0]:+6.2f}  F1 {angles[1]:+6.2f}")
 if abs(angles[1]) > 0.05:
     failures.append(f"still finger moved: {angles[1]}")
-if abs(abs(angles[0]) - 25) > 0.05:
+if abs(angles[0] - 25) > 0.05:
     failures.append(f"moved finger read {angles[0]}, expected 25")
 
 print("\n" + ("FAILED: " + "; ".join(failures) if failures else "MIRROR CHECKS PASSED"))

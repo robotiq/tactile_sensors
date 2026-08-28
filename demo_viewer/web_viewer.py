@@ -86,6 +86,22 @@ TIP_ROTATION_AXIS = 0        # IMU x is the finger's rotation axis (provisional)
 # up as a grasp reading negative when the fingers close.
 TIP_ANGLE_SIGN = (1.0, 1.0)
 
+# Travel of the distal phalanx, from fully open to its mechanical stop.
+#
+# Nothing downstream catches an impossible pose: the four-bar is solved by
+# circle-circle intersection, which stays solvable past +-90 degrees, so it will
+# happily fold the linkage through itself rather than report a failure. A hard,
+# fast knock on a fingertip spikes the gyro, the filter integrates it, and the
+# drawing follows into a configuration the real mechanism cannot reach. The
+# limit is the joint's, so it belongs here on the estimate.
+#
+# One consequence worth knowing: if TIP_ANGLE_SIGN has the wrong polarity, every
+# inward motion is negative and clamps to zero, so the fingers stay frozen open
+# instead of moving the wrong way. That is a louder symptom than the one it
+# replaces, not a quieter one.
+TIP_ANGLE_MIN_DEG = 0.0
+TIP_ANGLE_MAX_DEG = 33.0
+
 # Sensor scales. The IMU is an ICM-20948, configured for +-2 g and +-250 dps,
 # and what reaches the viewer is its raw int16 counts: unscaled, unbiased, in
 # the chip's own axes, with no mounting matrix applied. Sensitivity is therefore
@@ -213,8 +229,15 @@ class SensorDataBuffer:
             self.tip_valid[f] = False
             return
 
-        self._tip_raw_angle[f] = angle
-        self.tip_angle[f] = math.degrees(angle) * TIP_ANGLE_SIGN[f]
+        reported = math.degrees(angle) * TIP_ANGLE_SIGN[f]
+        clamped = min(max(reported, TIP_ANGLE_MIN_DEG), TIP_ANGLE_MAX_DEG)
+        # Clamp the filter's own state, not just what is reported. A knock
+        # integrates the gyro far past the stop, and a state holding that excess
+        # would leave the estimate pinned at the limit, quietly unwinding, long
+        # after the fingertip had come back. TIP_ANGLE_SIGN is +-1, so dividing
+        # by it is how the reported angle maps back to the filter's frame.
+        self._tip_raw_angle[f] = math.radians(clamped) / TIP_ANGLE_SIGN[f]
+        self.tip_angle[f] = clamped
         self.tip_valid[f] = off_plane <= TIP_AXIS_TOLERANCE
 
     def push(self, sensor_data):
