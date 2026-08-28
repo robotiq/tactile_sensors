@@ -273,9 +273,18 @@ async function initGripperView() {
     scene.background = new THREE.Color(0x16213e);
 
     camera = new THREE.PerspectiveCamera(35, 1, 0.01, 10);
-    // Start looking straight down the joint axis, which is the view the flat
-    // drawing showed and the side the key light is on. The user can orbit away.
-    camera.position.set(0, -0.40, 0.065);
+    // Start on a three-quarter view rather than square down the joint axis.
+    // Face-on is the flat drawing's view and reads as a diagram: the linkage
+    // collapses into a single silhouette and the wrench arrow, which can point
+    // anywhere in space, loses its depth entirely. Off-axis, both read as solid.
+    //
+    // 35 degrees around and 25 up — far enough round to give the pads and the
+    // five-bar some depth, not so far that the linkage stops reading in
+    // profile. Swung towards -x, the side the key light is on, so the near face
+    // is the lit one. 0.44 m rather than the 0.40 the face-on view used: seen
+    // from a corner the near corner of the gripper is closer to the camera, so
+    // the same distance framed it noticeably tighter. The user can orbit away.
+    camera.position.set(-0.2287, -0.3267, 0.2510);
     camera.up.set(0, 0, 1);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
