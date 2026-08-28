@@ -130,6 +130,15 @@ def ft_to_scene(vector):
     """(x, y, z) in the sensor's frame -> the same vector in the scene's."""
     return [vector[1], -vector[0], vector[2]]
 
+# Noise floor for the static pads. An untouched taxel does not sit at exactly
+# its baseline — it wanders a few counts either side — and the colour scale is
+# sensitive enough down there to paint that wander as a faint, drifting pattern
+# on a pad nobody is touching. Anything below this reads as no contact at all.
+#
+# Applied to the baseline-subtracted deflection only. Raw mode exists to show
+# the unprocessed reading, so nothing is suppressed there.
+STATIC_NOISE_FLOOR = 25
+
 # Older readings than this are stale — a disconnected sensor should stop drawing
 # a wrench rather than leave the last one frozen on screen.
 FT_STALE_AFTER_S = 0.5
@@ -274,7 +283,11 @@ class SensorDataBuffer:
                     result.append([0] * 28)
                     continue
                 if self.use_baseline:
-                    values = [max(0, raw[i] - self.baseline[f][i]) for i in range(28)]
+                    values = []
+                    for i in range(28):
+                        deflection = max(0, raw[i] - self.baseline[f][i])
+                        values.append(deflection
+                                      if deflection >= STATIC_NOISE_FLOOR else 0)
                 else:
                     values = list(raw)
                 if self.adaptive_range:
