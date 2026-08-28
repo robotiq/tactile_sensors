@@ -280,11 +280,13 @@ async function initGripperView() {
     //
     // 35 degrees around and 25 up — far enough round to give the pads and the
     // five-bar some depth, not so far that the linkage stops reading in
-    // profile. Swung towards -x, the side the key light is on, so the near face
-    // is the lit one. 0.44 m rather than the 0.40 the face-on view used: seen
-    // from a corner the near corner of the gripper is closer to the camera, so
-    // the same distance framed it noticeably tighter. The user can orbit away.
-    camera.position.set(-0.2287, -0.3267, 0.2510);
+    // profile. Swung about -z, towards +x, so the view matches the side the
+    // gripper is actually approached from on the rig. That is 34 degrees off
+    // the key light rather than 15, so the near face is still the lit one, just
+    // less flatly. 0.44 m rather than the 0.40 the face-on view used: seen from
+    // a corner the near corner of the gripper sits closer to the camera, and
+    // the old distance framed it tighter. The user can orbit away.
+    camera.position.set(0.2287, -0.3267, 0.2510);
     camera.up.set(0, 0, 1);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
