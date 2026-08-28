@@ -22,6 +22,7 @@ MOUNT = (LEFT, RIGHT)
 def accel(f, phi):
     return [dot(G, mul(Ry(phi), a)) * LSB for a in MOUNT[f]]
 
+SENSE = -W.TIP_ANGLE_SIGN[0]
 buf = W.SensorDataBuffer()
 DT = 0.001
 t = 0.0
@@ -37,14 +38,15 @@ angles, valid = buf.get_tip_snapshot()
 print(f"  at rest:            F0 {angles[0]:+6.2f}  F1 {angles[1]:+6.2f}   valid={valid}")
 
 # The tips turn opposite ways in world terms — that is what makes the grasp
-# symmetric — and both must report the same angle. The sense below is the one
-# the estimator reports positive; which of the two is physically inward is the
-# open polarity question, and is not what this checks. Angles stay inside the
+# symmetric — and both must report the same angle. SENSE picks whichever
+# direction the current polarity reports positive, so this checks that the two
+# fingers agree and by how much, not which physical direction is inward. That
+# last part is not derivable in simulation: it was settled at the gripper. Angles stay inside the
 # joint's travel so the clamp cannot mask a disagreement by pinning both to zero.
 failures = []
 for deg in (5, 10, 20, 33):
     th = math.radians(deg)
-    feed(-th, th, 1.0)
+    feed(SENSE * th, -SENSE * th, 1.0)
     angles, valid = buf.get_tip_snapshot()
     agree = abs(angles[0] - angles[1]) < 0.05
     right = all(abs(a - deg) < 0.05 for a in angles)
@@ -56,7 +58,7 @@ for deg in (5, 10, 20, 33):
     if not all(valid): failures.append(f"symmetric {deg} deg marked invalid")
 
 # Asymmetric: only the left tip moves. The fingers must NOT track together.
-feed(math.radians(-25), 0.0, 1.0)
+feed(SENSE * math.radians(25), 0.0, 1.0)
 angles, _ = buf.get_tip_snapshot()
 print(f"\n  left tip only:      F0 {angles[0]:+6.2f}  F1 {angles[1]:+6.2f}")
 if abs(angles[1]) > 0.05:

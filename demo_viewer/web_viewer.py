@@ -81,10 +81,13 @@ TIP_ROTATION_AXIS = 0        # IMU x is the finger's rotation axis (provisional)
 # Checked against all four right-handed mountings that put +1 g on IMU y — the
 # one thing hardware has actually confirmed — and a symmetric grasp reads
 # identically on both fingers in every one of them. So the entries being equal
-# does not depend on resolving the x-versus-z ambiguity below. Whether they are
-# both +1 or both -1 does: that is the same open question as before, and shows
-# up as a grasp reading negative when the fingers close.
-TIP_ANGLE_SIGN = (1.0, 1.0)
+# does not depend on resolving the x-versus-z ambiguity below.
+#
+# Which way round they go was settled at the gripper rather than derived: with
+# them both +1 the fingertips sat frozen open as the gripper closed, because
+# real inward motion was coming out negative and clamping to zero at the stop
+# below. Both -1 is the direction that matches the hardware.
+TIP_ANGLE_SIGN = (-1.0, -1.0)
 
 # Travel of the distal phalanx, from fully open to its mechanical stop.
 #

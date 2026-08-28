@@ -9,6 +9,7 @@ import web_viewer as W
 
 LSB, GLSB = W.ACCEL_LSB_PER_G, W.GYRO_LSB_PER_DPS
 DT = 0.001
+SIGN = W.TIP_ANGLE_SIGN[0]
 buf = W.SensorDataBuffer()
 t = 0.0
 UP = [0.0, LSB, 0.0]                       # gripper upright, tip at zero
@@ -29,7 +30,7 @@ for rate_dps, seconds in ((250, 0.05), (250, 0.5), (-250, 0.5)):
     peak = 0.0
     for _ in range(int(seconds / DT)):
         t += DT
-        buf._update_tip_angle(0, [3 * LSB, 3 * LSB, 0], [int(rate_dps * GLSB), 0, 0], t)
+        buf._update_tip_angle(0, [3 * LSB, 3 * LSB, 0], [int(rate_dps * SIGN * GLSB), 0, 0], t)
         peak = max(peak, abs(buf.get_tip_snapshot()[0][0]))
     angle = buf.get_tip_snapshot()[0][0]
     free = rate_dps * seconds
@@ -47,10 +48,10 @@ if abs(back) >= 0.5: fails.append(f"did not recover: {back}")
 
 # And ordinary motion inside the travel is untouched.
 def tilt(deg):
-    # Whichever physical direction this is, it is the one the estimator reports
-    # positive; which of the two is "inward" is the open polarity question.
+    # SIGN picks whichever physical direction the current polarity reports
+    # positive, so the test drives towards the stop whichever way round it is.
     r = math.radians(deg)
-    return [0.0, math.cos(r) * LSB, math.sin(r) * LSB]
+    return [0.0, math.cos(r) * LSB, math.sin(r) * SIGN * LSB]
 print()
 for deg in (5, 20, 33, 45):
     got = feed(tilt(deg), [0, 0, 0], 1.0)
