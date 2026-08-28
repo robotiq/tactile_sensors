@@ -1,10 +1,17 @@
 # Robotiq Grippers C++ SDK
 
-A standalone, ROS-independent C++ SDK for controlling Robotiq 2F adaptive
-grippers (2F-85 / 2F-140 / Hand-E class) over their Modbus RTU serial link.
-Cross-platform: Linux, Windows, macOS.
+A standalone, ROS-independent C++ SDK for controlling Robotiq adaptive grippers
+over their Modbus RTU serial link. Cross-platform: Linux, Windows, macOS.
 
-The [ROS 2 driver](https://github.com/robotiq/ros) will consume this SDK.
+The 2F-85, 2F-140 and Hand-E share one Modbus register map, so the SDK speaks to
+all of them and nothing in it is model-specific. Hardware validation to date is
+on a 2F-85.
+
+Developed and maintained by Robotiq; questions and bug reports go to
+[Robotiq/grippers/issues](https://github.com/Robotiq/grippers/issues).
+
+Robotiq's [ROS 2 driver](https://github.com/robotiq/ros) is built on this SDK — it
+is where `robotiq_driver` gets its serial link and Modbus exchange.
 
 ## Design
 
@@ -127,8 +134,12 @@ target_link_libraries(your_target PRIVATE Robotiq::grippers)
   permission (the kernel default of 16 ms triples Modbus latency); for
   unprivileged use, ship a udev rule that sets it at plug time.
 - **Windows**: the FTDI latency timer is a driver setting (Device Manager →
-  COM port → Port Settings → Advanced → Latency Timer); set it to 1 ms for
-  high-rate control.
+  COM port → Port Settings → Advanced → Latency Timer); set it to 1 ms — at its
+  16 ms default the gripper's reply waits in the adapter, roughly halving the
+  achievable rate. That gets you to ~60 Hz. Going faster needs finer thread
+  pacing as well, since the OS timer tick (~15.6 ms by default) quantizes the
+  exchange loop's sleep; tracked in
+  [#24](https://github.com/robotiq/grippers/issues/24).
 - **macOS**: the FTDI latency timer defaults to 16 ms — capping the exchange
   rate near ~60 Hz — and macOS offers no way to lower it from the SDK. To run
   faster, install [FTDI's VCP driver](https://ftdichip.com/drivers/vcp-drivers/)
@@ -140,10 +151,6 @@ target_link_libraries(your_target PRIVATE Robotiq::grippers)
 - Factory-default link settings: 115200 baud, 8N1, Modbus slave 0x09.
 - Port naming: `/dev/ttyUSB0` on Linux, `COM3` on Windows,
   `/dev/tty.usbserial-XXXX` on macOS.
-- **Windows**: thread pacing is quantized by the OS timer (default tick
-  ~15.6 ms), so exchange periods shorter than ~16 ms will run slower
-  than configured. High-rate control on Windows is currently untuned —
-  open an issue if your application needs it.
 
 ## Embedded / bare-metal builds
 
@@ -187,7 +194,8 @@ release.
 
 ## License
 
-BSD-3-Clause. Portions derived from PickNik Robotics'
+BSD-3-Clause. Robotiq develops and maintains this SDK; parts of it started from
+PickNik Robotics'
 [ros2_robotiq_gripper](https://github.com/PickNikRobotics/ros2_robotiq_gripper)
-driver (BSD-3-Clause); original copyright notices are preserved in the
-affected files and full history is preserved in git.
+driver (BSD-3-Clause), whose original copyright notices are preserved in the
+affected files, with the full history preserved in git.
