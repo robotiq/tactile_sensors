@@ -20,7 +20,8 @@ from serial.tools import list_ports  # noqa: E402
 
 from ft_modbus import (crc16, read_registers_frame, write_register_frame,  # noqa: E402
                        REG_SENSOR_TYPE, REG_STREAM_CONTROL, STREAM_HEADER,
-                       STREAM_FRAME_BYTES, STREAM_OFF, BAUD_RATES, SLAVE_ID)
+                       STREAM_FRAME_BYTES, STREAM_OFF, BAUD_RATES, SLAVE_ID,
+                       SENSOR_TYPES)
 
 LISTEN_SECONDS = 0.6
 
@@ -92,17 +93,28 @@ def probe(port):
             if unprompted and not after:
                 print("      -> it went quiet, so it was listening: this is the sensor")
 
-            # 3. does it answer a request?
+            # 3. does it answer a request, and which model is it?
             handle.reset_input_buffer()
             handle.write(read_registers_frame(REG_SENSOR_TYPE, 1))
             time.sleep(0.3)
             reply = handle.read(handle.in_waiting or 1)
-            if reply:
-                ok = len(reply) >= 7 and crc16(reply[:-2]) == reply[-2:]
+            if not reply:
+                print("    no reply to a register read")
+            else:
+                ok = len(reply) >= 7 and crc16(reply[:7 - 2]) == reply[5:7]
                 print(f"    replied to a register read: {reply[:16].hex(' ')}"
                       f"  {'valid CRC' if ok else 'not a valid reply'}")
-            else:
-                print("    no reply to a register read")
+                if ok:
+                    code = reply[4]
+                    print(f"      -> register {REG_SENSOR_TYPE} = {code}: "
+                          f"{SENSOR_TYPES.get(code, 'unrecognised model')}")
+
+            if after and not reply:
+                print("\n    It is streaming and not listening. A sensor left"
+                      " streaming by an\n    earlier program answers nothing,"
+                      " so its model cannot be read. Power\n    cycle it and"
+                      " run this again straight away, before anything restarts"
+                      "\n    the stream.")
 
 
 def main():
