@@ -12,6 +12,7 @@ target_sources(grippers_objects PRIVATE
   gripper/logger.hpp
   gripper/stderr_logger.hpp
   gripper/throttle.hpp
+  gripper/to_string.hpp
   gripper/platform.hpp
   gripper/serial.hpp
   gripper/serial_config.hpp
