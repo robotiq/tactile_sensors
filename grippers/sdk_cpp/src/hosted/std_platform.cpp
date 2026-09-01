@@ -16,6 +16,11 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+// mingw-w64 defaults to 0x0502, behind which its headers hide
+// CreateWaitableTimerExW
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0A00 // Windows 10
+#endif
 #include <windows.h>
 #endif
 
@@ -140,11 +145,13 @@ public:
          return;
       }
 #endif
-      // Looped: some STLs time sleep_until against the system clock, so a
-      // backward clock step could otherwise end the sleep early.
-      while(std::chrono::steady_clock::now() < timePoint)
+      // Looped, and on the steady-clock remainder: some STLs time
+      // sleep_until against the system clock, where a backward step ends the
+      // sleep early and a forward step would busy-spin a sleep_until loop.
+      for(auto remaining = timePoint - std::chrono::steady_clock::now(); remaining > remaining.zero();
+          remaining = timePoint - std::chrono::steady_clock::now())
       {
-         std::this_thread::sleep_until(timePoint);
+         std::this_thread::sleep_for(remaining);
       }
    }
 

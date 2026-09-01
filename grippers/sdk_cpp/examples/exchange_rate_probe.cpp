@@ -155,7 +155,7 @@ Options parseOptions(int argc, char** argv)
       }
       else if(std::strcmp(name, "--hz") == 0)
       {
-         ok = parseDouble(value, 0.001, 1e6, options.hz);
+         ok = parseDouble(value, 0.1, 1000.0, options.hz);
       }
       else if(std::strcmp(name, "--seconds") == 0)
       {
