@@ -34,6 +34,34 @@ bool motionSettled(Gripper& gripper)
    return gripper.getStatus().gripperStatus.objectDetection() != ObjectDetection::Moving;
 }
 
+const char* toString(Robotiq::ConnectionState state)
+{
+   switch(state)
+   {
+   case Robotiq::ConnectionState::Disconnected:
+      return "Disconnected";
+   case Robotiq::ConnectionState::Connecting:
+      return "Connecting";
+   case Robotiq::ConnectionState::Operational:
+      return "Operational";
+   case Robotiq::ConnectionState::Faulted:
+      return "Faulted";
+   }
+   return "Unrecognized";
+}
+
+// One log line: the message, the link state and the decoded status. The
+// process image freezes when the link faults, so the status alone can
+// look healthy while the gripper is unplugged.
+std::string withStatus(std::string message, Gripper& gripper)
+{
+   message += "; link=";
+   message += toString(gripper.connectionState());
+   message += ' ';
+   message += Robotiq::toString(gripper.getStatus());
+   return message;
+}
+
 // Request a position, wait for the gripper to acknowledge the request
 // (gPR echo), then wait for the motion to settle. False if either wait
 // timed out — a wait result is never worth dropping.
@@ -42,9 +70,10 @@ bool moveTo(Gripper& gripper, GripperCommand& command, uint8_t position, Robotiq
    command.positionRequest = position;
    command.action.set(ActionRequestBit::GoTo, true); // execute the move
    gripper.setCommand(command);
+   logger.log(Robotiq::Logger::Level::Debug, "sending: " + Robotiq::toString(command));
    if(!Robotiq::waitFor([&] { return gripper.getStatus().positionRequestEcho == position; }, 1s))
    {
-      logger.log(Robotiq::Logger::Level::Error, "the gripper never echoed the position request");
+      logger.log(Robotiq::Logger::Level::Error, withStatus("the gripper never echoed the position request", gripper));
       return false;
    }
    // Object detection can lag the echo by a few cycles: give the motion
@@ -57,10 +86,10 @@ bool moveTo(Gripper& gripper, GripperCommand& command, uint8_t position, Robotiq
    }
    if(!Robotiq::waitFor([&] { return motionSettled(gripper); }, 5s))
    {
-      logger.log(Robotiq::Logger::Level::Error, "the motion never settled");
+      logger.log(Robotiq::Logger::Level::Error, withStatus("the motion never settled", gripper));
       return false;
    }
-   logger.log(Robotiq::Logger::Level::Info, "Position: " + std::to_string(gripper.getStatus().position) + "/255");
+   logger.log(Robotiq::Logger::Level::Info, withStatus("settled", gripper));
    return true;
 }
 } // namespace
@@ -125,9 +154,10 @@ int main(int argc, char* argv[])
    }
    if(activation != ActivationResult::Activated && activation != ActivationResult::AlreadyActive)
    {
-      logger->log(Robotiq::Logger::Level::Error, "activation failed or timed out");
+      logger->log(Robotiq::Logger::Level::Error, withStatus("activation failed or timed out", *gripper));
       return EXIT_FAILURE;
    }
+   logger->log(Robotiq::Logger::Level::Info, withStatus("activated", *gripper));
 
    // Keep one command block and update it before each send: it is
    // persistent state, not rebuilt per move.
