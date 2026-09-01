@@ -20,6 +20,7 @@ add_executable(grippers_tests
   test_frequency.cpp
   test_default_serial.cpp
   test_exchange_period.cpp
+  test_std_platform.cpp
   test_utils.hpp
 )
 

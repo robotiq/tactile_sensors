@@ -13,10 +13,83 @@
 #include <thread>
 #include <utility>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+// mingw-w64 defaults to 0x0502, behind which its headers hide
+// CreateWaitableTimerExW
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0A00 // Windows 10
+#endif
+#include <windows.h>
+#endif
+
 #include <Robotiq/gripper/platform.hpp>
 
 namespace Robotiq {
 namespace {
+
+#ifdef _WIN32
+// Two thresholds: SDK headers gained this constant in 10.0.18362 (1903);
+// the OS honors the flag from Windows 10 1803 (probed at runtime below,
+// falling back to the std sleep on older kernels).
+#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
+#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
+#endif
+
+// std::this_thread's sleeps bottom out in Sleep(), which is quantized by
+// the OS timer tick (~15.6 ms by default) — an exchange-rate ceiling near
+// 64 Hz. A high-resolution waitable timer paces at sub-millisecond
+// granularity without raising the machine-wide tick.
+class WaitableTimer
+{
+public:
+   // Null on a pre-1803 kernel, which rejects the flag; the caller falls back.
+   WaitableTimer()
+      : _timer(CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS))
+   {
+   }
+
+   WaitableTimer(const WaitableTimer&) = delete;
+   WaitableTimer& operator=(const WaitableTimer&) = delete;
+
+   ~WaitableTimer()
+   {
+      if(_timer != nullptr)
+      {
+         CloseHandle(_timer);
+      }
+   }
+
+   // False when the wait could not be armed; the caller falls back.
+   bool sleepUntil(std::chrono::steady_clock::time_point timePoint)
+   {
+      if(_timer == nullptr)
+      {
+         return false;
+      }
+      // A wait may end early; loop until the deadline has actually passed.
+      for(;;)
+      {
+         const auto remaining = timePoint - std::chrono::steady_clock::now();
+         if(remaining <= remaining.zero())
+         {
+            return true;
+         }
+         LARGE_INTEGER dueTime; // negative: relative, in 100 ns units
+         dueTime.QuadPart = -std::chrono::duration_cast<std::chrono::nanoseconds>(remaining).count() / 100 - 1;
+         if(SetWaitableTimer(_timer, &dueTime, 0, nullptr, nullptr, FALSE) == 0
+            || WaitForSingleObject(_timer, INFINITE) != WAIT_OBJECT_0)
+         {
+            return false;
+         }
+      }
+   }
+
+private:
+   HANDLE _timer;
+};
+#endif
 
 class StdMutex final : public Mutex
 {
@@ -64,10 +137,28 @@ public:
 
    void sleepUntil(std::chrono::steady_clock::time_point timePoint) override
    {
-      std::this_thread::sleep_until(timePoint);
+#ifdef _WIN32
+      // Per-thread: the exchange thread paces while blocked procedures poll.
+      thread_local WaitableTimer timer;
+      if(timer.sleepUntil(timePoint))
+      {
+         return;
+      }
+#endif
+      // Looped, and on the steady-clock remainder: some STLs time
+      // sleep_until against the system clock, where a backward step ends the
+      // sleep early and a forward step would busy-spin a sleep_until loop.
+      for(auto remaining = timePoint - std::chrono::steady_clock::now(); remaining > remaining.zero();
+          remaining = timePoint - std::chrono::steady_clock::now())
+      {
+         std::this_thread::sleep_for(remaining);
+      }
    }
 
-   void sleepFor(std::chrono::milliseconds duration) override { std::this_thread::sleep_for(duration); }
+   void sleepFor(std::chrono::milliseconds duration) override
+   {
+      sleepUntil(std::chrono::steady_clock::now() + duration);
+   }
 };
 
 } // namespace
