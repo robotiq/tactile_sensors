@@ -218,3 +218,18 @@ jobs:
           path: |
             coverage.xml
             coverage.html
+
+  # The one status check branch protection requires. Depends on every job
+  # above, so the rule never has to change when jobs are added or renamed:
+  # add the new job here instead. `if: always()` makes it run even when a
+  # dependency failed; anything but success — failure, cancelled, skipped —
+  # fails the gate.
+  ci-gate:
+    if: always()
+    needs: [build-and-test, cortex-m55, threadx-link, freestanding-cmake, format, coverage]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job succeeded
+        run: |
+          echo '${{ toJSON(needs) }}'
+          test "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}" = "false"
