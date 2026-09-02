@@ -21,6 +21,11 @@ endif()
 option(GRIPPERS_BUILD_EXAMPLES "Build example programs" ${GRIPPERS_TOP_LEVEL})
 option(GRIPPERS_BUILD_TESTS "Build the unit tests" ${GRIPPERS_TOP_LEVEL})
 
+# Warnings are errors when working on the SDK itself. A consumer's newer compiler
+# may warn about something ours does not, so through add_subdirectory() this is
+# only a request for warnings, not a build break.
+option(GRIPPERS_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ${GRIPPERS_TOP_LEVEL})
+
 # The SDK core is freestanding-clean; everything OS-flavored sits behind this.
 # ON: compile the hosted defaults — the std::thread-backed detail::Platform
 # (and the constructors that supply it), the stderr default logger — and link
@@ -54,6 +59,16 @@ if(GRIPPERS_BUILD_DEFAULT_SERIAL)
   list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
   find_package(serialport MODULE REQUIRED)
 endif()
+
+# --- warnings -----------------------------------------------------------
+# Every C++ target this project compiles links this privately: the library, the
+# tests and the examples. It is not exported, so consumers of the installed SDK
+# never see it. Vendored C (third_party/) keeps its own warning state.
+add_library(grippers_warnings INTERFACE)
+target_compile_options(grippers_warnings INTERFACE
+  $<$<COMPILE_LANGUAGE:CXX>:-Wall;-Wextra>
+  $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<BOOL:${GRIPPERS_WARNINGS_AS_ERRORS}>>:-Werror>
+)
 
 # --- SDK library --------------------------------------------------------
 # The SDK is one set of sources published in three pieces: grippers_usage holds
@@ -102,7 +117,10 @@ target_include_directories(grippers_objects
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nanomodbus
 )
-target_link_libraries(grippers_objects PUBLIC grippers_usage)
+target_link_libraries(grippers_objects
+  PUBLIC grippers_usage
+  PRIVATE grippers_warnings
+)
 
 # The installed library, unchanged in name, output and export name. It carries the
 # objects rather than compiling them again; $<BUILD_INTERFACE:> keeps the object
