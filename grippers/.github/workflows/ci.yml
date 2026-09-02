@@ -190,7 +190,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: clang-format check
         run: |
-          git ls-files 'sdk_cpp/include/**/*.hpp' 'sdk_cpp/src/**/*.[ch]pp' 'sdk_cpp/tests/**/*.[ch]pp' 'sdk_cpp/examples/**/*.cpp' \
+          git ls-files ':(glob)sdk_cpp/include/**/*.hpp' ':(glob)sdk_cpp/src/**/*.[ch]pp' ':(glob)sdk_cpp/tests/**/*.[ch]pp' ':(glob)sdk_cpp/examples/**/*.cpp' \
             | xargs clang-format --dry-run --Werror
 
   coverage:
