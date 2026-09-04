@@ -31,6 +31,7 @@
 #include <Robotiq/gripper/logger.hpp>
 #include <Robotiq/gripper/command.hpp>
 #include <Robotiq/gripper/status.hpp>
+#include <Robotiq/gripper/to_string.hpp>
 #include <Robotiq/gripper/wait.hpp>
 
 namespace Robotiq {
@@ -72,9 +73,6 @@ public:
 
    // TODO: add an exchange-cycle sync primitive so a caller's control loop
    // can run in step with the background exchange without polling
-
-   // TODO: add debug helpers rendering the command and status blocks in
-   // a human-readable form (named fields, decoded bits and fault codes)
 
    [[nodiscard]] ConnectionState connectionState() const;
 

@@ -16,6 +16,7 @@ add_executable(grippers_tests
   test_byte_packing.cpp
   test_logger.cpp
   test_typed_layers.cpp
+  test_to_string.cpp
   test_wait.cpp
   test_frequency.cpp
   test_default_serial.cpp

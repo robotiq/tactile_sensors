@@ -66,6 +66,7 @@ jobs:
       - name: Compile the core
         run: |
           arm-none-eabi-g++ $CXXFLAGS -c -o /dev/null sdk_cpp/src/logger.cpp
+          arm-none-eabi-g++ $CXXFLAGS -c -o /dev/null sdk_cpp/src/to_string.cpp
           arm-none-eabi-g++ $CXXFLAGS -c -o /dev/null sdk_cpp/src/freestanding/default_logger.cpp
           arm-none-eabi-g++ $CXXFLAGS -c -o /dev/null sdk_cpp/src/detail/gripper_modbus_client.cpp
           arm-none-eabi-g++ $CXXFLAGS -c -o /dev/null sdk_cpp/src/gripper.cpp
@@ -141,6 +142,7 @@ jobs:
           for src in sdk_cpp/src/gripper.cpp \
                      sdk_cpp/src/detail/gripper_modbus_client.cpp \
                      sdk_cpp/src/logger.cpp \
+                     sdk_cpp/src/to_string.cpp \
                      sdk_cpp/src/freestanding/default_logger.cpp \
                      "$FIXTURE/main.cpp"; do
             obj="obj/$(basename "$src").o"

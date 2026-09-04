@@ -93,6 +93,12 @@ position back, injecting a log sink — is built as described in the Building se
 and can be found here:
 [`sdk_cpp/examples/move_gripper.cpp`](sdk_cpp/examples/move_gripper.cpp)
 
+Its per-step log lines end with `toString()` of the status block: the manual's
+mnemonics with decoded states and fault codes, e.g.
+`gACT=1 gGTO=1 gSTA=Complete(0x3) gOBJ=AtRequestedPosition(0x3) gFLT=None(0x0)
+kFLT=None(0x0) gPR=255 gPO=254 gCU=16`. `toString()` renders the command
+block and the individual enums the same way.
+
 Run it by executing:
 ```sh
 ./build/examples/move_gripper /dev/ttyUSB0    # Linux (macOS: /dev/tty.usbserial-XXXX)
@@ -187,8 +193,10 @@ monotonic clock on the target.
 bugs, minor releases add API, and a breaking change to the documented API takes
 a major release. The documented API is what this README and the public headers
 describe — `Gripper`, the command/status blocks and the register map,
-`ConnectionConfig`, `Serial`, `Platform`, `Logger`, and
-`detail::GripperModbusClient` for the no-thread path. Anything under
+`ConnectionConfig`, `Serial`, `Platform`, `Logger`, the `toString()` free
+functions, and `detail::GripperModbusClient` for the no-thread path. The
+text `toString()` renders is for people, not parsers: its layout may change
+in any release. Anything under
 `Robotiq/detail/` that is not described here is internal and may change in any
 release.
 

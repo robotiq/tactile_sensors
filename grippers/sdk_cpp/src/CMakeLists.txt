@@ -3,6 +3,7 @@ target_sources(grippers_objects PRIVATE
   frequency.hpp
   exchange_period.hpp
   logger.cpp
+  to_string.cpp
   detail/gripper_modbus_client.cpp
 )
 
