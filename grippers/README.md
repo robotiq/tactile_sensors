@@ -93,7 +93,7 @@ position back, injecting a log sink — is built as described in the Building se
 and can be found here:
 [`sdk_cpp/examples/move_gripper.cpp`](sdk_cpp/examples/move_gripper.cpp)
 
-Its log lines end with `toString()` of the status block: the manual's
+Its per-step log lines end with `toString()` of the status block: the manual's
 mnemonics with decoded states and fault codes, e.g.
 `gACT=1 gGTO=1 gSTA=Complete(0x3) gOBJ=AtRequestedPosition(0x3) gFLT=None(0x0)
 kFLT=None(0x0) gPR=255 gPO=254 gCU=16`. `toString()` renders the command

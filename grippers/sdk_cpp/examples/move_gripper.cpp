@@ -55,10 +55,11 @@ const char* toString(Robotiq::ConnectionState state)
 // look healthy while the gripper is unplugged.
 std::string withStatus(std::string message, Gripper& gripper)
 {
+   const std::string status = Robotiq::toString(gripper.getStatus());
    message += "; link=";
    message += toString(gripper.connectionState());
    message += ' ';
-   message += Robotiq::toString(gripper.getStatus());
+   message += status;
    return message;
 }
 
@@ -131,7 +132,9 @@ int main(int argc, char* argv[])
    std::unique_ptr<Gripper> gripper;
    try
    {
-      gripper = std::make_unique<Gripper>(config, std::make_shared<Robotiq::StderrLogger>("robotiq")); // opens and starts exchanging
+      gripper =
+         std::make_unique<Gripper>(config,
+                                   std::make_shared<Robotiq::StderrLogger>("robotiq")); // opens and starts exchanging
    }
    catch(const std::exception& ex)
    {
