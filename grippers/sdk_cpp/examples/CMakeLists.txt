@@ -1,5 +1,5 @@
 add_executable(move_gripper move_gripper.cpp)
-target_link_libraries(move_gripper PRIVATE grippers_sdk)
+target_link_libraries(move_gripper PRIVATE grippers_sdk grippers_warnings)
 
 add_executable(exchange_rate_probe exchange_rate_probe.cpp)
-target_link_libraries(exchange_rate_probe PRIVATE grippers_sdk)
+target_link_libraries(exchange_rate_probe PRIVATE grippers_sdk grippers_warnings)

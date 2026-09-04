@@ -190,7 +190,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: clang-format check
         run: |
-          git ls-files 'sdk_cpp/include/**/*.hpp' 'sdk_cpp/src/**/*.[ch]pp' 'sdk_cpp/tests/**/*.[ch]pp' 'sdk_cpp/examples/**/*.cpp' \
+          git ls-files ':(glob)sdk_cpp/include/**/*.hpp' ':(glob)sdk_cpp/src/**/*.[ch]pp' ':(glob)sdk_cpp/tests/**/*.[ch]pp' ':(glob)sdk_cpp/examples/**/*.cpp' \
             | xargs clang-format --dry-run --Werror
 
   coverage:
@@ -218,3 +218,25 @@ jobs:
           path: |
             coverage.xml
             coverage.html
+
+  # The one status check branch protection requires. Depends on every job
+  # above, so the rule never has to change when jobs are added or renamed:
+  # add the new job here instead. `if: always()` makes it run even when a
+  # dependency failed; anything but success — failure, cancelled, skipped —
+  # fails the gate.
+  #
+  #   build-and-test      host build + unit tests on Linux, macOS, Windows
+  #   cortex-m55          bare-metal cross-compile of the freestanding profile
+  #   threadx-link        links the threaded stack against real ThreadX
+  #   freestanding-cmake  freestanding CMake wiring with the host compiler
+  #   format              clang-format check
+  #   coverage            gcovr report
+  ci-gate:
+    if: always()
+    needs: [build-and-test, cortex-m55, threadx-link, freestanding-cmake, format, coverage]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job succeeded
+        run: |
+          echo '${{ toJSON(needs) }}'
+          test "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}" = "false"

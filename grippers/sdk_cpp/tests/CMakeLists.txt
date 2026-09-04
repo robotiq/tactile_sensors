@@ -38,6 +38,7 @@ if(GRIPPERS_BUILD_FAKE)
 endif()
 target_link_libraries(grippers_tests PRIVATE
   grippers_sdk
+  grippers_warnings
   GTest::gmock
   GTest::gtest_main
 )

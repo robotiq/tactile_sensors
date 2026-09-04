@@ -15,7 +15,11 @@
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
+// Recent mingw-w64 libstdc++ predefines NOMINMAX; redefining it is a
+// warning, fatal under -Werror.
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 // mingw-w64 defaults to 0x0502, behind which its headers hide
 // CreateWaitableTimerExW
 #ifndef _WIN32_WINNT

@@ -132,9 +132,8 @@ int main(int argc, char* argv[])
    std::unique_ptr<Gripper> gripper;
    try
    {
-      gripper =
-         std::make_unique<Gripper>(config,
-                                   std::make_shared<Robotiq::StderrLogger>("robotiq")); // opens and starts exchanging
+      // Opens the port and starts exchanging.
+      gripper = std::make_unique<Gripper>(config, std::make_shared<Robotiq::StderrLogger>("robotiq"));
    }
    catch(const std::exception& ex)
    {
