@@ -224,6 +224,13 @@ jobs:
   # add the new job here instead. `if: always()` makes it run even when a
   # dependency failed; anything but success — failure, cancelled, skipped —
   # fails the gate.
+  #
+  #   build-and-test      host build + unit tests on Linux, macOS, Windows
+  #   cortex-m55          bare-metal cross-compile of the freestanding profile
+  #   threadx-link        links the threaded stack against real ThreadX
+  #   freestanding-cmake  freestanding CMake wiring with the host compiler
+  #   format              clang-format check
+  #   coverage            gcovr report
   ci-gate:
     if: always()
     needs: [build-and-test, cortex-m55, threadx-link, freestanding-cmake, format, coverage]
