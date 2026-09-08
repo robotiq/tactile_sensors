@@ -108,6 +108,29 @@ Run it by executing:
 The example activates the gripper (calibration sweep), opens, and
 closes — keep the jaws clear.
 
+### Commanding in SI units
+
+The blocks carry register counts (0..255). `Robotiq/gripper/units.hpp`
+converts to and from SI, scaled by a `DeviceProfile` — the model's
+full-scale speed and force, stroke, and usable count band. Only the
+2F-85 profile ships today; a caller can supply its own:
+
+```cpp
+#include <Robotiq/gripper/device_profile.hpp>
+#include <Robotiq/gripper/units.hpp>
+
+using Robotiq::profiles::k2F85;
+
+command.speed = Robotiq::speedRegister(0.150, k2F85).value();   // m/s
+command.force = Robotiq::forceRegister(80.0, k2F85).value();    // N
+command.positionRequest = Robotiq::openingRegister(0.040, k2F85).value(); // m open
+
+double opening = Robotiq::openingFromRegister(gripper.getStatus().position, k2F85).value();
+```
+
+The conversions return `std::optional` and yield nothing for a value with
+no defensible count; the header documents the exact rules.
+
 ### Without a gripper
 
 `makeFakeGripper()` returns a `Gripper` driving a fake device instead of a
@@ -194,7 +217,8 @@ bugs, minor releases add API, and a breaking change to the documented API takes
 a major release. The documented API is what this README and the public headers
 describe — `Gripper`, the command/status blocks and the register map,
 `ConnectionConfig`, `Serial`, `Platform`, `Logger`, the `toString()` free
-functions, and `detail::GripperModbusClient` for the no-thread path. The
+functions, `DeviceProfile` and the SI unit conversions, and
+`detail::GripperModbusClient` for the no-thread path. The
 text `toString()` renders is for people, not parsers: its layout may change
 in any release. Anything under
 `Robotiq/detail/` that is not described here is internal and may change in any
