@@ -2,91 +2,66 @@
 //
 // Licensed under the BSD-3-Clause license; see LICENSE for details.
 
-//! \brief Conversions between SI quantities and the 0..255 register
-//!        counts of the command and status blocks. Speed, force and
-//!        opening scale by a DeviceProfile; motor current is a fixed
-//!        10 mA per count on every model. The profile-scaled functions
-//!        are pure and yield nothing for a value the arithmetic cannot
-//!        turn into a count: NaN, infinity, a negative speed or force,
-//!        a profile with a zero full scale or count band. Values past
-//!        full scale saturate; openings past either end of the stroke
-//!        clamp to the mechanical range. Counts round to nearest, so a
-//!        position read back commands the same count.
+//! \brief Conversions between SI quantities and the 0..255 counts of the
+//!        command and status blocks, scaled by a DeviceProfile. Every
+//!        mapping here is linear and the gripper is not: the manual
+//!        gives the 2F speed and force scales as approximate, force also
+//!        varies with speed and payload (about ±10 %), and a count is a
+//!        setpoint, not a measurement.
+//!
+//!        Speed and force map [minimum, fullScale] onto counts 0..255,
+//!        because count 0 is the gripper's minimum, not zero. A value
+//!        below the minimum floors at count 0 and a value above full
+//!        scale saturates at 255. NaN, infinity and a negative value
+//!        yield nothing: no benign caller produces them.
+//!
+//!        Opening maps [0, stroke] onto the profile's count band and
+//!        clamps to the stroke ends rather than rejecting, because
+//!        position setpoints from interpolating controllers overshoot
+//!        the ends by a hair and holding the previous command there
+//!        would be the wrong outcome. Counts round to nearest, so inside
+//!        the band a position read back commands the same count. A
+//!        closed gripper settles a few counts either side of
+//!        closedCount, so a reading there converts to a small non-zero
+//!        opening; counts past the band read as the nearest stroke end.
+//!
+//!        A profile the arithmetic cannot use (non-positive stroke or
+//!        count band, a full scale at or below its minimum) yields
+//!        nothing.
 
 #pragma once
 
-#include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <optional>
 
 #include <Robotiq/gripper/device_profile.hpp>
 
-namespace Robotiq {
+namespace Robotiq::units {
 
+//! The manual's approximate current equivalent for the 2F gCU byte.
 inline constexpr double kAmperesPerCurrentCount = 0.010;
 
-namespace detail {
-[[nodiscard]] inline uint8_t roundedCount(double counts)
-{
-   return static_cast<uint8_t>(std::lround(counts));
-}
-
-[[nodiscard]] inline std::optional<uint8_t> registerFromFractionOf(double value, double fullScale)
-{
-   if(!std::isfinite(value) || value < 0.0 || !std::isfinite(fullScale) || fullScale <= 0.0)
-   {
-      return std::nullopt;
-   }
-   return roundedCount(std::min(value / fullScale, 1.0) * 0xFF);
-}
-
-[[nodiscard]] inline double countBand(const DeviceProfile& profile)
-{
-   return static_cast<double>(profile.closedCount) - profile.openCount;
-}
-} // namespace detail
+//! Linear map of [minimum, fullScale] onto counts 0..255, the rule
+//! speedToCount and forceToCount apply. Public for callers that carry
+//! their own scales instead of a DeviceProfile.
+[[nodiscard]] std::optional<uint8_t> countFromSpan(double value, double minimum, double fullScale);
 
 //! Speed in m/s -> rSP.
-[[nodiscard]] inline std::optional<uint8_t> speedRegister(double metresPerSecond, const DeviceProfile& profile)
-{
-   return detail::registerFromFractionOf(metresPerSecond, profile.fullScaleSpeed);
-}
+[[nodiscard]] std::optional<uint8_t> speedToCount(double metresPerSecond, const DeviceProfile& profile);
 
 //! Force in N -> rFR.
-[[nodiscard]] inline std::optional<uint8_t> forceRegister(double newtons, const DeviceProfile& profile)
-{
-   return detail::registerFromFractionOf(newtons, profile.fullScaleForce);
-}
+[[nodiscard]] std::optional<uint8_t> forceToCount(double newtons, const DeviceProfile& profile);
 
-//! Opening in m -> rPR, linear over the profile's count band.
-[[nodiscard]] inline std::optional<uint8_t> openingRegister(double openingMetres, const DeviceProfile& profile)
-{
-   if(!std::isfinite(openingMetres) || !std::isfinite(profile.stroke) || profile.stroke <= 0.0)
-   {
-      return std::nullopt;
-   }
-   const double closedFraction = 1.0 - std::clamp(openingMetres / profile.stroke, 0.0, 1.0);
-   return detail::roundedCount(profile.openCount + closedFraction * detail::countBand(profile));
-}
+//! Opening in m -> rPR.
+[[nodiscard]] std::optional<uint8_t> openingToCount(double openingMetres, const DeviceProfile& profile);
 
-//! gPO -> opening in m, linear over the profile's count band; counts
-//! outside the band read as the nearest stroke end.
-[[nodiscard]] inline std::optional<double> openingFromRegister(uint8_t count, const DeviceProfile& profile)
-{
-   const double band = detail::countBand(profile);
-   if(band == 0.0)
-   {
-      return std::nullopt;
-   }
-   const double closedFraction = std::clamp((count - profile.openCount) / band, 0.0, 1.0);
-   return (1.0 - closedFraction) * profile.stroke;
-}
+//! gPO -> opening in m.
+[[nodiscard]] std::optional<double> openingFromCount(uint8_t count, const DeviceProfile& profile);
 
 //! gCU -> motor current in A.
-[[nodiscard]] inline constexpr double motorCurrentFromRegister(uint8_t count)
+[[nodiscard]] inline constexpr double motorCurrentFromCount(uint8_t count)
 {
    return kAmperesPerCurrentCount * count;
 }
 
-} // namespace Robotiq
+} // namespace Robotiq::units

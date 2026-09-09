@@ -3,8 +3,9 @@
 A standalone, ROS-independent C++ SDK for controlling Robotiq adaptive grippers
 over their Modbus RTU serial link. Cross-platform: Linux, Windows, macOS.
 
-The 2F-85, 2F-140 and Hand-E share one Modbus register map, so the SDK speaks to
-all of them and nothing in it is model-specific. Hardware validation to date is
+The 2F-85, 2F-140 and Hand-E share one Modbus register map, so `Gripper` and
+the register blocks speak to all of them unchanged; the model enters only in
+the SI unit scaling, through a `DeviceProfile`. Hardware validation to date is
 on a 2F-85.
 
 Developed and maintained by Robotiq; questions and bug reports go to
@@ -111,25 +112,29 @@ closes — keep the jaws clear.
 ### Commanding in SI units
 
 The blocks carry register counts (0..255). `Robotiq/gripper/units.hpp`
-converts to and from SI, scaled by a `DeviceProfile` — the model's
-full-scale speed and force, stroke, and usable count band. Only the
-2F-85 profile ships today; a caller can supply its own:
+converts to and from SI, scaled by a `DeviceProfile` — the model's speed
+and force range, stroke, and usable count band. Only the 2F-85 profile
+ships today; a caller can supply its own:
 
 ```cpp
 #include <Robotiq/gripper/device_profile.hpp>
 #include <Robotiq/gripper/units.hpp>
 
 using Robotiq::profiles::k2F85;
+namespace units = Robotiq::units;
 
-command.speed = Robotiq::speedRegister(0.150, k2F85).value();   // m/s
-command.force = Robotiq::forceRegister(80.0, k2F85).value();    // N
-command.positionRequest = Robotiq::openingRegister(0.040, k2F85).value(); // m open
+command.speed = units::speedToCount(0.150, k2F85).value();   // m/s
+command.force = units::forceToCount(80.0, k2F85).value();    // N
+command.positionRequest = units::openingToCount(0.040, k2F85).value(); // m open
 
-double opening = Robotiq::openingFromRegister(gripper.getStatus().position, k2F85).value();
+double opening = units::openingFromCount(gripper.getStatus().position, k2F85).value();
 ```
 
-The conversions return `std::optional` and yield nothing for a value with
-no defensible count; the header documents the exact rules.
+The mappings are linear and approximate, as the manual's are; the gripper
+is not. The profile-scaled conversions return `std::optional` and yield
+nothing for a value with no defensible count, so `.value()` above is safe
+only because `k2F85` is a well-formed profile; a hand-written profile
+deserves a check. The header documents the exact rules.
 
 ### Without a gripper
 

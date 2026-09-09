@@ -78,7 +78,7 @@ std::string withStatus(std::string message, Gripper& gripper)
 // timed out — a wait result is never worth dropping.
 bool moveTo(Gripper& gripper, GripperCommand& command, double openingMetres, Robotiq::Logger& logger)
 {
-   const std::optional<uint8_t> position = Robotiq::openingRegister(openingMetres, k2F85);
+   const std::optional<uint8_t> position = Robotiq::units::openingToCount(openingMetres, k2F85);
    if(!position)
    {
       logger.log(Robotiq::Logger::Level::Error, "the requested opening has no register value");
@@ -106,9 +106,15 @@ bool moveTo(Gripper& gripper, GripperCommand& command, double openingMetres, Rob
       logger.log(Robotiq::Logger::Level::Error, withStatus("the motion never settled", gripper));
       return false;
    }
-   const double opening = Robotiq::openingFromRegister(gripper.getStatus().position, k2F85).value();
+   const std::optional<double> opening = Robotiq::units::openingFromCount(gripper.getStatus().position, k2F85);
+   if(!opening)
+   {
+      logger.log(Robotiq::Logger::Level::Error,
+                 withStatus("the settled position has no opening in this profile", gripper));
+      return false;
+   }
    logger.log(Robotiq::Logger::Level::Info,
-              withStatus("settled at " + std::to_string(std::lround(opening * 1000.0)) + " mm", gripper));
+              withStatus("settled at " + std::to_string(std::lround(*opening * 1000.0)) + " mm", gripper));
    return true;
 }
 } // namespace
@@ -182,8 +188,15 @@ int main(int argc, char* argv[])
    // Keep one command block and update it before each send: it is
    // persistent state, not rebuilt per move.
    GripperCommand command = GripperCommand::defaults(); // GoTo added by moveTo
-   command.speed = Robotiq::speedRegister(kSpeed, k2F85).value();
-   command.force = Robotiq::forceRegister(kForce, k2F85).value();
+   const std::optional<uint8_t> speed = Robotiq::units::speedToCount(kSpeed, k2F85);
+   const std::optional<uint8_t> force = Robotiq::units::forceToCount(kForce, k2F85);
+   if(!speed || !force)
+   {
+      logger->log(Robotiq::Logger::Level::Error, "the requested speed or force has no count in this profile");
+      return EXIT_FAILURE;
+   }
+   command.speed = *speed;
+   command.force = *force;
 
    logger->log(Robotiq::Logger::Level::Info, "Opening...");
    if(!moveTo(*gripper, command, k2F85.stroke, *logger))
