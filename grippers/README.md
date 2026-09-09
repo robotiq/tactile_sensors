@@ -111,9 +111,9 @@ closes — keep the jaws clear.
 
 ### Commanding in SI units
 
-The blocks carry register counts (0..255). `Robotiq/gripper/units.hpp`
+The blocks carry raw register values (0..255). `Robotiq/gripper/units.hpp`
 converts to and from SI, scaled by a `DeviceProfile` — the model's speed
-and force range, stroke, and usable count band. Only the 2F-85 profile
+and force range, stroke, and usable register band. Only the 2F-85 profile
 ships today; a caller can supply its own:
 
 ```cpp
@@ -123,16 +123,20 @@ ships today; a caller can supply its own:
 using Robotiq::profiles::k2F85;
 namespace units = Robotiq::units;
 
-command.speed = units::speedToCount(0.150, k2F85).value();   // m/s
-command.force = units::forceToCount(80.0, k2F85).value();    // N
-command.positionRequest = units::openingToCount(0.040, k2F85).value(); // m open
+constexpr double kSpeed = 0.150; // m/s
+constexpr double kForce = 80.0; // N
+constexpr double kOpening = 0.040; // m
 
-double opening = units::openingFromCount(gripper.getStatus().position, k2F85).value();
+command.speed = units::speedToRegister(kSpeed, k2F85).value();
+command.force = units::forceToRegister(kForce, k2F85).value();
+command.positionRequest = units::openingToRegister(kOpening, k2F85).value();
+
+double opening = units::openingFromRegister(gripper.getStatus().position, k2F85).value();
 ```
 
 The mappings are linear and approximate, as the manual's are; the gripper
 is not. The profile-scaled conversions return `std::optional` and yield
-nothing for a value with no defensible count, so `.value()` above is safe
+nothing for a quantity with no defensible register value, so `.value()` above is safe
 only because `k2F85` is a well-formed profile; a hand-written profile
 deserves a check. The header documents the exact rules.
 

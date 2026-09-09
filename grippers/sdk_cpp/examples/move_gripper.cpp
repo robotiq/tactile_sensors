@@ -78,7 +78,7 @@ std::string withStatus(std::string message, Gripper& gripper)
 // timed out — a wait result is never worth dropping.
 bool moveTo(Gripper& gripper, GripperCommand& command, double openingMetres, Robotiq::Logger& logger)
 {
-   const std::optional<uint8_t> position = Robotiq::units::openingToCount(openingMetres, k2F85);
+   const std::optional<uint8_t> position = Robotiq::units::openingToRegister(openingMetres, k2F85);
    if(!position)
    {
       logger.log(Robotiq::Logger::Level::Error, "the requested opening has no register value");
@@ -106,7 +106,7 @@ bool moveTo(Gripper& gripper, GripperCommand& command, double openingMetres, Rob
       logger.log(Robotiq::Logger::Level::Error, withStatus("the motion never settled", gripper));
       return false;
    }
-   const std::optional<double> opening = Robotiq::units::openingFromCount(gripper.getStatus().position, k2F85);
+   const std::optional<double> opening = Robotiq::units::openingFromRegister(gripper.getStatus().position, k2F85);
    if(!opening)
    {
       logger.log(Robotiq::Logger::Level::Error,
@@ -188,11 +188,11 @@ int main(int argc, char* argv[])
    // Keep one command block and update it before each send: it is
    // persistent state, not rebuilt per move.
    GripperCommand command = GripperCommand::defaults(); // GoTo added by moveTo
-   const std::optional<uint8_t> speed = Robotiq::units::speedToCount(kSpeed, k2F85);
-   const std::optional<uint8_t> force = Robotiq::units::forceToCount(kForce, k2F85);
+   const std::optional<uint8_t> speed = Robotiq::units::speedToRegister(kSpeed, k2F85);
+   const std::optional<uint8_t> force = Robotiq::units::forceToRegister(kForce, k2F85);
    if(!speed || !force)
    {
-      logger->log(Robotiq::Logger::Level::Error, "the requested speed or force has no count in this profile");
+      logger->log(Robotiq::Logger::Level::Error, "the requested speed or force has no register value in this profile");
       return EXIT_FAILURE;
    }
    command.speed = *speed;

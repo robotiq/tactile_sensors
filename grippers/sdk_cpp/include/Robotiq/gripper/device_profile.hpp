@@ -4,11 +4,11 @@
 
 //! \brief The per-model figures the SI conversions in units.hpp scale
 //!        against: the speed and force range the manual gives for
-//!        counts 0x00..0xFF, the stroke, and the register-count band
+//!        values 0x00..0xFF, the stroke, and the register band
 //!        that spans it. Gripper itself is model-agnostic; a profile is
 //!        passed to the conversions.
 //!
-//!        The count band is measured, not specified. The manual gives
+//!        The register band is measured, not specified. The manual gives
 //!        0x00 and 0xFF as command endpoints only; on the bench a 2F-85
 //!        commanded to 0 settles at gPO 3 and commanded to 255 (or 230)
 //!        settles at 228..230 depending on the unit. Fill a new model's
@@ -27,12 +27,12 @@ struct DeviceProfile
    double fullScaleSpeed; //!< m/s — rSP 0xFF
    double minForce; //!< N — rFR 0x00
    double fullScaleForce; //!< N — rFR 0xFF
-   double stroke; //!< m — opening at openCount
-   uint8_t openCount; //!< gPO after commanding rPR 0, measured
-   uint8_t closedCount; //!< gPO after commanding rPR 255, measured
+   double stroke; //!< m — opening at openRegister
+   uint8_t openRegister; //!< gPO after commanding rPR 0, measured
+   uint8_t closedRegister; //!< gPO after commanding rPR 255, measured
 
-   //! Counts from full opening to full closure.
-   [[nodiscard]] constexpr double countBand() const { return static_cast<double>(closedCount) - openCount; }
+   //! Register steps from full opening to full closure.
+   [[nodiscard]] constexpr double registerBand() const { return static_cast<double>(closedRegister) - openRegister; }
 };
 
 namespace profiles {
