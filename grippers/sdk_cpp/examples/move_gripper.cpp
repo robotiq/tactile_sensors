@@ -5,16 +5,22 @@
 //! Runtime-mode example — the way to control a gripper with this SDK.
 //! The gripper's fingers move (activation sweep, open, close): keep the
 //! jaws clear.
+//! Commands are given in SI units and scaled through the 2F-85 profile;
+//! pick the profile of the gripper you have.
 //! Usage: move_gripper <port> [baudrate]
 
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <memory>
+#include <optional>
 #include <iostream>
 #include <string>
 
 #include <Robotiq/gripper.hpp>
+#include <Robotiq/gripper/device_profile.hpp>
 #include <Robotiq/gripper/stderr_logger.hpp>
+#include <Robotiq/gripper/units.hpp>
 
 using namespace std::chrono_literals;
 using Robotiq::ActionRequestBit;
@@ -22,12 +28,16 @@ using Robotiq::ActivationResult;
 using Robotiq::Gripper;
 using Robotiq::GripperCommand;
 using Robotiq::ObjectDetection;
+using Robotiq::profiles::k2F85;
 
 namespace {
 // Any rate a serial link plausibly runs at. Also what catches a negative:
 // stoul("-1") wraps to a huge value rather than throwing.
 constexpr unsigned long kMinBaudrate = 1;
 constexpr unsigned long kMaxBaudrate = 1000000;
+
+constexpr double kSpeed = 0.150; // m/s, the 2F-85's full scale
+constexpr double kForce = 80.0; // N
 
 bool motionSettled(Gripper& gripper)
 {
@@ -63,16 +73,22 @@ std::string withStatus(std::string message, Gripper& gripper)
    return message;
 }
 
-// Request a position, wait for the gripper to acknowledge the request
+// Request an opening, wait for the gripper to acknowledge the request
 // (gPR echo), then wait for the motion to settle. False if either wait
 // timed out — a wait result is never worth dropping.
-bool moveTo(Gripper& gripper, GripperCommand& command, uint8_t position, Robotiq::Logger& logger)
+bool moveTo(Gripper& gripper, GripperCommand& command, double openingMetres, Robotiq::Logger& logger)
 {
-   command.positionRequest = position;
+   const std::optional<uint8_t> position = Robotiq::units::openingToRegister(openingMetres, k2F85);
+   if(!position)
+   {
+      logger.log(Robotiq::Logger::Level::Error, "the requested opening has no register value");
+      return false;
+   }
+   command.positionRequest = *position;
    command.action.set(ActionRequestBit::GoTo, true); // execute the move
    gripper.setCommand(command);
    logger.log(Robotiq::Logger::Level::Debug, "sending: " + Robotiq::toString(command));
-   if(!Robotiq::waitFor([&] { return gripper.getStatus().positionRequestEcho == position; }, 1s))
+   if(!Robotiq::waitFor([&] { return gripper.getStatus().positionRequestEcho == *position; }, 1s))
    {
       logger.log(Robotiq::Logger::Level::Error, withStatus("the gripper never echoed the position request", gripper));
       return false;
@@ -90,7 +106,15 @@ bool moveTo(Gripper& gripper, GripperCommand& command, uint8_t position, Robotiq
       logger.log(Robotiq::Logger::Level::Error, withStatus("the motion never settled", gripper));
       return false;
    }
-   logger.log(Robotiq::Logger::Level::Info, withStatus("settled", gripper));
+   const std::optional<double> opening = Robotiq::units::openingFromRegister(gripper.getStatus().position, k2F85);
+   if(!opening)
+   {
+      logger.log(Robotiq::Logger::Level::Error,
+                 withStatus("the settled position has no opening in this profile", gripper));
+      return false;
+   }
+   logger.log(Robotiq::Logger::Level::Info,
+              withStatus("settled at " + std::to_string(std::lround(*opening * 1000.0)) + " mm", gripper));
    return true;
 }
 } // namespace
@@ -164,15 +188,24 @@ int main(int argc, char* argv[])
    // Keep one command block and update it before each send: it is
    // persistent state, not rebuilt per move.
    GripperCommand command = GripperCommand::defaults(); // GoTo added by moveTo
+   const std::optional<uint8_t> speed = Robotiq::units::speedToRegister(kSpeed, k2F85);
+   const std::optional<uint8_t> force = Robotiq::units::forceToRegister(kForce, k2F85);
+   if(!speed || !force)
+   {
+      logger->log(Robotiq::Logger::Level::Error, "the requested speed or force has no register value in this profile");
+      return EXIT_FAILURE;
+   }
+   command.speed = *speed;
+   command.force = *force;
 
    logger->log(Robotiq::Logger::Level::Info, "Opening...");
-   if(!moveTo(*gripper, command, 0, *logger))
+   if(!moveTo(*gripper, command, k2F85.stroke, *logger))
    {
       return EXIT_FAILURE;
    }
 
    logger->log(Robotiq::Logger::Level::Info, "Closing...");
-   if(!moveTo(*gripper, command, 255, *logger))
+   if(!moveTo(*gripper, command, 0.0, *logger))
    {
       return EXIT_FAILURE;
    }

@@ -3,8 +3,9 @@
 A standalone, ROS-independent C++ SDK for controlling Robotiq adaptive grippers
 over their Modbus RTU serial link. Cross-platform: Linux, Windows, macOS.
 
-The 2F-85, 2F-140 and Hand-E share one Modbus register map, so the SDK speaks to
-all of them and nothing in it is model-specific. Hardware validation to date is
+The 2F-85, 2F-140 and Hand-E share one Modbus register map, so `Gripper` and
+the register blocks speak to all of them unchanged; the model enters only in
+the SI unit scaling, through a `DeviceProfile`. Hardware validation to date is
 on a 2F-85.
 
 Developed and maintained by Robotiq; questions and bug reports go to
@@ -108,6 +109,37 @@ Run it by executing:
 The example activates the gripper (calibration sweep), opens, and
 closes — keep the jaws clear.
 
+### Commanding in SI units
+
+The blocks carry raw register values (0..255). `Robotiq/gripper/units.hpp`
+converts to and from SI, scaled by a `DeviceProfile` — the model's speed
+and force range, stroke, and usable register band. Only the 2F-85 profile
+ships today; a caller can supply its own:
+
+```cpp
+#include <Robotiq/gripper/device_profile.hpp>
+#include <Robotiq/gripper/units.hpp>
+
+using Robotiq::profiles::k2F85;
+namespace units = Robotiq::units;
+
+constexpr double kSpeed = 0.150; // m/s
+constexpr double kForce = 80.0; // N
+constexpr double kOpening = 0.040; // m
+
+command.speed = units::speedToRegister(kSpeed, k2F85).value();
+command.force = units::forceToRegister(kForce, k2F85).value();
+command.positionRequest = units::openingToRegister(kOpening, k2F85).value();
+
+double opening = units::openingFromRegister(gripper.getStatus().position, k2F85).value();
+```
+
+The mappings are linear and approximate, as the manual's are; the gripper
+is not. The profile-scaled conversions return `std::optional` and yield
+nothing for a quantity with no defensible register value, so `.value()` above is safe
+only because `k2F85` is a well-formed profile; a hand-written profile
+deserves a check. The header documents the exact rules.
+
 ### Without a gripper
 
 `makeFakeGripper()` returns a `Gripper` driving a fake device instead of a
@@ -194,7 +226,8 @@ bugs, minor releases add API, and a breaking change to the documented API takes
 a major release. The documented API is what this README and the public headers
 describe — `Gripper`, the command/status blocks and the register map,
 `ConnectionConfig`, `Serial`, `Platform`, `Logger`, the `toString()` free
-functions, and `detail::GripperModbusClient` for the no-thread path. The
+functions, `DeviceProfile` and the SI unit conversions, and
+`detail::GripperModbusClient` for the no-thread path. The
 text `toString()` renders is for people, not parsers: its layout may change
 in any release. Anything under
 `Robotiq/detail/` that is not described here is internal and may change in any
