@@ -27,7 +27,7 @@
 // Most consumers never need any of this directly: GripperCommand and
 // GripperStatus already expose the same information in a safer, easier-to-use
 // format.
-namespace Robotiq::register_map {
+namespace Robotiq::detail::register_map {
 
 // Block layout: how wide each block is, and how many of its leading
 // bytes the manual tables — the rest is reserved (see the byte table
@@ -62,4 +62,10 @@ inline constexpr uint8_t kGripperFaultMask = 0x0F; // gFLT (low nibble)
 inline constexpr uint8_t kControllerFaultMask = 0xF0; // kFLT (high nibble)
 inline constexpr int kControllerFaultShift = 4; // shift applied to kFLT after masking
 
-} // namespace Robotiq::register_map
+} // namespace Robotiq::detail::register_map
+
+namespace Robotiq::detail {
+// Short spelling for the headers that overlay these constants — the typed
+// blocks name them on nearly every line. Internal, like what it aliases.
+namespace rm = register_map;
+} // namespace Robotiq::detail

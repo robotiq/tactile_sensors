@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include <memory>
 #include <string_view>
 
 namespace Robotiq {
@@ -52,15 +51,5 @@ public:
    //! Discards \p message.
    void log(Level, std::string_view) override;
 };
-
-//! \ingroup logging
-//! \brief Build the default logger used when callers don't inject one.
-//!
-//! StderrLogger on a hosted runtime, NullLogger on a freestanding target
-//! (no console — pass an application Logger, e.g. a UART sink, to get
-//! real logs there). The choice is made at build time by which TU is
-//! compiled in.
-//! \return A shared, ready-to-use default Logger.
-std::shared_ptr<Logger> makeDefaultLogger();
 
 } // namespace Robotiq

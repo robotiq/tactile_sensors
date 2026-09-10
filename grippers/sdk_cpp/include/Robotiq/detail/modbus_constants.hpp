@@ -4,14 +4,14 @@
 
 //! \brief Modbus wire framing for the Robotiq 2F command and status
 //!        blocks. The byte-level meaning of each block is in
-//!        Robotiq/gripper/register_map.hpp. As transport framing it is
+//!        Robotiq/detail/register_map.hpp. As transport framing it is
 //!        exempt from the API stability promise.
 
 #pragma once
 
 #include <cstdint>
 
-#include <Robotiq/gripper/register_map.hpp>
+#include <Robotiq/detail/register_map.hpp>
 
 namespace Robotiq::detail::modbus_constants {
 

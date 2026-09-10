@@ -18,9 +18,7 @@ OUTPUT_DIRECTORY       =
 
 INPUT                  = include
 RECURSIVE              = YES
-EXCLUDE                = include/Robotiq/gripper/named_bit_array.hpp \
-                         include/Robotiq/gripper/throttle.hpp \
-                         include/Robotiq/gripper/register_map.hpp
+EXCLUDE                =
 EXCLUDE_PATTERNS       = */detail/*
 EXCLUDE_SYMBOLS        =
 

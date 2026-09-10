@@ -9,9 +9,10 @@
 #include <utility>
 #include <vector>
 
+#include <Robotiq/detail/default_logger.hpp>
+#include <Robotiq/detail/throttle.hpp>
 #include <Robotiq/gripper/logger.hpp>
 #include <Robotiq/gripper/stderr_logger.hpp>
-#include <Robotiq/gripper/throttle.hpp>
 
 #include "test_utils.hpp"
 
@@ -19,8 +20,8 @@ namespace Robotiq::test {
 
 TEST(TestLogger, makeDefaultLogger_returns_a_logger)
 {
-   EXPECT_NE(makeDefaultLogger(), nullptr);
-   EXPECT_EQ(makeDefaultLogger(), makeDefaultLogger());
+   EXPECT_NE(detail::makeDefaultLogger(), nullptr);
+   EXPECT_EQ(detail::makeDefaultLogger(), detail::makeDefaultLogger());
 }
 
 TEST(TestStderrLogger, log_writes_the_message_to_stderr)
@@ -47,7 +48,7 @@ TEST(TestStderrLogger, name_tags_every_line)
 
 TEST(TestThrottle, executes_at_most_once_per_period)
 {
-   Throttle throttle(std::chrono::milliseconds(200));
+   detail::Throttle throttle(std::chrono::milliseconds(200));
    const auto t0 = std::chrono::steady_clock::time_point{} + std::chrono::hours(1);
    int calls = 0;
    const auto count = [&] { ++calls; };
@@ -66,8 +67,8 @@ TEST(TestThrottle, executes_at_most_once_per_period)
 
 TEST(TestThrottle, instances_throttle_independently)
 {
-   Throttle a(std::chrono::milliseconds(200));
-   Throttle b(std::chrono::milliseconds(200));
+   detail::Throttle a(std::chrono::milliseconds(200));
+   detail::Throttle b(std::chrono::milliseconds(200));
    const auto t0 = std::chrono::steady_clock::time_point{} + std::chrono::hours(1);
    int calls = 0;
 

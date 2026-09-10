@@ -1,9 +1,7 @@
 target_sources(grippers_objects PRIVATE
   gripper.hpp
   gripper/command.hpp
-  gripper/named_bit_array.hpp
   gripper/status.hpp
-  gripper/register_map.hpp
   gripper/fault_status.hpp
   gripper/wait.hpp
   gripper/connection_config.hpp
@@ -11,7 +9,6 @@ target_sources(grippers_objects PRIVATE
   gripper/driver_exception.hpp
   gripper/logger.hpp
   gripper/stderr_logger.hpp
-  gripper/throttle.hpp
   gripper/to_string.hpp
   gripper/device_profile.hpp
   gripper/units.hpp
@@ -19,10 +16,14 @@ target_sources(grippers_objects PRIVATE
   gripper/serial.hpp
   gripper/serial_config.hpp
   gripper/serial_io_exception.hpp
+  gripper/modbus_client.hpp
   detail/config.hpp
+  detail/register_map.hpp
+  detail/named_bit_array.hpp
   detail/modbus_constants.hpp
   detail/byte_packing.hpp
-  detail/gripper_modbus_client.hpp
+  detail/throttle.hpp
+  detail/default_logger.hpp
   detail/default_serial.hpp
 )
 

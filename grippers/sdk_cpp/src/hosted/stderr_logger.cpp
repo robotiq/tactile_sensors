@@ -7,6 +7,7 @@
 // and the wall clock needs _gettimeofday) and compile
 // freestanding/default_logger.cpp instead.
 
+#include <Robotiq/detail/default_logger.hpp>
 #include <Robotiq/gripper/stderr_logger.hpp>
 
 #include <chrono>
@@ -73,10 +74,12 @@ void StderrLogger::log(Level level, std::string_view message)
    }
    std::cerr << message << '\n';
 }
+} // namespace Robotiq
 
+namespace Robotiq::detail {
 std::shared_ptr<Logger> makeDefaultLogger()
 {
    static const auto instance = std::make_shared<StderrLogger>();
    return instance;
 }
-} // namespace Robotiq
+} // namespace Robotiq::detail

@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <type_traits>
 
-#include <Robotiq/gripper/register_map.hpp>
+#include <Robotiq/detail/register_map.hpp>
 
 namespace Robotiq {
 
@@ -134,14 +134,14 @@ public:
    //! \return gFLT — the gripper's own fault code.
    [[nodiscard]] GripperFault gripperFault() const
    {
-      return static_cast<GripperFault>(_bits & register_map::kGripperFaultMask);
+      return static_cast<GripperFault>(_bits & detail::rm::kGripperFaultMask);
    }
 
    //! \return kFLT — the optional Robotiq controller's fault code.
    [[nodiscard]] ControllerFault controllerFault() const
    {
-      return static_cast<ControllerFault>((_bits & register_map::kControllerFaultMask)
-                                          >> register_map::kControllerFaultShift);
+      return static_cast<ControllerFault>((_bits & detail::rm::kControllerFaultMask)
+                                          >> detail::rm::kControllerFaultShift);
    }
 
    //! \return The raw FAULT STATUS byte.

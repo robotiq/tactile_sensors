@@ -12,19 +12,27 @@
 #include <utility>
 #include <vector>
 
+#include <Robotiq/gripper/modbus_client.hpp>
+
 #include <Robotiq/gripper/command.hpp>
 #include <Robotiq/gripper/driver_exception.hpp>
 #include <Robotiq/gripper/logger.hpp>
 #include <Robotiq/gripper/status.hpp>
 #include <Robotiq/gripper/serial_io_exception.hpp>
 #include <Robotiq/detail/byte_packing.hpp>
-#include <Robotiq/detail/gripper_modbus_client.hpp>
+#include <Robotiq/detail/default_logger.hpp>
 #include <Robotiq/detail/modbus_constants.hpp>
 #include <Robotiq/gripper/serial.hpp>
 
-namespace Robotiq::detail {
+namespace Robotiq {
 
 namespace {
+
+// GripperModbusClient is the one public class built directly on the
+// transport internals, so it names them here rather than in its header.
+namespace modbus_constants = detail::modbus_constants;
+using detail::bytesFromRegisters;
+using detail::registersFromBytes;
 
 struct CallbackContext
 {
@@ -120,7 +128,7 @@ GripperModbusClient::GripperModbusClient(std::unique_ptr<Serial> serial,
    : _impl(std::make_unique<Impl>())
 {
    _impl->serial = std::move(serial);
-   _impl->logger = logger ? std::move(logger) : makeDefaultLogger();
+   _impl->logger = logger ? std::move(logger) : detail::makeDefaultLogger();
    _impl->context = CallbackContext{_impl->serial.get(), _impl->logger.get()};
 
    if(!_impl->serial->isOpen())
@@ -185,4 +193,4 @@ GripperStatus GripperModbusClient::exchange(const GripperCommand& command)
    bytesFromRegisters(statusRegisters, status.data());
    return status;
 }
-} // namespace Robotiq::detail
+} // namespace Robotiq

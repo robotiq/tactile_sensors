@@ -8,12 +8,13 @@
 
 #include <memory>
 
+#include <Robotiq/detail/default_logger.hpp>
 #include <Robotiq/gripper/logger.hpp>
 
-namespace Robotiq {
+namespace Robotiq::detail {
 std::shared_ptr<Logger> makeDefaultLogger()
 {
    static const std::shared_ptr<Logger> instance = std::make_shared<NullLogger>();
    return instance;
 }
-} // namespace Robotiq
+} // namespace Robotiq::detail

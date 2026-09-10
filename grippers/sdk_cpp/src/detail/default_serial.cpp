@@ -11,6 +11,7 @@
 #include <string>
 #include <utility>
 
+#include <Robotiq/detail/default_logger.hpp>
 #include <Robotiq/gripper/logger.hpp>
 #include <Robotiq/gripper/serial_io_exception.hpp>
 

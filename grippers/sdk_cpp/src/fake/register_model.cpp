@@ -10,6 +10,7 @@
 #include <utility>
 
 #include <Robotiq/detail/byte_packing.hpp>
+#include <Robotiq/detail/default_logger.hpp>
 
 #include "fake/status_writer.hpp"
 
@@ -19,7 +20,7 @@ namespace mc = detail::modbus_constants;
 } // namespace
 
 RegisterModel::RegisterModel(std::shared_ptr<Logger> logger)
-   : _logger(logger ? std::move(logger) : makeDefaultLogger())
+   : _logger(logger ? std::move(logger) : detail::makeDefaultLogger())
 {
 }
 

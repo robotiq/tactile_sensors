@@ -17,7 +17,7 @@
 #include <Robotiq/gripper/driver_exception.hpp>
 #include <Robotiq/gripper/logger.hpp>
 #include <Robotiq/gripper/serial_io_exception.hpp>
-#include <Robotiq/detail/gripper_modbus_client.hpp>
+#include <Robotiq/gripper/modbus_client.hpp>
 #include <Robotiq/detail/modbus_constants.hpp>
 
 #include "test_utils.hpp"
@@ -26,12 +26,12 @@ namespace Robotiq::test {
 
 namespace {
 //! Build a connection around a ScriptedSerial and hand back the raw pointer.
-std::pair<std::unique_ptr<detail::GripperModbusClient>, ScriptedSerial*> makeClient()
+std::pair<std::unique_ptr<GripperModbusClient>, ScriptedSerial*> makeClient()
 {
    auto serial = std::make_unique<ScriptedSerial>();
    ScriptedSerial* raw = serial.get();
    auto connection =
-      std::make_unique<detail::GripperModbusClient>(std::move(serial), kSlaveAddress, std::make_shared<NullLogger>());
+      std::make_unique<GripperModbusClient>(std::move(serial), kSlaveAddress, std::make_shared<NullLogger>());
    return {std::move(connection), raw};
 }
 } // namespace
@@ -115,7 +115,7 @@ struct Transaction
    const char* name;
    uint8_t functionCode;
    std::vector<uint8_t> successfulResponse; // without CRC
-   void (*invoke)(detail::GripperModbusClient&);
+   void (*invoke)(GripperModbusClient&);
 };
 
 // Without this gtest dumps the raw parameter bytes into the test listing
@@ -131,15 +131,15 @@ const std::vector<Transaction>& transactions()
       {"readStatus",
        0x03,
        {kSlaveAddress, 0x03, 0x06, 0, 0, 0, 0, 0, 0},
-       [](detail::GripperModbusClient& client) { (void)client.readStatus(); }},
+       [](GripperModbusClient& client) { (void)client.readStatus(); }},
       {"writeCommand",
        0x10,
        {kSlaveAddress, 0x10, 0x03, 0xE8, 0x00, 0x03},
-       [](detail::GripperModbusClient& client) { client.writeCommand(GripperCommand::defaults()); }},
+       [](GripperModbusClient& client) { client.writeCommand(GripperCommand::defaults()); }},
       {"exchange",
        0x17,
        {kSlaveAddress, 0x17, 0x06, 0, 0, 0, 0, 0, 0},
-       [](detail::GripperModbusClient& client) { (void)client.exchange(GripperCommand::defaults()); }},
+       [](GripperModbusClient& client) { (void)client.exchange(GripperCommand::defaults()); }},
    };
    return kTransactions;
 }
@@ -215,7 +215,7 @@ TEST(TestGripperModbusClient, serial_failure_is_logged_before_it_becomes_a_drive
    // caller as a generic transport error — so the logger carries it.
    auto logger = std::make_shared<CollectingLogger>();
    auto serial = std::make_unique<ThrowingSerial>();
-   detail::GripperModbusClient client(std::move(serial), kSlaveAddress, logger);
+   GripperModbusClient client(std::move(serial), kSlaveAddress, logger);
 
    EXPECT_THROW((void)client.readStatus(), DriverException);
    EXPECT_TRUE(logger->contains(ThrowingSerial::kFailure));
@@ -230,7 +230,7 @@ TEST(TestGripperModbusClient, config_ctor_delivers_serial_logs_to_the_injected_l
    ConnectionConfig config;
    config.serial.port = "/dev/this_should_not_exist";
 
-   EXPECT_THROW(detail::GripperModbusClient(config, logger), SerialIOException);
+   EXPECT_THROW(GripperModbusClient(config, logger), SerialIOException);
    EXPECT_TRUE(logger->contains("opening serial port '/dev/this_should_not_exist'"));
 }
 } // namespace Robotiq::test

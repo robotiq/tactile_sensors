@@ -10,8 +10,8 @@
 #include <cstring>
 #include <type_traits>
 
-#include <Robotiq/gripper/register_map.hpp>
-#include <Robotiq/gripper/named_bit_array.hpp>
+#include <Robotiq/detail/register_map.hpp>
+#include <Robotiq/detail/named_bit_array.hpp>
 
 namespace Robotiq {
 
@@ -39,7 +39,7 @@ enum class ActionRequestBit : uint8_t
 //!
 //! \par Example
 //! \snippet snippets.cpp action-request-bits
-using ActionRequest = NamedBitArray<ActionRequestBit>;
+using ActionRequest = detail::NamedBitArray<ActionRequestBit>;
 
 //! \ingroup command
 //! \brief The gripper command block (host -> gripper), laid out byte for
@@ -62,7 +62,7 @@ struct GripperCommand
    uint8_t force = 0; //!< byte 5 — rFR
 
    //! bytes 6..15
-   std::array<uint8_t, register_map::kCommandBlockBytes - register_map::kCommandDocumentedBytes> reservedTail{};
+   std::array<uint8_t, detail::rm::kCommandBlockBytes - detail::rm::kCommandDocumentedBytes> reservedTail{};
 
    //! \brief A ready-to-use command.
    //!
@@ -81,7 +81,7 @@ struct GripperCommand
    //! \overload
    [[nodiscard]] uint8_t* data() { return reinterpret_cast<uint8_t*>(this); }
    //! \return The width of the command block in bytes (16, per the manual).
-   [[nodiscard]] static constexpr std::size_t size() { return register_map::kCommandBlockBytes; }
+   [[nodiscard]] static constexpr std::size_t size() { return detail::rm::kCommandBlockBytes; }
 };
 
 //! \return true if every byte of the two command blocks is identical.
@@ -96,6 +96,6 @@ struct GripperCommand
 }
 
 static_assert(std::is_standard_layout_v<GripperCommand> && std::is_trivially_copyable_v<GripperCommand>
-                 && sizeof(GripperCommand) == register_map::kCommandBlockBytes,
+                 && sizeof(GripperCommand) == detail::rm::kCommandBlockBytes,
               "GripperCommand must overlay the raw command block exactly");
 } // namespace Robotiq

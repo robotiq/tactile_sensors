@@ -5,9 +5,11 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cstdint>
 #include <cstring>
 #include <type_traits>
 
+#include <Robotiq/detail/named_bit_array.hpp>
 #include <Robotiq/gripper/command.hpp>
 #include <Robotiq/gripper/fault_status.hpp>
 #include <Robotiq/gripper/status.hpp>
@@ -210,5 +212,19 @@ TEST(TestGripperBlocks, overlay_the_full_physical_block)
    static_assert(std::is_trivially_copyable_v<GripperCommand>);
    static_assert(std::is_trivially_copyable_v<GripperStatus>);
    EXPECT_EQ(GripperCommand{}.size(), 16u);
+}
+
+TEST(TestNamedBitArray, stays_byte_sized_and_wire_composable)
+{
+   // The property the packed action byte relies on: a NamedBitArray is the
+   // byte it wraps, so it drops into a block that overlays the wire.
+   enum class SampleBit : uint8_t
+   {
+      Zero = 0
+   };
+   using Sample = detail::NamedBitArray<SampleBit>;
+   static_assert(std::is_standard_layout_v<Sample>);
+   static_assert(std::is_trivially_copyable_v<Sample>);
+   static_assert(sizeof(Sample) == 1);
 }
 } // namespace Robotiq::test

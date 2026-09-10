@@ -3,11 +3,23 @@
 // Licensed under the BSD-3-Clause license; see LICENSE for details.
 
 //! \brief Advanced, low-level access: one Modbus transaction per call.
-//! ⚠ This is not the application API — use Gripper, whose accessors never
-//! touch the bus. GripperModbusClient exists for the audiences that need
-//! direct transactions: setup/diagnostic tooling, deterministic test
-//! benches, and no-thread integrations (microcontroller-style superloops)
-//! that schedule the exchange themselves.
+//!
+//! ⚠ **Use Gripper instead.** This class is supported public API, but only
+//! because a few integrations genuinely cannot use Gripper — reach for it
+//! only when one of these describes you:
+//!   - a single-threaded target (a microcontroller superloop) that
+//!     schedules the exchange itself and has no Platform to run a thread
+//!     on;
+//!   - setup or diagnostic tooling that must issue one specific
+//!     transaction and see it fail;
+//!   - a deterministic test bench that drives the bus step by step.
+//!
+//! Everything else — every application that controls a gripper — should use
+//! Gripper, whose setCommand()/getStatus() read and write a process image
+//! and never touch the bus. Driving this class from an application means
+//! every accessor becomes a blocking Modbus transaction on the caller's
+//! thread: the anti-pattern Gripper exists to prevent.
+//!
 //! Calls are scoped to the two blocks documented in the gripper's
 //! instruction manual. The client owns the serial connection; it opens on
 //! construction and closes on destruction. Not thread-safe: one client,
@@ -21,14 +33,12 @@
 #include <Robotiq/detail/config.hpp>
 
 namespace Robotiq {
+
 class Logger;
 class Serial;
 struct ConnectionConfig;
 struct GripperCommand;
 struct GripperStatus;
-} // namespace Robotiq
-
-namespace Robotiq::detail {
 
 class GripperModbusClient
 {
@@ -68,4 +78,4 @@ private:
    struct Impl; // hides the nanomodbus client
    std::unique_ptr<Impl> _impl;
 };
-} // namespace Robotiq::detail
+} // namespace Robotiq
