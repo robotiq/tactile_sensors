@@ -23,6 +23,10 @@ import websockets
 from protocol import NUM_FINGERS
 DISPLAY_POINTS = 500  # max points sent to browser for time-series
 BROADCAST_HZ = 5      # display refresh rate
+# The tab a client is assumed to be on until it says otherwise. Matches the tab
+# the page opens on (see app.js), so the first frames are not wasted on a view
+# nobody is looking at.
+DEFAULT_TAB = "overview"
 
 # --- Fingertip angle estimation -------------------------------------------
 #
@@ -466,10 +470,12 @@ class WebViewer:
         self.buffer = SensorDataBuffer()
         self.clients = set()
         self._had_client = False
-        # Only the visible tab's streams are computed and sent. Defaults to the
+        # Which tab each client is showing. Per client, not per server: two
+        # browsers on one viewer would otherwise overwrite each other's choice
+        # and each receive mostly the other's streams. New clients start on the
         # tab the page opens on, so the first frames are not wasted on a view
         # nobody is looking at.
-        self.active_tab = "overview"
+        self.client_tabs = {}
 
     def serial_callback(self, sensor_data):
         try:
@@ -479,12 +485,13 @@ class WebViewer:
 
     async def websocket_handler(self, websocket):
         self.clients.add(websocket)
+        self.client_tabs[websocket] = DEFAULT_TAB
         self._had_client = True
         try:
             async for message in websocket:
                 msg = json.loads(message)
                 if msg.get("type") == "tab_change":
-                    self.active_tab = msg["tab"]
+                    self.client_tabs[websocket] = msg["tab"]
                 elif msg.get("type") == "reset_baseline":
                     self.buffer.reset_baseline()
                 elif msg.get("type") == "zero_wrench":
@@ -502,6 +509,7 @@ class WebViewer:
             pass
         finally:
             self.clients.discard(websocket)
+            self.client_tabs.pop(websocket, None)
             if self._had_client and not self.clients:
                 # Last client disconnected — give a brief grace period for
                 # page refreshes, then shut down.
@@ -509,6 +517,28 @@ class WebViewer:
                 if not self.clients:
                     print("\nAll clients disconnected. Shutting down...")
                     os._exit(0)
+
+    def tab_message(self, tab):
+        """The payload for one tab: only what that view actually draws."""
+        msg = {"type": "data", "tab": tab}
+        if tab == "overview":
+            values, max_ranges = self.buffer.get_static_snapshot()
+            tip_angles, tip_valid = self.buffer.get_tip_snapshot()
+            msg["static"] = values
+            msg["maxRange"] = max_ranges
+            msg["dynamic"] = self.buffer.get_dynamic_snapshot()
+            msg["tipAngle"] = tip_angles
+            msg["tipAngleValid"] = tip_valid
+            msg["wrench"] = self.buffer.get_wrench_snapshot()
+            msg["ftOrigin"] = FT_ORIGIN_MM
+            msg["wrenchError"] = self.buffer.wrench_error
+        elif tab == "dynamic":
+            msg["dynamic"] = self.buffer.get_dynamic_snapshot()
+        elif tab == "imu":
+            acc, gyr = self.buffer.get_imu_snapshot()
+            msg["accel"] = acc
+            msg["gyro"] = gyr
+        return msg
 
     async def broadcast_loop(self):
         interval = 1.0 / BROADCAST_HZ
@@ -542,37 +572,26 @@ class WebViewer:
                             if b.push_total[f] else "0/0"
                             for f in range(NUM_FINGERS)
                         ]
-                    print(f"[diag] tab={self.active_tab}  clients={len(self.clients)}  "
+                    tabs = {}
+                    for t in self.client_tabs.values():
+                        tabs[t] = tabs.get(t, 0) + 1
+                    shown = ",".join(f"{t}:{n}" for t, n in sorted(tabs.items())) or "-"
+                    print(f"[diag] tabs={shown}  clients={len(self.clients)}  "
                           f"dyn={dyn_sizes}  accel={acc_sizes}  gyro={gyr_sizes}  "
                           f"tip={tips}  corrupt={corrupt}")
                 if self.clients:
-                    tab = self.active_tab
-                    msg = {"type": "data", "tab": tab}
-
-                    if tab == "overview":
-                        values, max_ranges = self.buffer.get_static_snapshot()
-                        tip_angles, tip_valid = self.buffer.get_tip_snapshot()
-                        msg["static"] = values
-                        msg["maxRange"] = max_ranges
-                        msg["dynamic"] = self.buffer.get_dynamic_snapshot()
-                        msg["tipAngle"] = tip_angles
-                        msg["tipAngleValid"] = tip_valid
-                        msg["wrench"] = self.buffer.get_wrench_snapshot()
-                        msg["ftOrigin"] = FT_ORIGIN_MM
-                        msg["wrenchError"] = self.buffer.wrench_error
-                    elif tab == "dynamic":
-                        msg["dynamic"] = self.buffer.get_dynamic_snapshot()
-                    elif tab == "imu":
-                        acc, gyr = self.buffer.get_imu_snapshot()
-                        msg["accel"] = acc
-                        msg["gyro"] = gyr
-
-                    payload = json.dumps(msg)
+                    # One payload per tab in use, not per client: two browsers
+                    # on the same tab still cost a single snapshot and a single
+                    # json.dumps, which is the common case.
+                    payloads = {}
                     for client in self.clients.copy():
-                        if client not in busy:
-                            busy.add(client)
-                            asyncio.ensure_future(_send(client, payload))
-                        # else: client is still sending previous frame, drop this one
+                        if client in busy:
+                            continue  # still sending the previous frame; drop this one
+                        tab = self.client_tabs.get(client, DEFAULT_TAB)
+                        if tab not in payloads:
+                            payloads[tab] = json.dumps(self.tab_message(tab))
+                        busy.add(client)
+                        asyncio.ensure_future(_send(client, payloads[tab]))
             except Exception:
                 traceback.print_exc(file=sys.stderr)
             await asyncio.sleep(interval)
@@ -583,10 +602,12 @@ class WebViewer:
         while True:
             try:
                 fft_result = await loop.run_in_executor(None, self.buffer.compute_fft)
-                if self.clients and self.active_tab == "dynamic":
+                watching = [c for c in self.clients.copy()
+                            if self.client_tabs.get(c) == "dynamic"]
+                if watching:
                     payload = json.dumps({"type": "fft", "fft": fft_result})
                     await asyncio.gather(
-                        *[c.send(payload) for c in self.clients.copy()],
+                        *[c.send(payload) for c in watching],
                         return_exceptions=True
                     )
             except Exception:
