@@ -11,6 +11,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PARENT_DIR="$(dirname "$SCRIPT_DIR")"
 VENV_DIR="$SCRIPT_DIR/.venvSimpleCheck"
 
+# --sim runs on synthetic data with nothing plugged in, so the whole hardware
+# setup below is skipped for it: applying udev rules asks for sudo, and the
+# device scan ends in an interactive "continue anyway?" prompt when it finds
+# nothing -- which it always would. Scanned out of all the arguments rather
+# than just $1 so it works wherever it is written on the line.
+SIM=0
+for arg in "$@"; do
+    if [ "$arg" = "--sim" ]; then SIM=1; fi
+done
+
 # Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -109,6 +119,11 @@ setup_venv
 # Step 3: Install requirements
 install_requirements
 
+if [ "$SIM" = "1" ]; then
+echo ""
+echo "Simulation mode: skipping sensor permissions and device detection."
+else
+
 echo ""
 echo "=========================================="
 echo "Configuring Sensor Permissions"
@@ -152,6 +167,8 @@ else
         echo "  - $dev"
     done
 fi
+
+fi  # end of hardware setup, skipped under --sim
 
 echo ""
 echo "=========================================="
