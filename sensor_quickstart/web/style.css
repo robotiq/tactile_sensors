@@ -1,38 +1,105 @@
+/*
+ * Three tabs over one server. The first, "Overview", shows every signal at once
+ * beside a drawing of the gripper the sensors are mounted on, always fitting the
+ * window so it can be docked to part of a 1280x800 screen. The other two are the
+ * bring-up views, which are roomier and scroll.
+ *
+ * Those two page models genuinely conflict — one must never scroll, the others
+ * must — so the choice is made per tab, in the "Tab content" block below,
+ * rather than once on <body>.
+ */
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
-body {
-    background: #1a1a2e;
-    color: #e0e0e0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+:root {
+    --bg: #1a1a2e;
+    --panel: #16213e;
+    --line: #0f3460;
+    --accent: #e94560;
+    --finger-0: #4fa3e3;
+    --finger-1: #f2a541;
+    /* Below this the charts stop shrinking and the page scrolls instead. */
+    --min-row: 150px;
 }
 
-header {
-    background: #16213e;
-    padding: 12px 24px;
+html, body { height: 100%; }
+
+body {
+    background: var(--bg);
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     display: flex;
-    justify-content: space-between;
+    flex-direction: column;
+}
+
+/* Header ------------------------------------------------------------------ */
+
+header {
+    flex: none;
+    background: var(--panel);
+    padding: 6px 12px;
+    display: flex;
     align-items: center;
-    border-bottom: 1px solid #0f3460;
+    gap: 20px;
+    border-bottom: 1px solid var(--line);
 }
 
 header h1 {
-    font-size: 18px;
+    font-size: 14px;
     font-weight: 600;
+    white-space: nowrap;
 }
 
 #status-bar {
+    margin-left: auto;
     display: flex;
-    gap: 20px;
-    font-size: 13px;
+    gap: 16px;
+    font-size: 12px;
+    white-space: nowrap;
 }
 
 .status-connected { color: #4caf50; }
 .status-disconnected { color: #f44336; }
 
-/* Tabs */
-.tabs {
+.controls {
     display: flex;
-    background: #0f3460;
+    gap: 12px;
+    align-items: center;
+}
+
+.controls button {
+    padding: 3px 10px;
+    background: var(--line);
+    color: #e0e0e0;
+    border: 1px solid #1a4a8a;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.controls button:hover { background: #1a4a8a; }
+
+.controls label {
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+/* `[hidden]` is only a UA rule, so the `display: flex` above outranks it and
+   the tab-specific labels stayed on screen everywhere. Say it in the author
+   stylesheet, where it beats both rules above on specificity. */
+.controls [hidden] { display: none; }
+
+/* Tabs -------------------------------------------------------------------- */
+
+.tabs {
+    flex: none;
+    display: flex;
+    background: var(--line);
 }
 
 .tab {
@@ -47,11 +114,37 @@ header h1 {
 }
 
 .tab:hover { color: #ccc; }
-.tab.active { color: #fff; border-bottom-color: #e94560; }
+.tab.active { color: #fff; border-bottom-color: var(--accent); }
 
-/* Tab content */
-.tab-content { display: none; padding: 16px 24px; }
-.tab-content.active { display: block; }
+/* Tab content ------------------------------------------------------------- */
+
+main {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.tab-content { display: none; }
+
+/* The overview fills the window and never scrolls: the show-floor view. */
+#tab-overview.active {
+    display: grid;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* The bring-up tabs keep the roomier, scrolling layout with fixed chart
+   heights, which is what makes them look the way they always have. */
+#tab-dynamic.active,
+#tab-imu.active {
+    display: block;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 16px 24px;
+}
 
 .tab-content h2 {
     font-size: 15px;
@@ -67,35 +160,133 @@ header h1 {
     color: #99a;
 }
 
-/* Controls */
-.controls {
-    display: flex;
-    gap: 16px;
-    align-items: center;
-    margin-bottom: 12px;
-}
+/* Demo tab: chart grid ---------------------------------------------------- */
 
-.controls button {
-    padding: 6px 16px;
-    background: #0f3460;
-    color: #e0e0e0;
-    border: 1px solid #1a4a8a;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 13px;
-}
-
-.controls button:hover { background: #1a4a8a; }
-
-.controls label {
-    font-size: 13px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
+.overview-grid {
+    /* One column per finger, then the gripper. Each pad gets the tall row with
+       its own dynamic trace directly beneath it. The pads hold a fixed 4:7
+       aspect — the shape of the real sensor — so past a point they are limited
+       by row height, not column width; the columns are sized to just fit them
+       and the surplus goes to the gripper rather than to empty margins. */
+    grid-template-columns: repeat(2, minmax(150px, 0.95fr)) minmax(240px, 1.9fr);
+    grid-template-rows: auto minmax(220px, 3.4fr) minmax(80px, 1fr);
     gap: 6px;
+    padding: 6px 10px 8px;
 }
 
-/* Chart layout */
+.col-head {
+    font-size: 12px;
+    font-weight: 600;
+    color: #aab;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.col-head .unit { color: #778; font-weight: 400; }
+
+.cell {
+    min-width: 0;
+    min-height: 0;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.plot { width: 100%; height: 100%; }
+
+/* A label inside the cell, for plots whose column heading names the finger
+   rather than the signal. */
+.captioned { position: relative; }
+
+.caption {
+    position: absolute;
+    top: 4px;
+    left: 10px;
+    z-index: 1;
+    font-size: 11px;
+    font-weight: 600;
+    color: #8b97b5;
+    pointer-events: none;
+}
+
+/* Demo tab: gripper view -------------------------------------------------- */
+
+.gripper-cell {
+    grid-column: 3;
+    grid-row: 2 / span 2;
+    position: relative;
+}
+
+/* The three.js canvas fills the cell; the readouts float over it so they do
+   not scale with the scene the way SVG text did. */
+#gripper-view { width: 100%; height: 100%; }
+#gripper-view canvas { display: block; }
+
+/* What is measured and what is inferred, said plainly on the picture: at a
+   show people read a live drawing as fact unless told otherwise. */
+.overlay-note {
+    position: absolute;
+    top: 8px;
+    left: 12px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #8b97b5;
+    pointer-events: none;
+}
+
+.overlay-note .dim { color: #66708c; }
+
+#gripper-readout {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 18px;
+    font-size: 13px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: #c3cde6;
+    pointer-events: none;
+}
+
+#gripper-readout .invalid { color: #6a7490; font-weight: 400; }
+
+/* The 3D gripper is opt-in: ~3 MB of three.js and baked meshes that the
+   default page never fetches. With the option off the column is not drawn at
+   all -- no heading, no empty panel -- and the two pads share the full width. */
+body:not(.gripper-on) .gripper-head,
+body:not(.gripper-on) .gripper-cell { display: none; }
+
+body:not(.gripper-on) .overview-grid {
+    /* 4:7 pads in a row of roughly 0.77 of the viewport: about 0.44vh of
+       width each is all they can use, so stop there and centre the pair
+       rather than stretching them across the window. */
+    grid-template-columns: repeat(2, minmax(150px, min(46vh, 48vw)));
+    justify-content: center;
+}
+
+/* Only for a model that failed to load: the option is on but broken, which is
+   worth saying rather than showing an empty cell. */
+.gripper-error {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 24px;
+    text-align: center;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #e08a8a;
+}
+
+/* Signal tabs: chart layout ----------------------------------------------- */
+
 .chart-row {
     display: flex;
     gap: 16px;
@@ -116,15 +307,3 @@ header h1 {
 /* Smaller charts for dynamic FFT and IMU (4 charts visible at once) */
 #tab-dynamic .chart-container > div { height: 280px; }
 #tab-imu .chart-container > div { height: 260px; }
-
-/* Static heatmap: match the sensor's 7 rows x 4 columns aspect ratio instead of a fixed height */
-#tab-static .chart-container {
-    flex: 0 1 320px;
-    max-width: 320px;
-}
-
-#tab-static .chart-container > div {
-    height: auto !important;
-    aspect-ratio: 4 / 7;
-    max-height: calc(100vh - 210px);
-}
