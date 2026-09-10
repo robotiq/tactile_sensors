@@ -2,66 +2,64 @@
 //
 // Licensed under the BSD-3-Clause license; see LICENSE for details.
 
-//! \brief Byte layout of the Robotiq 2F adaptive grippers'
-//!        (2F-85 / 2F-140 / Hand-E class) command and status blocks, as
-//!        published in the gripper's instruction manual. The blocks are
-//!        byte-addressed:
-//!
-//!   Byte     Robot output (command)     Robot input (status)
-//!   0        ACTION REQUEST             GRIPPER STATUS
-//!   1        RESERVED                   RESERVED
-//!   2        RESERVED                   FAULT STATUS
-//!   3        POSITION REQUEST           POS REQUEST ECHO
-//!   4        SPEED                      POSITION
-//!   5        FORCE                      CURRENT
-//!   6-15     RESERVED                   RESERVED
-
 #pragma once
 
 #include <cstddef>
 #include <cstdint>
 
+// Byte and bit layout of the Robotiq 2F adaptive grippers'
+// (2F-85 / 2F-140 / Hand-E class) command and status blocks, as
+// published in the gripper's instruction manual.
+//
+// | Byte | Robot output (command) | Robot input (status) |
+// |------|------------------------|----------------------|
+// | 0    | ACTION REQUEST         | GRIPPER STATUS       |
+// | 1    | RESERVED               | RESERVED             |
+// | 2    | RESERVED               | FAULT STATUS         |
+// | 3    | POSITION REQUEST       | POS REQUEST ECHO     |
+// | 4    | SPEED                  | POSITION             |
+// | 5    | FORCE                  | CURRENT              |
+// | 6-15 | RESERVED               | RESERVED             |
+//
+// Two of those bytes are themselves packed with several fields — the
+// GRIPPER STATUS byte and the FAULT STATUS byte
+//
+// Most consumers never need any of this directly: GripperCommand and
+// GripperStatus already expose the same information in a safer, easier-to-use
+// format.
 namespace Robotiq::register_map {
 
-inline constexpr std::size_t kCommandBlockBytes = 16;
-inline constexpr std::size_t kStatusBlockBytes = 16;
+// Block layout: how wide each block is, and how many of its leading
+// bytes the manual tables — the rest is reserved (see the byte table
+// above).
+inline constexpr std::size_t kCommandBlockBytes = 16; // total width of the command block, in bytes
+inline constexpr std::size_t kStatusBlockBytes = 16; // total width of the status block, in bytes
+inline constexpr std::size_t kCommandDocumentedBytes = 6; // leading command-block bytes with a tabled field
+inline constexpr std::size_t kStatusDocumentedBytes = 6; // leading status-block bytes with a tabled field
 
-// The leading bytes of each block carry the fields tabled in the manual;
-// the rest is reserved. Bandwidth-precious transports, such as Modbus RTU
-// move only the documented bytes; transports with headroom may carry the
-// whole block, leaving room for future fields without repacking. The two
-// counts are independent: the manual may table a new byte in one block
-// without tabling one in the other.
-inline constexpr std::size_t kCommandDocumentedBytes = 6;
-inline constexpr std::size_t kStatusDocumentedBytes = 6;
-
-// Bit layout of the gripper-status byte (byte 0 of the status block):
-//   bit    7     6     5     4     3     2     1     0
-//         gOBJ  gOBJ  gSTA  gSTA  gGTO  rsvd  rsvd  gACT
+// GRIPPER STATUS byte
 inline constexpr uint8_t kActivationStatusMask = 0x01; // gACT
 inline constexpr uint8_t kGoToEchoMask = 0x08; // gGTO
 inline constexpr uint8_t kActivationStateMask = 0x30; // gSTA (bits 4-5)
 inline constexpr uint8_t kObjectDetectionMask = 0xC0; // gOBJ (bits 6-7)
-inline constexpr int kActivationStateShift = 4;
-inline constexpr int kObjectDetectionShift = 6;
+inline constexpr int kActivationStateShift = 4; // shift applied to gSTA after masking
+inline constexpr int kObjectDetectionShift = 6; // shift applied to gOBJ after masking
 
-// gSTA values (after shift).
-inline constexpr uint8_t kActivationStateReset = 0x00;
-inline constexpr uint8_t kActivationStateInProgress = 0x01;
-inline constexpr uint8_t kActivationStateReserved = 0x02; // not allocated by the manual
-inline constexpr uint8_t kActivationStateComplete = 0x03;
+// gSTA field values
+inline constexpr uint8_t kActivationStateReset = 0x00; // see ActivationState::Reset
+inline constexpr uint8_t kActivationStateInProgress = 0x01; // see ActivationState::InProgress
+inline constexpr uint8_t kActivationStateReserved = 0x02; // see ActivationState::Reserved
+inline constexpr uint8_t kActivationStateComplete = 0x03; // see ActivationState::Complete
 
-// gOBJ values (after shift).
-inline constexpr uint8_t kObjectMoving = 0x00; // fingers in motion (if rGTO)
-inline constexpr uint8_t kObjectDetectedOpening = 0x01; // stopped while opening
-inline constexpr uint8_t kObjectDetectedClosing = 0x02; // stopped while closing
-inline constexpr uint8_t kObjectAtRequestedPosition = 0x03;
+// gOBJ field values
+inline constexpr uint8_t kObjectMoving = 0x00; // see ObjectDetection::Moving
+inline constexpr uint8_t kObjectDetectedOpening = 0x01; // see ObjectDetection::DetectedWhileOpening
+inline constexpr uint8_t kObjectDetectedClosing = 0x02; // see ObjectDetection::DetectedWhileClosing
+inline constexpr uint8_t kObjectAtRequestedPosition = 0x03; // see ObjectDetection::AtRequestedPosition
 
-// The FAULT STATUS byte (byte 2) splits into two nibbles: the gripper's
-// own fault (gFLT) in the low nibble, the optional controller fault
-// (kFLT) in the high nibble.
-inline constexpr uint8_t kGripperFaultMask = 0x0F; // gFLT
-inline constexpr uint8_t kControllerFaultMask = 0xF0; // kFLT
-inline constexpr int kControllerFaultShift = 4;
+// FAULT STATUS byte
+inline constexpr uint8_t kGripperFaultMask = 0x0F; // gFLT (low nibble)
+inline constexpr uint8_t kControllerFaultMask = 0xF0; // kFLT (high nibble)
+inline constexpr int kControllerFaultShift = 4; // shift applied to kFLT after masking
 
 } // namespace Robotiq::register_map

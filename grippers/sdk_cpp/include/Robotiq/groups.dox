@@ -1,0 +1,121 @@
+// Copyright (c) 2026 Robotiq, Inc.
+//
+// Licensed under the BSD-3-Clause license; see LICENSE for details.
+//
+// Pure documentation: defines the API reference's grouping/hierarchy for
+// Doxygen. Not a header — nothing includes this file, and it is not part
+// of the CMake target.
+
+//! \defgroup core_api Core API
+//! \brief Everything you need to control a Robotiq gripper.
+//!
+//! The gripper SDK is composed of the Gripper class and free functions that
+//! operate on Gripper objects.
+//!
+//! \verbatim
+//!               ConnectionConfig                Serial + Platform + Logger
+//!             (SerialConfig + slave addr)     (custom transport, RTOS port,
+//!                     |                             or a test double)
+//!                     |                                 |
+//!                     |    (built-in serial)            |    (bring your own serial)
+//!                     +----------------+----------------+
+//!                                      v
+//!                             +-----------------+
+//!                             |     Gripper     |   <- the class you drive
+//!                             +-----------------+
+//!                            /         |         \
+//!                 setCommand()   getStatus()   connectionState()
+//!                       /             |             \
+//!                      v              v              v
+//!             GripperCommand   GripperStatus   ConnectionState
+//!               (you send)     (FaultStatus
+//!                                lives inside)
+//! \endverbatim
+//!
+//! \note all gripper methods are not represented in this graph. Check gripper
+//! class documentation for details.
+//!
+//! While Gripper class methods like setCommand and getStatus are enough
+//! to control the gripper, high level functions are provided to
+//! ease some actions like activation and fault recovery. Those functions are
+//! not members of the gripper class and directly use gripper object
+//! to perform an action.
+//!
+//! See \ref testing "Testing & CI Utilities" for driving this same API
+//! without a physical gripper attached.
+
+//! \defgroup commanding Commands & Status
+//! \ingroup core_api
+//! \brief The typed blocks a Gripper exchanges with the hardware: the
+//! command you write to it, and the status you read back from it.
+
+//! \defgroup command Command
+//! \ingroup commanding
+//! \brief What you send to the gripper to perform an action.
+
+//! \defgroup action ActionByte
+//! \ingroup command
+//! \brief The packed action-request byte (byte 0 of the command block).
+
+//! \defgroup status Status
+//! \ingroup commanding
+//! \brief The information you receive to understand gripper
+//! status.
+
+//! \defgroup gripper_status Gripper Status
+//! \ingroup status
+//! \brief The packed GRIPPER STATUS byte (byte 0 of the status block).
+
+//! \defgroup fault_status Fault Status
+//! \ingroup status
+//! \brief The packed FAULT STATUS byte (byte 2 of the status block).
+
+//! \defgroup activation Activation & Recovery
+//! \ingroup core_api
+//! \brief The blocking activation / fault-recovery procedures built on
+//! top of Command and Status.
+
+//! \defgroup connection Connection & Configuration
+//! \ingroup core_api
+//! \brief How a Gripper is configured, and the state of its connection.
+
+//! \defgroup runtime Runtime & Extension Points
+//! \ingroup core_api
+//! \brief The injectable transport, platform, and logging interfaces
+//! Gripper is built on — implement these to add a custom transport, port
+//! to an RTOS, or capture logs in tests.
+//! Most users do not need to implement these interfaces.
+//!
+//! Split by what you're implementing, plus what a failure in any of them
+//! looks like to the caller:
+//!   - **Transport** — the byte-level link to the hardware (Serial).
+//!   - **Platform** — the OS services the threaded runtime needs
+//!     (locks, threads, sleeps).
+//!   - **Logging** — where diagnostic lines go.
+//!   - **Exceptions** — the driver- and transport-level failures thrown
+//!     up through these interfaces.
+
+//! \defgroup transport Transport
+//! \ingroup runtime
+//! \brief The byte-level transport extension point (Serial).
+
+//! \defgroup platform Platform
+//! \ingroup runtime
+//! \brief The OS services (locks, threads, sleeps) behind the threaded runtime.
+
+//! \defgroup logging Logging
+//! \ingroup runtime
+//! \brief Where diagnostic log lines go.
+
+//! \defgroup exceptions Exceptions
+//! \ingroup runtime
+//! \brief Failures thrown by the transport or driver.
+
+//! \defgroup utilities Utilities
+//! \ingroup core_api
+//! \brief Small, independent helpers used while driving a Gripper.
+
+//! \defgroup testing Testing & CI Utilities
+//! \brief Tools for exercising the SDK without a physical gripper attached.
+//!
+//! Not part of the real control path — see \ref core_api "Core API" for that.

@@ -9,20 +9,22 @@
 //! pick the profile of the gripper you have.
 //! Usage: move_gripper <port> [baudrate]
 
-#include <chrono>
-#include <cmath>
-#include <cstdlib>
-#include <memory>
-#include <optional>
-#include <iostream>
-#include <string>
+#include <chrono> // duration literals for the waitFor() timeouts below (1s, 200ms, ...)
+#include <cmath> // std::lround for the settled-position log line
+#include <cstdlib> // EXIT_SUCCESS / EXIT_FAILURE, main()'s return codes below — unrelated to Gripper itself
+#include <memory> // smart pointers: std::unique_ptr to own the Gripper, std::shared_ptr for the Logger it takes
+#include <optional> // std::optional from the unit-conversion functions below
+#include <iostream> // std::cerr for usage/connection error messages
+#include <string> // std::string (withStatus()'s return type), std::stoul (baudrate parsing)
 
-#include <Robotiq/gripper.hpp>
-#include <Robotiq/gripper/device_profile.hpp>
+#include <Robotiq/gripper.hpp> // Gripper, GripperCommand/Status, activate(), recoverFromFault()
+#include <Robotiq/gripper/device_profile.hpp> // DeviceProfile, profiles::k2F85
 #include <Robotiq/gripper/stderr_logger.hpp>
 #include <Robotiq/gripper/units.hpp>
 
-using namespace std::chrono_literals;
+using namespace std::chrono_literals; // enables the 1s / 200ms / 5s literals below
+
+// The handful of SDK types this example touches directly:
 using Robotiq::ActionRequestBit;
 using Robotiq::ActivationResult;
 using Robotiq::Gripper;
@@ -33,12 +35,19 @@ using Robotiq::profiles::k2F85;
 namespace {
 // Any rate a serial link plausibly runs at. Also what catches a negative:
 // stoul("-1") wraps to a huge value rather than throwing.
+//! [baudrate-bounds]
 constexpr unsigned long kMinBaudrate = 1;
 constexpr unsigned long kMaxBaudrate = 1000000;
+//! [baudrate-bounds]
 
 constexpr double kSpeed = 0.150; // m/s, the 2F-85's full scale
 constexpr double kForce = 80.0; // N
 
+//! \brief Whether the fingers have stopped moving.
+//!
+//! \param gripper The gripper to read status from.
+//! \return true once motion has settled (stopped on an object, or reached
+//!         the requested position); false while still moving.
 bool motionSettled(Gripper& gripper)
 {
    return gripper.getStatus().gripperStatus.objectDetection() != ObjectDetection::Moving;
@@ -73,9 +82,15 @@ std::string withStatus(std::string message, Gripper& gripper)
    return message;
 }
 
-// Request an opening, wait for the gripper to acknowledge the request
-// (gPR echo), then wait for the motion to settle. False if either wait
-// timed out — a wait result is never worth dropping.
+//! \brief Send the gripper to an opening and block until it gets there.
+//!
+//! \param gripper The gripper to command.
+//! \param command The persistent command block; positionRequest and the
+//!        GoTo bit are set on it before sending.
+//! \param openingMetres Target jaw opening, in metres (0 = fully closed).
+//! \param logger Where to narrate progress and report failures.
+//! \return true once the gripper echoed the request and motion settled;
+//!         false if either wait timed out.
 bool moveTo(Gripper& gripper, GripperCommand& command, double openingMetres, Robotiq::Logger& logger)
 {
    const std::optional<uint8_t> position = Robotiq::units::openingToRegister(openingMetres, k2F85);
@@ -88,6 +103,7 @@ bool moveTo(Gripper& gripper, GripperCommand& command, double openingMetres, Rob
    command.action.set(ActionRequestBit::GoTo, true); // execute the move
    gripper.setCommand(command);
    logger.log(Robotiq::Logger::Level::Debug, "sending: " + Robotiq::toString(command));
+   //! [move-to-three-waits]
    if(!Robotiq::waitFor([&] { return gripper.getStatus().positionRequestEcho == *position; }, 1s))
    {
       logger.log(Robotiq::Logger::Level::Error, withStatus("the gripper never echoed the position request", gripper));
@@ -106,6 +122,7 @@ bool moveTo(Gripper& gripper, GripperCommand& command, double openingMetres, Rob
       logger.log(Robotiq::Logger::Level::Error, withStatus("the motion never settled", gripper));
       return false;
    }
+   //! [move-to-three-waits]
    const std::optional<double> opening = Robotiq::units::openingFromRegister(gripper.getStatus().position, k2F85);
    if(!opening)
    {
@@ -119,13 +136,20 @@ bool moveTo(Gripper& gripper, GripperCommand& command, double openingMetres, Rob
 }
 } // namespace
 
+//! \brief Connect, activate, open, then close — see the file header comment.
+//! \param argc Argument count; expects 2 or 3 (program name, port, [baudrate]).
+//! \param argv argv[1] is the serial port; argv[2], if given, is the baudrate.
+//! \return EXIT_SUCCESS on a full connect/activate/open/close cycle;
+//!         EXIT_FAILURE on a bad argument, a connection error, or a timeout.
 int main(int argc, char* argv[])
 {
+   //! [argument-handling]
    if(argc < 2)
    {
       std::cerr << "Usage: " << argv[0] << " <port> [baudrate]\n";
       return EXIT_FAILURE;
    }
+   //! [argument-handling]
 
    Robotiq::ConnectionConfig config;
    config.serial.port = argv[1];
@@ -133,11 +157,13 @@ int main(int argc, char* argv[])
    {
       try
       {
+         //! [baudrate-parse-and-check]
          const unsigned long parsed = std::stoul(argv[2]);
          if(parsed < kMinBaudrate || parsed > kMaxBaudrate)
          {
             throw std::out_of_range("baudrate outside the supported range");
          }
+         //! [baudrate-parse-and-check]
          config.serial.baudrate = static_cast<uint32_t>(parsed);
       }
       catch(const std::exception&)
@@ -151,14 +177,20 @@ int main(int argc, char* argv[])
    // tells library and application lines apart in the shared stream.
    // (A real integration gets the same separation from its injected
    // adapter, e.g. a named rclcpp logger.)
+   //! [logger-example-name]
    auto logger = std::make_shared<Robotiq::StderrLogger>("example");
+   //! [logger-example-name]
 
    std::unique_ptr<Gripper> gripper;
    try
    {
-      // Opens the port and starts exchanging.
-      gripper = std::make_unique<Gripper>(config, std::make_shared<Robotiq::StderrLogger>("robotiq"));
+      //! [logger-robotiq-name]
+      gripper =
+         std::make_unique<Gripper>(config,
+                                   std::make_shared<Robotiq::StderrLogger>("robotiq")); // opens and starts exchanging
+      //! [logger-robotiq-name]
    }
+   //! [connection-error-checklist]
    catch(const std::exception& ex)
    {
       std::cerr << "Error: " << ex.what() << "\n\n"
@@ -168,8 +200,10 @@ int main(int argc, char* argv[])
                 << "  - you have permission to use it (Linux: join the 'dialout' group).\n";
       return EXIT_FAILURE;
    }
+   //! [connection-error-checklist]
 
    logger->log(Robotiq::Logger::Level::Info, "Activating...");
+   //! [activation-recovery]
    ActivationResult activation = Robotiq::activate(*gripper);
    if(activation == ActivationResult::FaultLatched)
    {
@@ -178,11 +212,14 @@ int main(int argc, char* argv[])
       logger->log(Robotiq::Logger::Level::Warn, "fault latched; recovering (the fingers will move)");
       activation = Robotiq::recoverFromFault(*gripper);
    }
+   //! [activation-recovery]
+   //! [activation-final-check]
    if(activation != ActivationResult::Activated && activation != ActivationResult::AlreadyActive)
    {
       logger->log(Robotiq::Logger::Level::Error, withStatus("activation failed or timed out", *gripper));
       return EXIT_FAILURE;
    }
+   //! [activation-final-check]
    logger->log(Robotiq::Logger::Level::Info, withStatus("activated", *gripper));
 
    // Keep one command block and update it before each send: it is
