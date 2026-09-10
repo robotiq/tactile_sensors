@@ -39,6 +39,15 @@ functions, `DeviceProfile` and the SI unit conversions, and
 for people, not parsers: its layout may change in any release. Everything
 under `Robotiq/detail/` is internal and may change in any release.
 
+Two paths this section named at 1.0.0 have moved: the register map to
+`Robotiq/detail/register_map.hpp`, and the Modbus client from
+`detail/gripper_modbus_client.hpp` to `gripper/modbus_client.hpp`. Both old
+paths still exist as shims that include the new header and warn; they go away
+in the next major release. Headers this section never named —
+`gripper/named_bit_array.hpp` and `gripper/throttle.hpp` — moved into
+`Robotiq/detail/` without a shim, as did `makeDefaultLogger()`; pass a null
+`Logger` to get the build's default one.
+
 ## License
 
 BSD-3-Clause. Robotiq develops and maintains this SDK; parts of it started from

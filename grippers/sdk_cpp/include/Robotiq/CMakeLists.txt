@@ -25,6 +25,9 @@ target_sources(grippers_objects PRIVATE
   detail/throttle.hpp
   detail/default_logger.hpp
   detail/default_serial.hpp
+  # Shims for the two v1.0.0 paths the README named; removed in the next major.
+  gripper/register_map.hpp
+  detail/gripper_modbus_client.hpp
 )
 
 if(GRIPPERS_BUILD_FAKE)
