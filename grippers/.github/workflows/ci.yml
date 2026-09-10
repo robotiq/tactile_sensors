@@ -195,6 +195,29 @@ jobs:
           git ls-files ':(glob)sdk_cpp/include/**/*.hpp' ':(glob)sdk_cpp/src/**/*.[ch]pp' ':(glob)sdk_cpp/tests/**/*.[ch]pp' ':(glob)sdk_cpp/examples/**/*.cpp' \
             | xargs clang-format --dry-run --Werror
 
+  # Doxyfile sets WARN_AS_ERROR = FAIL_ON_WARNINGS, so a plain `doxygen
+  # Doxyfile` already fails on any undocumented/misattached comment; this
+  # job just runs it.
+  api-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Doxygen
+        run: sudo apt-get update && sudo apt-get install -y doxygen graphviz
+      - name: Generate API docs
+        run: doxygen Doxyfile
+        working-directory: sdk_cpp
+
+  # Plain markdown docs (outside Doxygen's \snippet reach) opt individual
+  # code fences into the same guarantee via a marker comment; see
+  # sdk_cpp/tools/check_doc_snippets.py for the convention.
+  doc-snippets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check markdown code fences against their tagged source
+        run: python3 sdk_cpp/tools/check_doc_snippets.py docs/*.md
+
   coverage:
     runs-on: ubuntu-latest
     steps:
@@ -233,9 +256,11 @@ jobs:
   #   freestanding-cmake  freestanding CMake wiring with the host compiler
   #   format              clang-format check
   #   coverage            gcovr report
+  #   api-docs            Doxygen build (WARN_AS_ERROR)
+  #   doc-snippets        markdown code fences checked against tagged source
   ci-gate:
     if: always()
-    needs: [build-and-test, cortex-m55, threadx-link, freestanding-cmake, format, coverage]
+    needs: [build-and-test, cortex-m55, threadx-link, freestanding-cmake, format, coverage, api-docs, doc-snippets]
     runs-on: ubuntu-latest
     steps:
       - name: Every job succeeded

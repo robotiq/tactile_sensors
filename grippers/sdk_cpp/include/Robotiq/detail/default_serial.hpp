@@ -41,6 +41,7 @@ public:
    DefaultSerial& operator=(const DefaultSerial&) = delete;
 
    void open() override;
+
    [[nodiscard]] bool isOpen() const override;
    void close() override;
 

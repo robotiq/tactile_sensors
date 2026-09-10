@@ -1,5 +1,12 @@
 build/
+.vscode/*
+!.vscode/extensions.json
 .cache/
 .qtcreator/
 *.user
 compile_commands.json
+doxygen-xml/
+doxygen-html/
+docs-api/
+build_win/
+.draft/

@@ -1,0 +1,58 @@
+# Doxyfile for the Robotiq Grippers C++ SDK.
+#
+# Two outputs, both gitignored, both from this one config:
+#   - XML (doxygen-xml/) is consumed by doxygen2docusaurus on the docs
+#     site (robotiq.github.io) to render the public API reference.
+#   - HTML (doxygen-html/) is a standalone local preview — open
+#     doxygen-html/index.html directly, no server needed. It won't look
+#     like the final site (different theme/chrome), but it's the fastest
+#     way to sanity-check comments, \ref/\see links, and grouping. See
+#     robotiq.github.io's contribute.mdx for the full pipeline and the
+#     full-fidelity check (the site itself).
+#
+# Usage: doxygen Doxyfile   (run from sdk_cpp/)
+
+PROJECT_NAME           = "Robotiq Grippers C++ SDK"
+PROJECT_BRIEF          = "C++ SDK for Robotiq adaptive grippers"
+OUTPUT_DIRECTORY       =
+
+INPUT                  = include
+RECURSIVE              = YES
+EXCLUDE                = include/Robotiq/gripper/named_bit_array.hpp \
+                         include/Robotiq/gripper/throttle.hpp \
+                         include/Robotiq/gripper/register_map.hpp
+EXCLUDE_PATTERNS       = */detail/*
+EXCLUDE_SYMBOLS        =
+
+# \snippet sources: every \code{.cpp} example lives here as real, compiled
+# code (see examples/README.md) instead of unverified inline text — a
+# renamed/typo'd tag is a WARN_AS_ERROR build failure, not a silent gap.
+EXAMPLE_PATH           = examples
+
+# Document the hosted API surface, including the ConnectionConfig constructor
+# guarded by GRIPPERS_BUILD_DEFAULT_SERIAL in the public header. This is a
+# CMake compile-time option (see CMakeLists.txt for details), not a runtime
+# or operating-system environment variable; set to 1 here so that guarded
+# API shows up in the generated docs.
+PREDEFINED             = GRIPPERS_HOSTED=1 GRIPPERS_BUILD_DEFAULT_SERIAL=1
+
+
+GENERATE_HTML          = YES
+HTML_OUTPUT            = doxygen-html
+GENERATE_LATEX         = NO
+GENERATE_XML           = YES
+XML_OUTPUT             = doxygen-xml
+
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = YES
+
+# Enforced in CI (see .github/workflows/ci.yml): print every warning, then
+# exit non-zero if there were any, instead of stopping at the first one.
+WARN_AS_ERROR          = FAIL_ON_WARNINGS
+
+# Groups (\defgroup/\ingroup, see groups.dox) form the "Core API" vs.
+# "Testing & CI Utilities" split; sort them alphabetically so that
+# split — and the subgroup order within Core API — stays deterministic.
+SORT_GROUP_NAMES       = YES
+
+

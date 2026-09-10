@@ -2,6 +2,12 @@
 //
 // Licensed under the BSD-3-Clause license; see LICENSE for details.
 
+#pragma once
+
+#include <cstdint>
+
+namespace Robotiq {
+
 //! \brief The per-model figures the SI conversions in units.hpp scale
 //!        against: the speed and force range the manual gives for
 //!        values 0x00..0xFF, the stroke, and the register band
@@ -14,13 +20,6 @@
 //!        settles at 228..230 depending on the unit. Fill a new model's
 //!        profile the same way: command both extremes on a gripper with
 //!        nothing between the fingers and read gPO back.
-
-#pragma once
-
-#include <cstdint>
-
-namespace Robotiq {
-
 struct DeviceProfile
 {
    double minSpeed; //!< m/s — rSP 0x00
