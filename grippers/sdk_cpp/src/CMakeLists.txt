@@ -5,7 +5,7 @@ target_sources(grippers_objects PRIVATE
   logger.cpp
   to_string.cpp
   units.cpp
-  detail/gripper_modbus_client.cpp
+  modbus_client.cpp
 )
 
 # TU selection does the platform work: the core above never mentions an OS,

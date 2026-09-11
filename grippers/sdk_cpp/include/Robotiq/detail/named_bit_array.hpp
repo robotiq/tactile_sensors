@@ -5,15 +5,16 @@
 //! \brief Manipulate individual bits of a value through a named-bit
 //!        enum whose enumerators are bit indices. Standard-layout and
 //!        trivially copyable, so it composes into wire-mapped blocks.
+//!        Internal: it is how the command block's packed action byte is
+//!        stored, and callers reach it through that byte's set()/get().
 
 #pragma once
 
 #include <cassert>
-#include <cstdint>
 #include <limits>
 #include <type_traits>
 
-namespace Robotiq {
+namespace Robotiq::detail {
 
 template <class BitEnum>
 class NamedBitArray
@@ -46,14 +47,4 @@ private:
    Underlying _value = 0;
 };
 
-namespace detail {
-enum class SampleBit : uint8_t
-{
-   Zero = 0
-};
-static_assert(std::is_standard_layout_v<NamedBitArray<SampleBit>>
-                 && std::is_trivially_copyable_v<NamedBitArray<SampleBit>> && sizeof(NamedBitArray<SampleBit>) == 1,
-              "NamedBitArray must stay byte-sized and wire-composable");
-} // namespace detail
-
-} // namespace Robotiq
+} // namespace Robotiq::detail

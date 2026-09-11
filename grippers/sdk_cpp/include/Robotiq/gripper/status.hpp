@@ -10,7 +10,7 @@
 #include <cstring>
 #include <type_traits>
 
-#include <Robotiq/gripper/register_map.hpp>
+#include <Robotiq/detail/register_map.hpp>
 #include <Robotiq/gripper/fault_status.hpp>
 
 namespace Robotiq {
@@ -19,20 +19,20 @@ namespace Robotiq {
 //! gSTA — activation sequence state.
 enum class ActivationState : uint8_t
 {
-   Reset = register_map::kActivationStateReset, //!< not activated; rACT is clear
-   InProgress = register_map::kActivationStateInProgress, //!< activation handshake running
-   Reserved = register_map::kActivationStateReserved, //!< unallocated pattern; not activated
-   Complete = register_map::kActivationStateComplete, //!< activated; ready for motion commands
+   Reset = detail::rm::kActivationStateReset, //!< not activated; rACT is clear
+   InProgress = detail::rm::kActivationStateInProgress, //!< activation handshake running
+   Reserved = detail::rm::kActivationStateReserved, //!< unallocated pattern; not activated
+   Complete = detail::rm::kActivationStateComplete, //!< activated; ready for motion commands
 };
 
 //! \ingroup gripper_status
 //! gOBJ — object detection state.
 enum class ObjectDetection : uint8_t
 {
-   Moving = register_map::kObjectMoving, //!< fingers in motion, or motion not yet requested
-   DetectedWhileOpening = register_map::kObjectDetectedOpening, //!< stopped early while opening
-   DetectedWhileClosing = register_map::kObjectDetectedClosing, //!< stopped early while closing
-   AtRequestedPosition = register_map::kObjectAtRequestedPosition, //!< reached rPR with no object stop
+   Moving = detail::rm::kObjectMoving, //!< fingers in motion, or motion not yet requested
+   DetectedWhileOpening = detail::rm::kObjectDetectedOpening, //!< stopped early while opening
+   DetectedWhileClosing = detail::rm::kObjectDetectedClosing, //!< stopped early while closing
+   AtRequestedPosition = detail::rm::kObjectAtRequestedPosition, //!< reached rPR with no object stop
 };
 
 //! \ingroup gripper_status
@@ -60,23 +60,23 @@ public:
    }
 
    //! \return gACT — the echo of the last-sent rACT (activation request).
-   [[nodiscard]] bool activated() const { return (_bits & register_map::kActivationStatusMask) != 0; }
+   [[nodiscard]] bool activated() const { return (_bits & detail::rm::kActivationStatusMask) != 0; }
 
    //! \return gGTO — the echo of the last-sent rGTO (go-to request).
-   [[nodiscard]] bool goToEnabled() const { return (_bits & register_map::kGoToEchoMask) != 0; }
+   [[nodiscard]] bool goToEnabled() const { return (_bits & detail::rm::kGoToEchoMask) != 0; }
 
    //! \return gSTA — where the activation handshake stands; see ActivationState.
    [[nodiscard]] ActivationState activationState() const
    {
-      return static_cast<ActivationState>((_bits & register_map::kActivationStateMask)
-                                          >> register_map::kActivationStateShift);
+      return static_cast<ActivationState>((_bits & detail::rm::kActivationStateMask)
+                                          >> detail::rm::kActivationStateShift);
    }
 
    //! \return gOBJ — whether the fingers are moving or stopped on an object; see ObjectDetection.
    [[nodiscard]] ObjectDetection objectDetection() const
    {
-      return static_cast<ObjectDetection>((_bits & register_map::kObjectDetectionMask)
-                                          >> register_map::kObjectDetectionShift);
+      return static_cast<ObjectDetection>((_bits & detail::rm::kObjectDetectionMask)
+                                          >> detail::rm::kObjectDetectionShift);
    }
 
    //! \return The raw GRIPPER STATUS byte.
@@ -111,14 +111,14 @@ struct GripperStatus
    uint8_t current = 0; //!< byte 5 — gCU (effort proxy)
 
    //! bytes 6..15
-   std::array<uint8_t, register_map::kStatusBlockBytes - register_map::kStatusDocumentedBytes> reservedTail{};
+   std::array<uint8_t, detail::rm::kStatusBlockBytes - detail::rm::kStatusDocumentedBytes> reservedTail{};
 
    //! \return Raw block access, the manual's byte order. size() bytes wide.
    [[nodiscard]] const uint8_t* data() const { return reinterpret_cast<const uint8_t*>(this); }
    //! \overload
    [[nodiscard]] uint8_t* data() { return reinterpret_cast<uint8_t*>(this); }
    //! \return The width of the status block in bytes (16, per the manual).
-   [[nodiscard]] static constexpr std::size_t size() { return register_map::kStatusBlockBytes; }
+   [[nodiscard]] static constexpr std::size_t size() { return detail::rm::kStatusBlockBytes; }
 };
 
 //! \return true if every byte of the two status blocks is identical.
@@ -133,6 +133,6 @@ struct GripperStatus
 }
 
 static_assert(std::is_standard_layout_v<GripperStatus> && std::is_trivially_copyable_v<GripperStatus>
-                 && sizeof(GripperStatus) == register_map::kStatusBlockBytes,
+                 && sizeof(GripperStatus) == detail::rm::kStatusBlockBytes,
               "GripperStatus must overlay the raw status block exactly");
 } // namespace Robotiq

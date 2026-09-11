@@ -15,8 +15,9 @@
 #include <Robotiq/gripper/driver_exception.hpp>
 #include <Robotiq/gripper/status.hpp>
 #include <Robotiq/gripper/logger.hpp>
-#include <Robotiq/gripper/throttle.hpp>
-#include <Robotiq/detail/gripper_modbus_client.hpp>
+#include <Robotiq/detail/default_logger.hpp>
+#include <Robotiq/detail/throttle.hpp>
+#include <Robotiq/gripper/modbus_client.hpp>
 #include <Robotiq/gripper/platform.hpp>
 #include <Robotiq/gripper/serial.hpp>
 
@@ -32,8 +33,8 @@ struct Gripper::Impl
 {
    std::shared_ptr<Logger> logger;
    std::shared_ptr<Platform> platform;
-   detail::GripperModbusClient client;
-   Throttle failureLogThrottle{std::chrono::milliseconds(1000)};
+   GripperModbusClient client;
+   detail::Throttle failureLogThrottle{std::chrono::milliseconds(1000)};
    std::chrono::microseconds period;
 
    const std::unique_ptr<Mutex> imageMutex;
@@ -52,7 +53,7 @@ struct Gripper::Impl
         std::chrono::microseconds exchangePeriod,
         std::shared_ptr<Platform> os,
         std::shared_ptr<Logger> log)
-      : logger(log ? std::move(log) : makeDefaultLogger())
+      : logger(log ? std::move(log) : detail::makeDefaultLogger())
       , platform(std::move(os))
       , client(std::move(serial), slaveAddress, logger)
       , period(exchangePeriod)

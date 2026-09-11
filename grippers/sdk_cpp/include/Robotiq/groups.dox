@@ -73,7 +73,7 @@
 //! \defgroup activation Activation & Recovery
 //! \ingroup core_api
 //! \brief The blocking activation / fault-recovery procedures built on
-//! top of Command and Status.
+//! top of Command and Status, and the polling helpers they are built from.
 
 //! \defgroup connection Connection & Configuration
 //! \ingroup core_api
@@ -94,6 +94,8 @@
 //!   - **Logging** — where diagnostic lines go.
 //!   - **Exceptions** — the driver- and transport-level failures thrown
 //!     up through these interfaces.
+//!   - **Modbus Client** — the no-thread layer below Gripper, for the
+//!     rare integration that cannot run Gripper at all.
 
 //! \defgroup transport Transport
 //! \ingroup runtime
@@ -111,9 +113,10 @@
 //! \ingroup runtime
 //! \brief Failures thrown by the transport or driver.
 
-//! \defgroup utilities Utilities
-//! \ingroup core_api
-//! \brief Small, independent helpers used while driving a Gripper.
+//! \defgroup modbus_client Modbus Client
+//! \ingroup runtime
+//! \brief The no-thread layer below Gripper: one Modbus transaction per
+//! call, for superloop targets and diagnostic tooling only.
 
 //! \defgroup testing Testing & CI Utilities
 //! \brief Tools for exercising the SDK without a physical gripper attached.

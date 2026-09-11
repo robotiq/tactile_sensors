@@ -14,8 +14,9 @@
 #include <Robotiq/gripper.hpp>
 #include <Robotiq/gripper/connection_config.hpp>
 #include <Robotiq/gripper/logger.hpp>
+#include <Robotiq/detail/default_logger.hpp>
 #include <Robotiq/detail/default_serial.hpp>
-#include <Robotiq/detail/gripper_modbus_client.hpp>
+#include <Robotiq/gripper/modbus_client.hpp>
 #include <Robotiq/gripper/serial.hpp>
 
 #include "exchange_period.hpp"
@@ -32,7 +33,7 @@ std::unique_ptr<Serial> makeSerial(const ConnectionConfig& config, const std::sh
 {
    // Logged before the link is opened, so a connection that never succeeds
    // still says what it was attempting.
-   const std::shared_ptr<Logger> sink = logger ? logger : makeDefaultLogger();
+   const std::shared_ptr<Logger> sink = logger ? logger : detail::makeDefaultLogger();
    sink->log(Logger::Level::Info,
              "connecting to a gripper on " + config.serial.port + " at " + std::to_string(config.serial.baudrate)
                 + " bps, Modbus slave address " + toHex(config.modbusSlaveAddress));
@@ -50,10 +51,8 @@ Gripper::Gripper(const ConnectionConfig& config, std::shared_ptr<Logger> logger)
 {
 }
 
-namespace detail {
 GripperModbusClient::GripperModbusClient(const ConnectionConfig& config, std::shared_ptr<Logger> logger)
    : GripperModbusClient(makeSerial(config, logger), config.modbusSlaveAddress, logger)
 {
 }
-} // namespace detail
 } // namespace Robotiq

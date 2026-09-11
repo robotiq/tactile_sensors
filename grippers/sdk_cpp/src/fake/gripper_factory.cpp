@@ -7,6 +7,8 @@
 #include <memory>
 #include <utility>
 
+#include <Robotiq/detail/default_logger.hpp>
+
 #include "exchange_period.hpp"
 #include "frequency.hpp"
 #include "fake/register_model.hpp"
@@ -35,7 +37,7 @@ private:
 
 std::unique_ptr<Gripper> makeFakeGripper(const ConnectionConfig& config, std::shared_ptr<Logger> logger)
 {
-   auto sink = logger ? std::move(logger) : makeDefaultLogger();
+   auto sink = logger ? std::move(logger) : detail::makeDefaultLogger();
 
    const double requested = config.connectionFrequency;
    const double supported = detail::clampFrequency(requested);

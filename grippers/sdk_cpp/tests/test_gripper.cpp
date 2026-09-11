@@ -22,7 +22,6 @@
 #include <Robotiq/gripper/logger.hpp>
 #include <Robotiq/gripper/serial_io_exception.hpp>
 #include <Robotiq/detail/modbus_constants.hpp>
-#include <Robotiq/detail/gripper_modbus_client.hpp>
 
 #include "fake/status_writer.hpp"
 #include "fake_gripper_fixture.hpp"

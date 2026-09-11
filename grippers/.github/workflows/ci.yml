@@ -69,7 +69,7 @@ jobs:
           arm-none-eabi-g++ $CXXFLAGS -c -o /dev/null sdk_cpp/src/to_string.cpp
           arm-none-eabi-g++ $CXXFLAGS -c -o /dev/null sdk_cpp/src/units.cpp
           arm-none-eabi-g++ $CXXFLAGS -c -o /dev/null sdk_cpp/src/freestanding/default_logger.cpp
-          arm-none-eabi-g++ $CXXFLAGS -c -o /dev/null sdk_cpp/src/detail/gripper_modbus_client.cpp
+          arm-none-eabi-g++ $CXXFLAGS -c -o /dev/null sdk_cpp/src/modbus_client.cpp
           arm-none-eabi-g++ $CXXFLAGS -c -o /dev/null sdk_cpp/src/gripper.cpp
 
       # The reference ThreadX port, against a compile-only tx_api.h stand-in.
@@ -141,7 +141,7 @@ jobs:
           mkdir -p obj
           objects=""
           for src in sdk_cpp/src/gripper.cpp \
-                     sdk_cpp/src/detail/gripper_modbus_client.cpp \
+                     sdk_cpp/src/modbus_client.cpp \
                      sdk_cpp/src/logger.cpp \
                      sdk_cpp/src/to_string.cpp \
                      sdk_cpp/src/units.cpp \

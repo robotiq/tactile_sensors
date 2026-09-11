@@ -2,17 +2,17 @@
 //
 // Licensed under the BSD-3-Clause license; see LICENSE for details.
 
-//! \brief Rate limiter for a single call site (e.g. a periodic log
-//!        statement). Owned by the call site, so independent call
-//!        sites throttle independently. Not thread-safe: one instance,
-//!        one thread.
+//! \brief Rate limiter for a single call site. Internal: it exists to keep
+//!        the SDK's own periodic log lines from flooding a sink. Owned by
+//!        the call site, so independent call sites throttle independently.
+//!        Not thread-safe: one instance, one thread.
 
 #pragma once
 
 #include <chrono>
 #include <utility>
 
-namespace Robotiq {
+namespace Robotiq::detail {
 class Throttle
 {
 public:
@@ -44,4 +44,4 @@ private:
    std::chrono::milliseconds _period;
    std::chrono::steady_clock::time_point _last{};
 };
-} // namespace Robotiq
+} // namespace Robotiq::detail

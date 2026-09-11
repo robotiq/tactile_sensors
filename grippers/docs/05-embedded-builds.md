@@ -93,7 +93,7 @@ of them, and calls `activate()` — a good starting skeleton to copy from.
 If your firmware is a bare superloop (one `while(true)` that services
 everything in turn, no scheduler), don't implement `Platform` at all —
 there's no thread for it to create. Instead, use
-[`detail::GripperModbusClient`](../sdk_cpp/include/Robotiq/detail/gripper_modbus_client.hpp)
+[`GripperModbusClient`](../sdk_cpp/include/Robotiq/gripper/modbus_client.hpp)
 directly: it's the layer immediately below `Gripper`, doing exactly one
 Modbus transaction per call (`readStatus()`, `writeCommand()`, or
 `exchange()` for both at once) and needing no `Platform` and no
@@ -104,7 +104,10 @@ in place of `Gripper`'s background thread doing it on a timer.
 This is the simpler path when it fits: no RTOS to port to, no mutex, no
 "is my `Serial::read` yielding correctly" to get right. The tradeoff is
 that it's a lower-level API — no `getCommand()`/`getStatus()` snapshot
-to read from another task, because there's only ever one task.
+to read from another task, because there's only ever one task. Read the
+class's warning first: outside a superloop it is the exception, not an
+alternative to `Gripper` — every accessor becomes a blocking Modbus
+transaction on your thread.
 
 ## The CMake side
 

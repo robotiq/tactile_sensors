@@ -12,7 +12,7 @@
 #include <Robotiq/gripper/fault_status.hpp>
 #include <Robotiq/gripper/status.hpp>
 #include <Robotiq/gripper/logger.hpp>
-#include <Robotiq/detail/gripper_modbus_client.hpp>
+#include <Robotiq/gripper/modbus_client.hpp>
 #include <Robotiq/detail/modbus_constants.hpp>
 
 #include "fake/status_writer.hpp"
@@ -42,7 +42,7 @@ protected:
    }
 
    InstrumentedFakeGripperServer fakeServer;
-   detail::GripperModbusClient client;
+   GripperModbusClient client;
 };
 
 TEST_F(TestFakeGripperServer, status_block_reads_back_initial_zeros)

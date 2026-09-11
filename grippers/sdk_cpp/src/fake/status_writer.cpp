@@ -6,11 +6,11 @@
 
 #include <cstddef>
 
-#include <Robotiq/gripper/register_map.hpp>
+#include <Robotiq/detail/register_map.hpp>
 
 namespace Robotiq::fake {
 namespace {
-namespace rm = register_map;
+namespace rm = detail::register_map;
 
 // Byte offsets of the two packed bytes, from the manual's block table. The
 // only place in the library that needs them: everything else reaches the

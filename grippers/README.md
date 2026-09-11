@@ -31,15 +31,22 @@ Submit here:
 
 [Semantic versioning](https://semver.org) from 1.0.0 on: patch releases fix
 bugs, minor releases add API, and a breaking change to the documented API takes
-a major release. The documented API is what this README and the public headers
-describe — `Gripper`, the command/status blocks,
+a major release. The documented API is what this README and the headers under
+`Robotiq/gripper/` describe — `Gripper`, the command/status blocks,
 `ConnectionConfig`, `Serial`, `Platform`, `Logger`, the `toString()` free
 functions, `DeviceProfile` and the SI unit conversions, and
-`detail::GripperModbusClient` for the no-thread path. The
-text `toString()` renders is for people, not parsers: its layout may change
-in any release. Anything under
-`Robotiq/detail/` that is not described here is internal and may change in any
-release.
+`GripperModbusClient` for the no-thread path. The text `toString()` renders is
+for people, not parsers: its layout may change in any release. Everything
+under `Robotiq/detail/` is internal and may change in any release.
+
+Two paths this section named at 1.0.0 have moved: the register map to
+`Robotiq/detail/register_map.hpp`, and the Modbus client from
+`detail/gripper_modbus_client.hpp` to `gripper/modbus_client.hpp`. Both old
+paths still exist as shims that include the new header and warn; they go away
+in the next major release. Headers this section never named —
+`gripper/named_bit_array.hpp` and `gripper/throttle.hpp` — moved into
+`Robotiq/detail/` without a shim, as did `makeDefaultLogger()`; pass a null
+`Logger` to get the build's default one.
 
 ## License
 

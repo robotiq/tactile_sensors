@@ -43,8 +43,9 @@ public:
 //! makeDefaultPlatform(); an RTOS target implements this over the native
 //! primitives — ports/threadx/threadx_platform.hpp is the working
 //! reference. A single-threaded target (bare superloop) should skip
-//! Gripper entirely and drive detail::GripperModbusClient itself — that
-//! layer needs no Platform.
+//! Gripper entirely and drive GripperModbusClient itself — that layer
+//! needs no Platform. Read that class's warning first: it is the
+//! exception, not an alternative.
 //!
 //! **Concurrency contract for implementations:** the sleeps may be
 //! called from several threads at once (the exchange thread paces with
