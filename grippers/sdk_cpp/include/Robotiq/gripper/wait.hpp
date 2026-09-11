@@ -21,7 +21,7 @@ namespace Robotiq {
 //! \par Example
 //! \snippet snippets.cpp wait-with-platform
 
-//! \ingroup utilities
+//! \ingroup activation
 //! \brief Poll \p predicate until it holds, or \p deadline passes.
 //!
 //! \p predicate is evaluated at least once, even past the deadline: an
@@ -52,7 +52,7 @@ bool waitUntil(Predicate predicate,
    }
 }
 
-//! \ingroup utilities
+//! \ingroup activation
 //! \brief Poll \p predicate until it holds, or \p timeout elapses.
 //! \tparam Predicate A callable taking no arguments, returning bool.
 //! \param predicate The condition to wait for.
@@ -70,7 +70,7 @@ bool waitFor(Predicate predicate,
 }
 
 #if GRIPPERS_HOSTED
-//! \ingroup utilities
+//! \ingroup activation
 //! \overload
 //! Sleeps on the default (std::thread-backed) platform. Hosted-only.
 template <typename Predicate>
@@ -81,7 +81,7 @@ bool waitUntil(Predicate predicate,
    return waitUntil(std::move(predicate), *makeDefaultPlatform(), deadline, pollPeriod);
 }
 
-//! \ingroup utilities
+//! \ingroup activation
 //! \overload
 //! Sleeps on the default (std::thread-backed) platform. Hosted-only.
 template <typename Predicate>

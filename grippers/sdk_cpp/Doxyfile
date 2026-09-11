@@ -18,9 +18,13 @@ OUTPUT_DIRECTORY       =
 
 INPUT                  = include
 RECURSIVE              = YES
-EXCLUDE                =
+# The two deprecated shims left at the v1.0.0 paths, and the hosted
+# convenience wait.hpp reaches for — construct a Platform explicitly
+# instead of naming it.
+EXCLUDE                = include/Robotiq/gripper/register_map.hpp \
+                         include/Robotiq/detail/gripper_modbus_client.hpp
 EXCLUDE_PATTERNS       = */detail/*
-EXCLUDE_SYMBOLS        =
+EXCLUDE_SYMBOLS        = *makeDefaultPlatform
 
 # \snippet sources: every \code{.cpp} example lives here as real, compiled
 # code (see examples/README.md) instead of unverified inline text — a
