@@ -8,34 +8,51 @@
 
 namespace Robotiq {
 
-//! \brief The per-model figures the SI conversions in units.hpp scale
-//!        against: the speed and force range the manual gives for
-//!        values 0x00..0xFF, the stroke, and the register band
-//!        that spans it. Gripper itself is model-agnostic; a profile is
-//!        passed to the conversions.
+//! \ingroup units
+//! \brief Gripper model specific profile gathering specifications such as
+//!        opening range and speed.
 //!
-//!        The register band is measured, not specified. The manual gives
-//!        0x00 and 0xFF as command endpoints only; on the bench a 2F-85
-//!        commanded to 0 settles at gPO 3 and commanded to 255 (or 230)
-//!        settles at 228..230 depending on the unit. Fill a new model's
-//!        profile the same way: command both extremes on a gripper with
-//!        nothing between the fingers and read gPO back.
+//! openPosition and closedPosition are measured, not taken from the
+//! manual: with nothing between the fingers, command rPR 0 and read gPO
+//! back, then command rPR 255 and read gPO back. Do this on your own
+//! gripper when filling a new profile, especially with custom fingers.
+//!
+//! \warning Position <-> register conversion are valid only while
+//!          the gripper stays in parallel-finger mode. In encompassing
+//!          mode gPO can go past closedPosition; this profile has no way
+//!          to represent that, so a reading taken in encompassing mode
+//!          does not convert to a meaningful opening.
+//!
+//! \warning minOpening, maxOpening, openPosition and closedPosition
+//!          depend on which fingers are installed on the gripper:
+//!          swapping fingers changes the physical opening range, and
+//!          can shift the measured register endpoints too.
 struct DeviceProfile
 {
-   double minSpeed; //!< m/s — rSP 0x00
-   double fullScaleSpeed; //!< m/s — rSP 0xFF
-   double minForce; //!< N — rFR 0x00
-   double fullScaleForce; //!< N — rFR 0xFF
-   double stroke; //!< m — opening at openRegister
-   uint8_t openRegister; //!< gPO after commanding rPR 0, measured
-   uint8_t closedRegister; //!< gPO after commanding rPR 255, measured
+   double minSpeed; //!< m/s
+   double maxSpeed; //!< m/s
+   double minOpening; //!< m — opening at closedPosition
+   double maxOpening; //!< m — opening at openPosition
+   uint8_t openPosition; //!< gPO after commanding rPR 0, measured
+   uint8_t closedPosition; //!< gPO after commanding rPR 255, measured
 
-   //! Register steps from full opening to full closure.
-   [[nodiscard]] constexpr double registerBand() const { return static_cast<double>(closedRegister) - openRegister; }
+   //! Register steps from full opening to full closure, in parallel mode.
+   [[nodiscard]] constexpr double registerPositionRange() const
+   {
+      return static_cast<double>(closedPosition) - openPosition;
+   }
+
+   //! Metres from full closure to full opening.
+   [[nodiscard]] constexpr double openingRange() const { return maxOpening - minOpening; }
 };
 
 namespace profiles {
-inline constexpr DeviceProfile k2F85{0.020, 0.150, 20.0, 235.0, 0.085, 3, 230};
+//! \ingroup units
+//! \brief The measured profile for the 2F-85
+//!
+//! \warning Assumes that the gripper is in parallel-finger mode.
+inline constexpr DeviceProfile k2F85{0.020, 0.150, 0.0, 0.085, 3, 230};
+
 } // namespace profiles
 
 } // namespace Robotiq

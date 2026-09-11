@@ -44,6 +44,27 @@ public:
 };
 
 //! \ingroup logging
+//! \param level Severity of a log line.
+//! \return The plain name of \p level (e.g. "Info"); callers that need
+//!         fixed-width column alignment (as StderrLogger does) pad this
+//!         themselves.
+[[nodiscard]] constexpr std::string_view toString(Logger::Level level)
+{
+   switch(level)
+   {
+   case Logger::Level::Debug:
+      return "Debug";
+   case Logger::Level::Info:
+      return "Info";
+   case Logger::Level::Warn:
+      return "Warn";
+   case Logger::Level::Error:
+      return "Error";
+   }
+   return "Unrecognized";
+}
+
+//! \ingroup logging
 //! \brief A do-nothing Logger, useful in tight benchmarks or tests.
 class NullLogger : public Logger
 {

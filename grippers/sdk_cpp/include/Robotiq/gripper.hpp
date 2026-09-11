@@ -10,6 +10,7 @@
 
 #include <Robotiq/detail/config.hpp>
 #include <Robotiq/gripper/platform.hpp>
+#include <Robotiq/gripper/activation_result.hpp>
 #include <Robotiq/gripper/connection_config.hpp>
 #include <Robotiq/gripper/connection_state.hpp>
 #include <Robotiq/gripper/logger.hpp>
@@ -105,18 +106,6 @@ public:
 private:
    struct Impl; // hides the link, the exchange thread, and the image
    std::unique_ptr<Impl> _impl;
-};
-
-//! \ingroup activation
-//! Result of the blocking activation procedures activate() and recoverFromFault().
-enum class ActivationResult
-{
-   Activated, //!< the gripper reports activation complete — the handshake
-              //!< ran, or one already under way finished
-   AlreadyActive, //!< already activated and fault-free; nothing was sent
-   FaultLatched, //!< a major fault is latched; activate() refuses the reset
-   Timeout, //!< the link stayed down, completion never arrived in time, or
-            //!< too little of the timeout remained to run the handshake
 };
 
 //! \ingroup activation

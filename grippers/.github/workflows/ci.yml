@@ -198,6 +198,7 @@ jobs:
   # Doxyfile sets WARN_AS_ERROR = FAIL_ON_WARNINGS, so a plain `doxygen
   # Doxyfile` already fails on any undocumented/misattached comment; this
   # job just runs it.
+
   api-docs:
     runs-on: ubuntu-latest
     steps:
@@ -206,6 +207,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y doxygen graphviz
       - name: Generate API docs
         run: doxygen Doxyfile
+        working-directory: sdk_cpp
+      - name: Check every symbol is grouped or explicitly excluded
+        run: python3 tools/check_doc_groups.py
         working-directory: sdk_cpp
 
   # Plain markdown docs (outside Doxygen's \snippet reach) opt individual

@@ -121,16 +121,16 @@ struct GripperStatus
    [[nodiscard]] static constexpr std::size_t size() { return detail::rm::kStatusBlockBytes; }
 };
 
-//! \return true if every byte of the two status blocks is identical.
+//! \cond DOXYGEN_EXCLUDE
 [[nodiscard]] inline bool operator==(const GripperStatus& lhs, const GripperStatus& rhs)
 {
    return std::memcmp(lhs.data(), rhs.data(), GripperStatus::size()) == 0;
 }
-//! \return true if any byte of the two status blocks differs.
 [[nodiscard]] inline bool operator!=(const GripperStatus& lhs, const GripperStatus& rhs)
 {
    return !(lhs == rhs);
 }
+//! \endcond
 
 static_assert(std::is_standard_layout_v<GripperStatus> && std::is_trivially_copyable_v<GripperStatus>
                  && sizeof(GripperStatus) == detail::rm::kStatusBlockBytes,

@@ -84,16 +84,16 @@ struct GripperCommand
    [[nodiscard]] static constexpr std::size_t size() { return detail::rm::kCommandBlockBytes; }
 };
 
-//! \return true if every byte of the two command blocks is identical.
+//! \cond DOXYGEN_EXCLUDE
 [[nodiscard]] inline bool operator==(const GripperCommand& lhs, const GripperCommand& rhs)
 {
    return std::memcmp(lhs.data(), rhs.data(), GripperCommand::size()) == 0;
 }
-//! \return true if any byte of the two command blocks differs.
 [[nodiscard]] inline bool operator!=(const GripperCommand& lhs, const GripperCommand& rhs)
 {
    return !(lhs == rhs);
 }
+//! \endcond
 
 static_assert(std::is_standard_layout_v<GripperCommand> && std::is_trivially_copyable_v<GripperCommand>
                  && sizeof(GripperCommand) == detail::rm::kCommandBlockBytes,

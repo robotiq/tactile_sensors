@@ -5,8 +5,6 @@
 //! Runtime-mode example — the way to control a gripper with this SDK.
 //! The gripper's fingers move (activation sweep, open, close): keep the
 //! jaws clear.
-//! Commands are given in SI units and scaled through the 2F-85 profile;
-//! pick the profile of the gripper you have.
 //! Usage: move_gripper <port> [baudrate]
 
 #include <chrono> // duration literals for the waitFor() timeouts below (1s, 200ms, ...)
@@ -41,7 +39,7 @@ constexpr unsigned long kMaxBaudrate = 1000000;
 //! [baudrate-bounds]
 
 constexpr double kSpeed = 0.150; // m/s, the 2F-85's full scale
-constexpr double kForce = 80.0; // N
+constexpr double kEffort = 1.0; // maximum grip effort
 
 //! \brief Whether the fingers have stopped moving.
 //!
@@ -53,30 +51,17 @@ bool motionSettled(Gripper& gripper)
    return gripper.getStatus().gripperStatus.objectDetection() != ObjectDetection::Moving;
 }
 
-const char* toString(Robotiq::ConnectionState state)
-{
-   switch(state)
-   {
-   case Robotiq::ConnectionState::Disconnected:
-      return "Disconnected";
-   case Robotiq::ConnectionState::Connecting:
-      return "Connecting";
-   case Robotiq::ConnectionState::Operational:
-      return "Operational";
-   case Robotiq::ConnectionState::Faulted:
-      return "Faulted";
-   }
-   return "Unrecognized";
-}
-
-// One log line: the message, the link state and the decoded status. The
-// process image freezes when the link faults, so the status alone can
-// look healthy while the gripper is unplugged.
+//! \brief Return the input message associated with the gripper's current
+//!        status, for logging and error reporting.
+//!
+//! \param message The message to prepend before the appended status.
+//! \param gripper The gripper to read the connection state and status from.
+//! \return \p message followed by "; link=<state> <decoded status>".
 std::string withStatus(std::string message, Gripper& gripper)
 {
    const std::string status = Robotiq::toString(gripper.getStatus());
    message += "; link=";
-   message += toString(gripper.connectionState());
+   message += Robotiq::toString(gripper.connectionState());
    message += ' ';
    message += status;
    return message;
@@ -87,18 +72,21 @@ std::string withStatus(std::string message, Gripper& gripper)
 //! \param gripper The gripper to command.
 //! \param command The persistent command block; positionRequest and the
 //!        GoTo bit are set on it before sending.
-//! \param openingMetres Target jaw opening, in metres (0 = fully closed).
+//! \param openingMetres Target jaw opening, in metres (k2F85.minOpening = fully closed,
+//!        k2F85.maxOpening = fully open).
 //! \param logger Where to narrate progress and report failures.
 //! \return true once the gripper echoed the request and motion settled;
 //!         false if either wait timed out.
 bool moveTo(Gripper& gripper, GripperCommand& command, double openingMetres, Robotiq::Logger& logger)
 {
+   //! [opening-optional-check]
    const std::optional<uint8_t> position = Robotiq::units::openingToRegister(openingMetres, k2F85);
    if(!position)
    {
       logger.log(Robotiq::Logger::Level::Error, "the requested opening has no register value");
       return false;
    }
+   //! [opening-optional-check]
    command.positionRequest = *position;
    command.action.set(ActionRequestBit::GoTo, true); // execute the move
    gripper.setCommand(command);
@@ -123,6 +111,7 @@ bool moveTo(Gripper& gripper, GripperCommand& command, double openingMetres, Rob
       return false;
    }
    //! [move-to-three-waits]
+   //! [opening-from-register-optional-check]
    const std::optional<double> opening = Robotiq::units::openingFromRegister(gripper.getStatus().position, k2F85);
    if(!opening)
    {
@@ -130,6 +119,7 @@ bool moveTo(Gripper& gripper, GripperCommand& command, double openingMetres, Rob
                  withStatus("the settled position has no opening in this profile", gripper));
       return false;
    }
+   //! [opening-from-register-optional-check]
    logger.log(Robotiq::Logger::Level::Info,
               withStatus("settled at " + std::to_string(std::lround(*opening * 1000.0)) + " mm", gripper));
    return true;
@@ -225,24 +215,26 @@ int main(int argc, char* argv[])
    // Keep one command block and update it before each send: it is
    // persistent state, not rebuilt per move.
    GripperCommand command = GripperCommand::defaults(); // GoTo added by moveTo
+   //! [speed-optional-check]
    const std::optional<uint8_t> speed = Robotiq::units::speedToRegister(kSpeed, k2F85);
-   const std::optional<uint8_t> force = Robotiq::units::forceToRegister(kForce, k2F85);
+   const std::optional<uint8_t> force = Robotiq::units::effortToRegister(kEffort);
    if(!speed || !force)
    {
-      logger->log(Robotiq::Logger::Level::Error, "the requested speed or force has no register value in this profile");
+      logger->log(Robotiq::Logger::Level::Error, "the requested speed or effort has no register value");
       return EXIT_FAILURE;
    }
    command.speed = *speed;
    command.force = *force;
+   //! [speed-optional-check]
 
    logger->log(Robotiq::Logger::Level::Info, "Opening...");
-   if(!moveTo(*gripper, command, k2F85.stroke, *logger))
+   if(!moveTo(*gripper, command, k2F85.maxOpening, *logger))
    {
       return EXIT_FAILURE;
    }
 
    logger->log(Robotiq::Logger::Level::Info, "Closing...");
-   if(!moveTo(*gripper, command, 0.0, *logger))
+   if(!moveTo(*gripper, command, k2F85.minOpening, *logger))
    {
       return EXIT_FAILURE;
    }

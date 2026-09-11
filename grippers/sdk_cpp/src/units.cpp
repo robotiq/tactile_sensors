@@ -16,47 +16,47 @@ uint8_t roundedRegister(double steps)
 }
 } // namespace
 
-std::optional<uint8_t> registerFromSpan(double value, double minimum, double fullScale)
+std::optional<uint8_t> registerFromSpan(double value, double minimum, double maximum)
 {
-   if(!std::isfinite(value) || value < 0.0 || !std::isfinite(minimum) || !std::isfinite(fullScale)
-      || fullScale <= minimum)
+   if(!std::isfinite(value) || value < 0.0 || !std::isfinite(minimum) || !std::isfinite(maximum) || maximum <= minimum)
    {
       return std::nullopt;
    }
-   const double fraction = std::clamp((value - minimum) / (fullScale - minimum), 0.0, 1.0);
+   const double fraction = std::clamp((value - minimum) / (maximum - minimum), 0.0, 1.0);
    return roundedRegister(fraction * 0xFF);
 }
 
-std::optional<uint8_t> speedToRegister(double metresPerSecond, const DeviceProfile& profile)
+std::optional<uint8_t> speedToRegister(double speed, const DeviceProfile& profile)
 {
-   return registerFromSpan(metresPerSecond, profile.minSpeed, profile.fullScaleSpeed);
+   return registerFromSpan(speed, profile.minSpeed, profile.maxSpeed);
 }
 
-std::optional<uint8_t> forceToRegister(double newtons, const DeviceProfile& profile)
+std::optional<uint8_t> openingToRegister(double opening, const DeviceProfile& profile)
 {
-   return registerFromSpan(newtons, profile.minForce, profile.fullScaleForce);
-}
-
-std::optional<uint8_t> openingToRegister(double openingMetres, const DeviceProfile& profile)
-{
-   if(!std::isfinite(openingMetres) || !std::isfinite(profile.stroke) || profile.stroke <= 0.0
-      || profile.registerBand() <= 0.0)
+   const double span = profile.openingRange();
+   if(!std::isfinite(opening) || !std::isfinite(span) || span <= 0.0 || profile.registerPositionRange() <= 0.0)
    {
       return std::nullopt;
    }
-   const double closedFraction = 1.0 - std::clamp(openingMetres / profile.stroke, 0.0, 1.0);
-   return roundedRegister(profile.openRegister + closedFraction * profile.registerBand());
+   const double openFraction = std::clamp((opening - profile.minOpening) / span, 0.0, 1.0);
+   return roundedRegister(profile.openPosition + (1.0 - openFraction) * profile.registerPositionRange());
 }
 
 std::optional<double> openingFromRegister(uint8_t value, const DeviceProfile& profile)
 {
-   const double band = profile.registerBand();
-   if(band <= 0.0 || !std::isfinite(profile.stroke) || profile.stroke <= 0.0)
+   const double band = profile.registerPositionRange();
+   const double span = profile.openingRange();
+   if(band <= 0.0 || !std::isfinite(span) || span <= 0.0)
    {
       return std::nullopt;
    }
-   const double closedFraction = std::clamp((value - profile.openRegister) / band, 0.0, 1.0);
-   return (1.0 - closedFraction) * profile.stroke;
+   const double closedFraction = std::clamp((value - profile.openPosition) / band, 0.0, 1.0);
+   return profile.minOpening + (1.0 - closedFraction) * span;
+}
+
+std::optional<uint8_t> effortToRegister(double effort)
+{
+   return registerFromSpan(effort, 0.0, 1.0);
 }
 
 } // namespace Robotiq::units
