@@ -16,8 +16,13 @@
 #include <Robotiq/gripper/register_map.hpp>
 #include <Robotiq/gripper/throttle.hpp>
 
+#if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
 
 namespace Robotiq::test {
 
@@ -53,4 +58,8 @@ TEST(TestV1_0Compat, modbus_client_keeps_its_detail_name)
 
 } // namespace Robotiq::test
 
+#if defined(__GNUC__)
 #pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
+#endif
