@@ -39,25 +39,18 @@ option(GRIPPERS_HOSTED "Target has a hosted C++ runtime (std::thread, iostream)"
 # to leave it out.
 option(GRIPPERS_BUILD_FAKE "Build the fake gripper device" ${GRIPPERS_HOSTED})
 
-# The libserialport-backed DefaultSerial is a desktop convenience. Turn it OFF
-# for bare-metal / freestanding targets (e.g. arm-none-eabi microcontrollers)
-# that inject their own Serial implementation; this drops the libserialport
-# dependency and the ConnectionConfig-based constructors that build a DefaultSerial.
-option(GRIPPERS_BUILD_DEFAULT_SERIAL "Build the libserialport-backed DefaultSerial" ${GRIPPERS_HOSTED})
+# The OS-backed DefaultSerial is a desktop convenience. Turn it OFF for
+# bare-metal / freestanding targets (e.g. arm-none-eabi microcontrollers)
+# that inject their own Serial implementation; this drops the platform
+# serial code and the ConnectionConfig-based constructors that build a
+# DefaultSerial.
+option(GRIPPERS_BUILD_DEFAULT_SERIAL "Build the OS-backed DefaultSerial" ${GRIPPERS_HOSTED})
 
 if(GRIPPERS_BUILD_DEFAULT_SERIAL AND NOT GRIPPERS_HOSTED)
-  message(FATAL_ERROR "GRIPPERS_BUILD_DEFAULT_SERIAL needs a hosted runtime (libserialport is a desktop library); set it OFF for freestanding targets")
+  message(FATAL_ERROR "GRIPPERS_BUILD_DEFAULT_SERIAL needs a hosted runtime (it speaks to a desktop OS serial API); set it OFF for freestanding targets")
 endif()
 if(GRIPPERS_BUILD_FAKE AND NOT GRIPPERS_HOSTED)
   message(FATAL_ERROR "GRIPPERS_BUILD_FAKE needs a hosted runtime (the fake gripper serves the threaded exchange loop)")
-endif()
-
-# --- libserialport ------------------------------------------------------
-# Resolved through cmake/Findserialport.cmake — the same module the
-# installed grippers-config.cmake uses, so the lookup logic lives once.
-if(GRIPPERS_BUILD_DEFAULT_SERIAL)
-  list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
-  find_package(serialport MODULE REQUIRED)
 endif()
 
 # --- warnings -----------------------------------------------------------
@@ -145,13 +138,6 @@ target_link_libraries(grippers_sdk
   PRIVATE $<BUILD_INTERFACE:grippers_objects>
 )
 
-# The objects need libserialport's headers to compile and both forms need its
-# symbols to link, so it goes on each of them privately.
-if(GRIPPERS_BUILD_DEFAULT_SERIAL)
-  target_link_libraries(grippers_objects PRIVATE serialport::serialport)
-  target_link_libraries(grippers_sdk PRIVATE serialport::serialport)
-endif()
-
 # Either form can end up inside someone's shared library, so the objects have to
 # be position independent whatever the consumer sets globally. The archive used to
 # get this by accident, from the consumer's own CMAKE_POSITION_INDEPENDENT_CODE.
@@ -227,7 +213,6 @@ write_basic_package_version_file(
 install(FILES
   ${CMAKE_CURRENT_BINARY_DIR}/grippers-config.cmake
   ${CMAKE_CURRENT_BINARY_DIR}/grippers-config-version.cmake
-  cmake/Findserialport.cmake
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/grippers
 )
 

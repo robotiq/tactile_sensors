@@ -3,9 +3,9 @@
 // Licensed under the BSD-3-Clause license; see LICENSE for details.
 
 // The ConnectionConfig constructors — the desktop convenience path that
-// builds a libserialport DefaultSerial from a port name. Compiled only when
-// GRIPPERS_BUILD_DEFAULT_SERIAL is ON, keeping the core free of the
-// dependency; other targets inject their own Serial.
+// builds an OS-backed DefaultSerial from a port name. Compiled only when
+// GRIPPERS_BUILD_DEFAULT_SERIAL is ON, keeping the core free of any OS
+// serial API; other targets inject their own Serial.
 
 #include <cstdint>
 #include <memory>

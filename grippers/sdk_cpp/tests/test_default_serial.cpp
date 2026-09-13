@@ -146,8 +146,7 @@ namespace {
 // A pseudo-terminal pair standing in for the gripper's serial link: the
 // slave is a real tty, so DefaultSerial drives it through the same
 // termios path as an FTDI adapter, and the master is the peer that
-// answers. Only reachable since the transport moved off libserialport,
-// which refused to open a pty at all.
+// answers.
 class PtyLoopback
 {
 public:
