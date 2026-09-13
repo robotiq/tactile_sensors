@@ -26,3 +26,7 @@ Every example above is built by `GRIPPERS_BUILD_EXAMPLES` (see
 [Environment setup](../../docs/01-environment-setup.md)); `doc_snippets`
 additionally needs `GRIPPERS_BUILD_FAKE` (default on together with it) for
 its `makeFakeGripper()` example.
+
+[Try it on your
+gripper](../../docs/01-environment-setup.md#try-it-on-your-gripper) has the
+commands that build these and run one against real hardware.

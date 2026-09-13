@@ -51,7 +51,9 @@ latches it is never sent.
 > The exchange thread's Modbus protocol layer is
 > [nanoMODBUS](https://github.com/debevv/nanoMODBUS) (vendored under
 > `sdk_cpp/third_party/`, BSD-licensed); on a hosted build, its serial
-> transport is [libserialport](https://sigrok.org/wiki/Libserialport).
+> transport is the SDK's own `DefaultSerial`, written against the
+> operating system's serial API — termios on Linux and macOS, the Win32
+> comm API on Windows.
 
 > **Note:**
 >
