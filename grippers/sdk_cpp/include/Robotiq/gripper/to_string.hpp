@@ -11,11 +11,52 @@
 #include <string>
 #include <string_view>
 
+#include <Robotiq/gripper/activation_result.hpp>
 #include <Robotiq/gripper/command.hpp>
+#include <Robotiq/gripper/connection_state.hpp>
 #include <Robotiq/gripper/fault_status.hpp>
+#include <Robotiq/gripper/logger.hpp>
 #include <Robotiq/gripper/status.hpp>
 
 namespace Robotiq {
+
+//! \ingroup connection
+//! \param state The gripper's connection state, from Gripper::connectionState().
+//! \return A short name for \p state.
+[[nodiscard]] constexpr std::string_view toString(ConnectionState state)
+{
+   switch(state)
+   {
+   case ConnectionState::Disconnected:
+      return "Disconnected";
+   case ConnectionState::Connecting:
+      return "Connecting";
+   case ConnectionState::Operational:
+      return "Operational";
+   case ConnectionState::Faulted:
+      return "Faulted";
+   }
+   return "Unrecognized";
+}
+
+//! \ingroup activation
+//! \param result Outcome of activate() or recoverFromFault().
+//! \return A short name for \p result.
+[[nodiscard]] constexpr std::string_view toString(ActivationResult result)
+{
+   switch(result)
+   {
+   case ActivationResult::Activated:
+      return "Activated";
+   case ActivationResult::AlreadyActive:
+      return "AlreadyActive";
+   case ActivationResult::FaultLatched:
+      return "FaultLatched";
+   case ActivationResult::Timeout:
+      return "Timeout";
+   }
+   return "Unrecognized";
+}
 
 //! \ingroup gripper_status
 //! \param state gSTA, as decoded by GripperStatusFlags::activationState().
@@ -107,6 +148,25 @@ namespace Robotiq {
       return "EmergencyStop";
    case ControllerFault::Overcurrent:
       return "Overcurrent";
+   }
+   return "Unrecognized";
+}
+
+//! \ingroup fault_status
+//! \param faultSeverity A fault's severity, from severity(GripperFault) or severity(ControllerFault).
+//! \return A short name for \p faultSeverity.
+[[nodiscard]] constexpr std::string_view toString(FaultSeverity faultSeverity)
+{
+   switch(faultSeverity)
+   {
+   case FaultSeverity::None:
+      return "None";
+   case FaultSeverity::Warning:
+      return "Warning";
+   case FaultSeverity::Minor:
+      return "Minor";
+   case FaultSeverity::Major:
+      return "Major";
    }
    return "Unrecognized";
 }

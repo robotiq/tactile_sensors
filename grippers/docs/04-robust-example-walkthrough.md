@@ -132,6 +132,54 @@ when the result is neither `Activated` nor `AlreadyActive` also
 catches a `Timeout` from either call, which a check for `FaultLatched`
 alone would miss.
 
+## Checking SI unit conversions before asserting
+
+In `main()`, the speed and force conversions are checked before use:
+
+<!-- snippet: move_gripper.cpp speed-optional-check -->
+```cpp
+const std::optional<uint8_t> speed = Robotiq::units::speedToRegister(kSpeed, k2F85);
+const std::optional<uint8_t> force = Robotiq::units::effortToRegister(kEffort);
+if(!speed || !force)
+{
+   logger->log(Robotiq::Logger::Level::Error, "the requested speed or effort has no register value");
+   return EXIT_FAILURE;
+}
+command.speed = *speed;
+command.force = *force;
+```
+
+
+`moveTo()` does the same for the opening it's asked to reach:
+
+<!-- snippet: move_gripper.cpp opening-optional-check -->
+```cpp
+const std::optional<uint8_t> position = Robotiq::units::openingToRegister(openingMetres, k2F85);
+if(!position)
+{
+   logger.log(Robotiq::Logger::Level::Error, "the requested opening has no register value");
+   return false;
+}
+```
+
+...and for the reverse conversion, reading the settled position back out as
+an opening once motion has finished:
+
+<!-- snippet: move_gripper.cpp opening-from-register-optional-check -->
+```cpp
+const std::optional<double> opening = Robotiq::units::openingFromRegister(gripper.getStatus().position, k2F85);
+if(!opening)
+{
+   logger.log(Robotiq::Logger::Level::Error,
+              withStatus("the settled position has no opening in this profile", gripper));
+   return false;
+}
+```
+
+Every one of these fails closed: a bad conversion logs an error and returns
+instead of sending a register value that was never actually validated
+against the profile.
+
 ## The `moveTo()` helper's three waits
 
 Sending a `GoTo` command doesn't mean the move is done, or even that

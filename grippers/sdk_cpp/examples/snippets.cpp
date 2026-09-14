@@ -11,13 +11,17 @@
 // this file is only for the ones with no other home.
 
 #include <Robotiq/gripper.hpp>
+#include <Robotiq/gripper/device_profile.hpp>
 #include <Robotiq/gripper/fake/gripper_factory.hpp>
 #include <Robotiq/gripper/stderr_logger.hpp>
+#include <Robotiq/gripper/units.hpp>
 
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <string_view>
+#include <iostream>
 
 using namespace std::chrono_literals;
 
@@ -103,6 +107,27 @@ StatusFields statusGripperStatusFields(Robotiq::Gripper& gripper)
    return {gOBJ, gSTA, gGTO, gACT, kFLT, gFLT, gPR, gPO, gCU};
 }
 
+double siUnitConversion(Robotiq::Gripper& gripper)
+{
+   //! [si-unit-conversion]
+   using Robotiq::profiles::k2F85;
+   namespace units = Robotiq::units;
+
+   constexpr double kSpeed = 0.150; // m/s
+   constexpr double kOpening = 0.040; // m
+   constexpr double kEffort = 0.5; // fraction of maximum force
+
+   Robotiq::GripperCommand command = Robotiq::GripperCommand::defaults();
+   command.speed = units::speedToRegister(kSpeed, k2F85).value();
+   command.force = units::effortToRegister(kEffort).value();
+   command.positionRequest = units::openingToRegister(kOpening, k2F85).value();
+
+   double openingMetres = units::openingFromRegister(gripper.getStatus().position, k2F85).value();
+   //! [si-unit-conversion]
+   (void)command; // built to demonstrate the conversions above; never sent in this doc-only snippet
+   return openingMetres;
+}
+
 void actionRequestBits()
 {
    //! [action-request-bits]
@@ -137,6 +162,15 @@ void motionSettledExample(Robotiq::Gripper& gripper)
    }
 }
 //! [motion-settled-example]
+
+std::string statusToString(Robotiq::Gripper& gripper)
+{
+   //! [status-to-string]
+   std::string rendered = Robotiq::toString(gripper.getStatus());
+   std::cout << rendered << std::endl;
+   //! [status-to-string]
+   return rendered;
+}
 
 void faultSeverityCheck(Robotiq::Gripper& gripper)
 {

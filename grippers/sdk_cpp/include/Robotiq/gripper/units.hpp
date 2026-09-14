@@ -2,33 +2,6 @@
 //
 // Licensed under the BSD-3-Clause license; see LICENSE for details.
 
-//! \brief Conversions between SI quantities and the 0..255 register values of the
-//!        command and status blocks, scaled by a DeviceProfile. Every
-//!        mapping here is linear and the gripper is not: the manual
-//!        gives the 2F speed and force scales as approximate, force also
-//!        varies with speed and payload (about ±10 %), and a register value is a
-//!        setpoint, not a measurement.
-//!
-//!        Speed and force map [minimum, fullScale] onto register values 0..255,
-//!        because value 0 is the gripper's minimum, not zero. A value
-//!        below the minimum floors at value 0 and a value above full
-//!        scale saturates at 255. NaN, infinity and a negative value
-//!        yield nothing: no benign caller produces them.
-//!
-//!        Opening maps [0, stroke] onto the profile's register band and
-//!        clamps to the stroke ends rather than rejecting, because
-//!        position setpoints from interpolating controllers overshoot
-//!        the ends by a hair and holding the previous command there
-//!        would be the wrong outcome. Values round to nearest, so inside
-//!        the band a position read back commands the same value. A
-//!        closed gripper settles a few steps either side of
-//!        closedRegister, so a reading there converts to a small non-zero
-//!        opening; values past the band read as the nearest stroke end.
-//!
-//!        A profile the arithmetic cannot use (non-positive stroke or
-//!        register band, a full scale at or below its minimum) yields
-//!        nothing.
-
 #pragma once
 
 #include <cstdint>
@@ -38,27 +11,78 @@
 
 namespace Robotiq::units {
 
-//! The manual's approximate current equivalent for the 2F gCU byte.
+//! \cond DOXYGEN_EXCLUDE
+// The manual's approximate current equivalent for the 2F gCU byte.
 inline constexpr double kAmperesPerRegisterStep = 0.010;
+//! \endcond
 
-//! Linear map of [minimum, fullScale] onto register values 0..255, the rule
-//! speedToRegister and forceToRegister apply. Public for callers that carry
+//! \ingroup units
+//! Linear map of [minimum, maximum] onto register values 0..255, the rule
+//! speedToRegister applies. Public for callers that carry
 //! their own scales instead of a DeviceProfile.
-[[nodiscard]] std::optional<uint8_t> registerFromSpan(double value, double minimum, double fullScale);
+//! \param value The quantity to convert. A value below \p minimum floors
+//!        at register 0; a value above \p maximum saturates at 255.
+//! \param minimum The value that maps to register 0.
+//! \param maximum The value that maps to register 255.
+//! \return The mapped register, or std::nullopt if \p value is
+//!         non-finite or negative, \p minimum or \p maximum is
+//!         non-finite, or \p maximum is at or below \p minimum.
+[[nodiscard]] std::optional<uint8_t> registerFromSpan(double value, double minimum, double maximum);
 
+//! \ingroup units
 //! Speed in m/s -> rSP.
-[[nodiscard]] std::optional<uint8_t> speedToRegister(double metresPerSecond, const DeviceProfile& profile);
+//! \param speed Requested speed, in m/s. A value below profile.minSpeed
+//!        floors at register 0; a value above profile.maxSpeed
+//!        saturates at 255.
+//! \param profile The device profile to scale against.
+//! \return rSP, or std::nullopt if \p speed is non-finite or
+//!         negative, or \p profile is one the arithmetic can't use
+//!         (maxSpeed at or below minSpeed).
+[[nodiscard]] std::optional<uint8_t> speedToRegister(double speed, const DeviceProfile& profile);
 
-//! Force in N -> rFR.
-[[nodiscard]] std::optional<uint8_t> forceToRegister(double newtons, const DeviceProfile& profile);
-
+//! \ingroup units
 //! Opening in m -> rPR.
-[[nodiscard]] std::optional<uint8_t> openingToRegister(double openingMetres, const DeviceProfile& profile);
+//! \warning Valid only while the gripper stays in parallel-finger mode:
+//!          profile.minOpening/maxOpening and the register endpoints are
+//!          measured in that mode, so a register computed here does not
+//!          correspond to a real opening once the gripper switches to
+//!          encompassing mode.
+//! \param opening Target opening, in metres. Clamped to
+//!        [profile.minOpening, profile.maxOpening] rather than
+//!        rejected — a value outside that range reads as the nearest
+//!        end. Values round to the nearest register.
+//! \param profile The device profile to scale against.
+//! \return rPR, or std::nullopt if \p opening is non-finite, or
+//!         \p profile is one the arithmetic can't use (non-positive
+//!         position span or register band).
+[[nodiscard]] std::optional<uint8_t> openingToRegister(double opening, const DeviceProfile& profile);
 
+//! \ingroup units
 //! gPO -> opening in m.
+//! \warning Valid only while the gripper stays in parallel-finger mode. A
+//!          gPO reading taken in encompassing mode can exceed
+//!          profile.closedPosition and is clamped to the nearest end
+//!          below instead of reflecting the real opening.
+//! \param value The raw register value (gPO). A value outside the
+//!        profile's register band reads as the nearest end.
+//! \param profile The device profile to scale against.
+//! \return The opening in metres, or std::nullopt if \p profile is one
+//!         the arithmetic can't use (non-positive position span or
+//!         register band).
 [[nodiscard]] std::optional<double> openingFromRegister(uint8_t value, const DeviceProfile& profile);
 
+//! \ingroup units
+//! Effort in [0, 1] -> rFR. 0 is the gripper's minimum force, 1 its
+//! maximum; a value above 1 saturates at register 255.
+//! \param effort Requested gripping effort, as a fraction of the
+//!        gripper's force range.
+//! \return rFR, or std::nullopt if \p effort is non-finite or negative.
+[[nodiscard]] std::optional<uint8_t> effortToRegister(double effort);
+
+//! \ingroup units
 //! gCU -> motor current in A.
+//! \param value The raw register value (gCU).
+//! \return The motor current in amperes.
 [[nodiscard]] inline constexpr double motorCurrentFromRegister(uint8_t value)
 {
    return kAmperesPerRegisterStep * value;

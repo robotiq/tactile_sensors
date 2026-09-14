@@ -1,6 +1,11 @@
 # How it works
 
-At the wire level, Robotiq grippers are controlled by writing commands to, and reading status from, their memory over Modbus RTU. With this SDK, though, you never issue Modbus RTU requests yourself: you call `setCommand()` and `getStatus()`, and the `Gripper` object handles the Modbus RTU exchange with the hardware in the background.
+At the wire level, Robotiq grippers are controlled by writing commands to, and reading status from, their memory over Modbus RTU. With this SDK, though, you never issue Modbus RTU requests yourself: you call `setCommand()` and `getStatus()`, and the `Gripper` object handles the Modbus RTU exchange with the hardware in the background — a dedicated thread that continuously exchanges FC 0x17 Modbus (read&write) transactions with the gripper, up to ~250 Hz at 115200 baud. That thread is the only thing that directly communicates with the gripper; the C++ driver's design is built around maximizing that communication frequency.
+
+> **Note:** the exchange thread's Modbus protocol layer is
+> [nanoMODBUS](https://github.com/debevv/nanoMODBUS) (vendored under
+> `sdk_cpp/third_party/`, BSD-licensed); on a hosted build, its serial
+> transport is [libserialport](https://sigrok.org/wiki/Libserialport).
 
 Check the gripper user manual on the Robotiq support website if you want to learn more about the gripper's Modbus RTU communication.
 
@@ -59,40 +64,47 @@ Each of these bits is set with `command.action.set(Robotiq::ActionRequestBit::<n
 | rATR | `AutoRelease` | Normal. | Emergency auto-release. |
 | rARD | `AutoReleaseOpenDirection` | Closing auto-release direction. | Opening auto-release direction. |
 
-## Commanding in SI units
+### Commanding in SI units
 
-The blocks above carry raw register values (0..255). `Robotiq/gripper/units.hpp`
-converts to and from SI units, scaled by a `DeviceProfile` — the model's speed
-and force range, stroke, and usable register band. Only the 2F-85 profile
-ships today; a caller can supply its own:
+The SDK offers the capability to set position and speed in SI units rather than
+encoded bits.
 
-<!-- snippet: exempt -->
+It works with gripper profiles which gather gripper specifications and SI
+units conversion functions. The mappings are linear and approximate.
+
+Some gripper profiles are provided for convenience. You may have to create your
+own profile if for example you are using custom fingers and the close and open
+position are different from the default profiles.
+
+Force is commanded as an effort between 0 (minimum) and 1 (maximum) rather
+than newtons.
+
+> **Note:**
+> The actual grip force is a function of the speed register, the force
+> register, and the hardness of the fingers and object material. As a
+> consequence, the force register cannot be converted into a value in newtons.
+
+<!-- snippet: snippets.cpp si-unit-conversion -->
 ```cpp
-#include <Robotiq/gripper/device_profile.hpp>
-#include <Robotiq/gripper/units.hpp>
-
 using Robotiq::profiles::k2F85;
 namespace units = Robotiq::units;
 
 constexpr double kSpeed = 0.150; // m/s
-constexpr double kForce = 80.0; // N
 constexpr double kOpening = 0.040; // m
+constexpr double kEffort = 0.5; // fraction of maximum force
 
+Robotiq::GripperCommand command = Robotiq::GripperCommand::defaults();
 command.speed = units::speedToRegister(kSpeed, k2F85).value();
-command.force = units::forceToRegister(kForce, k2F85).value();
+command.force = units::effortToRegister(kEffort).value();
 command.positionRequest = units::openingToRegister(kOpening, k2F85).value();
 
-double opening = units::openingFromRegister(gripper.getStatus().position, k2F85).value();
+double openingMetres = units::openingFromRegister(gripper.getStatus().position, k2F85).value();
 ```
 
-The mappings are linear and approximate, as the manual's are; the gripper
-is not. The profile-scaled conversions return `std::optional` and yield
-nothing for a quantity with no defensible register value, so `.value()` above is safe
-only because `k2F85` is a well-formed profile; a hand-written profile
-deserves a check. The header documents the exact rules. For a robust
-caller that checks each `std::optional` explicitly instead of calling
-`.value()`, see `moveTo()` in the
-[Robust example walkthrough](04-robust-example-walkthrough.md).
+These conversions return `std::optional` and yield nothing for a quantity with
+no defensible register value, so `.value()` above is safe only because `k2F85`
+is a well-formed profile — a hand-written profile deserves a check; see
+`moveTo()` in the [Robust example walkthrough](04-robust-example-walkthrough.md#checking-si-unit-conversions-before-asserting).
 
 ## Status
 
@@ -201,6 +213,22 @@ The gripper's own instruction manual defers this nibble to "your optional contro
 | `CommunicationNotReady` (`0x09`) | Main communication protocol is booting. |
 | `EmergencyStop` (`0x0C`) | Emergency stop engaged. |
 | `Overcurrent` (`0x0E`) | Controller overcurrent protection tripped. |
+
+### Human-readable output
+
+The SDK includes a `toString()` function to translate command and status information in human-readable format.
+
+<!-- snippet: snippets.cpp status-to-string -->
+```cpp
+std::string rendered = Robotiq::toString(gripper.getStatus());
+std::cout << rendered << std::endl;
+```
+Here is an example of what gets printed:
+```bash
+gACT=1 gGTO=1 gSTA=Complete(0x3) gOBJ=AtRequestedPosition(0x3) gFLT=None(0x0) kFLT=None(0x0) gPR=100 gPO=100 gCU=0
+```
+
+
 
 ## Gripper-related functions
 
@@ -449,21 +477,6 @@ behavior.
 `makeFakeGripper()` is built under the `GRIPPERS_BUILD_FAKE` CMake
 option; see [CMake options](01-environment-setup.md#cmake-options).
 
-## How the C++ driver handles communication with the gripper
-
-The C++ driver has been developed with the objective of maximizing
-communication frequency.
-
-The `Gripper` object owns a background thread that continuously exchanges
-FC 0x17 Modbus (read&write) transactions with the gripper — up to ~250 Hz at
-115200 baud. That thread is the only thing that directly communicates with the
-gripper.
-
-> **Note:** the exchange thread's Modbus protocol layer is
-> [nanoMODBUS](https://github.com/debevv/nanoMODBUS) (vendored under
-> `sdk_cpp/third_party/`, BSD-licensed); on a hosted build, its serial
-> transport is [libserialport](https://sigrok.org/wiki/Libserialport).
-
 ## Logging
 
 `Gripper`'s constructor takes an optional `logger` parameter (a
@@ -487,8 +500,8 @@ Robotiq::Gripper gripper(config, logger);
 | `Warn` | recoverable, but worth a human's attention |
 | `Error` | an operation failed |
 
-The background exchange thread (above) uses this same logger to report
-its own health, independently of anything your own code does:
+The background exchange thread uses this same logger to report its own
+health, independently of anything your own code does:
 - `Warn` when several consecutive exchanges fail — the same moment
   `connectionState()` switches to `ConnectionState::Faulted`, meaning
   the process image `getStatus()` returns is now stale.

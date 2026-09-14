@@ -16,24 +16,19 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <utility>
 
 namespace Robotiq {
 namespace {
-const char* toString(Logger::Level level)
+
+// toString(Level) gives the plain name; this pads it to a fixed width so
+// the field that follows lines up in a column regardless of level.
+std::string paddedLevel(Logger::Level level)
 {
-   switch(level)
-   {
-   case Logger::Level::Debug:
-      return "DEBUG";
-   case Logger::Level::Info:
-      return "INFO ";
-   case Logger::Level::Warn:
-      return "WARN ";
-   case Logger::Level::Error:
-      return "ERROR";
-   }
-   return "?????";
+   std::string name(toString(level));
+   name.resize(5, ' ');
+   return name;
 }
 
 // Wall-clock timestamp with microsecond resolution, e.g.
@@ -67,7 +62,7 @@ void StderrLogger::log(Level level, std::string_view message)
    static std::mutex mutex;
    const std::lock_guard<std::mutex> lock(mutex);
    writeTimestamp(std::cerr);
-   std::cerr << '[' << toString(level) << "] ";
+   std::cerr << '[' << paddedLevel(level) << "] ";
    if(!_name.empty())
    {
       std::cerr << '[' << _name << "] ";

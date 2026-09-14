@@ -53,6 +53,10 @@ TEST(TestToString, enum_names_are_usable_at_compile_time)
    static_assert(toString(GripperFault::ActivationRequired) == "ActivationRequired");
    static_assert(toString(ControllerFault::EmergencyStop) == "EmergencyStop");
    static_assert(toString(static_cast<GripperFault>(0x06)) == "Unrecognized");
+   static_assert(toString(ConnectionState::Faulted) == "Faulted");
+   static_assert(toString(Logger::Level::Warn) == "Warn");
+   static_assert(toString(ActivationResult::FaultLatched) == "FaultLatched");
+   static_assert(toString(FaultSeverity::Major) == "Major");
 }
 
 } // namespace Robotiq::test

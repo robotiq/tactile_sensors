@@ -1,4 +1,6 @@
-# check_doc_snippets.py
+# sdk_cpp/tools
+
+## check_doc_snippets.py
 
 Doxygen's `\snippet` keeps the header doc-comments' code examples in sync
 with real, compiled code — see `EXAMPLE_PATH` in `../Doxyfile` and
@@ -15,7 +17,7 @@ reference — worse, actually, since nothing compiles it to catch the drift.
 gives the header comments: it fails loudly on a mismatch instead of letting
 one drift in silently.
 
-## The convention
+### The convention
 
 A markdown code fence opts in with an HTML-comment marker directly above it:
 
@@ -57,7 +59,7 @@ pseudo-code), opt out explicitly instead of leaving it unmarked:
 ```
 ````
 
-## Running it locally
+### Running it locally
 
 From the repo root (paths are resolved relative to the current directory,
 same as CI):
@@ -104,7 +106,7 @@ Fix it by editing whichever side is wrong — the markdown fence or the
 tagged region in the `.cpp` file — so they read identically again, then
 rerun the command above to confirm.
 
-## Adding a new checked example
+### Adding a new checked example
 
 1. Bracket the relevant lines in a real, compiled file under
    `sdk_cpp/examples/` with a `//! [your-tag]` ... `//! [your-tag]` pair
@@ -114,7 +116,7 @@ rerun the command above to confirm.
    verbatim.
 3. Run the command above to confirm.
 
-## Elsewhere this same convention shows up
+### Elsewhere this same convention shows up
 
 - This repo's own CI: the `doc-snippets` job in
   `.github/workflows/ci.yml`.
@@ -127,3 +129,36 @@ rerun the command above to confirm.
   `docs/contribute.mdx` for the full story, including how another tool repo
   can adopt this same pattern (`templates/check_doc_snippets.py` there is
   the copy-pasteable starting point).
+
+## check_doc_groups.py
+
+Checks that every namespace-scope symbol Doxygen documents is also
+organized into a `\ingroup` — a symbol can carry a perfectly good
+`\brief` and still be invisible in `groups.dox`'s navigation if it isn't
+grouped. See the script's own module docstring (`check_doc_groups.py`)
+for the full rationale, how it cross-references Doxygen's XML output,
+and how to deliberately exclude a symbol from the documented surface.
+
+Run it after `doxygen Doxyfile`, from `sdk_cpp/`:
+
+```sh
+doxygen Doxyfile
+python3 tools/check_doc_groups.py
+```
+
+A clean run looks like:
+
+```
+Every namespace-scope symbol is grouped.
+```
+
+On a gap, it lists every offending symbol and exits non-zero:
+
+```
+2 symbol(s) are documented but not organized into any \ingroup:
+  - Robotiq::operator!= (function)
+  - Robotiq::operator== (function)
+```
+
+This is what the `api-docs` CI job runs right after `doxygen Doxyfile`
+(`.github/workflows/ci.yml`).
