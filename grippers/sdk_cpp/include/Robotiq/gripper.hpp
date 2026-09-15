@@ -22,6 +22,10 @@
 namespace Robotiq {
 class Serial;
 
+namespace detail {
+class GripperState;
+} // namespace detail
+
 //! \ingroup core_api
 //! \brief The Robotiq gripper Class.
 //!
@@ -104,8 +108,9 @@ public:
    [[nodiscard]] Platform& platform() const noexcept;
 
 private:
-   struct Impl; // hides the link, the exchange thread, and the image
-   std::unique_ptr<Impl> _impl;
+   // Hides the link, the exchange thread and the image; see
+   // src/gripper_state.hpp.
+   std::unique_ptr<detail::GripperState> _impl;
 };
 
 //! \ingroup activation
