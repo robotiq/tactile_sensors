@@ -10,6 +10,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <memory>
 
 #include <Robotiq/gripper/command.hpp>
@@ -50,6 +51,8 @@ public:
    [[nodiscard]] GripperCommand command() const;
    [[nodiscard]] GripperStatus status() const;
 
+   [[nodiscard]] StampedStatus stampedStatus() const;
+
    [[nodiscard]] ConnectionState connectionState() const { return _connectionState.load(); }
    [[nodiscard]] Platform& platform() const noexcept { return *_platform; }
 
@@ -66,6 +69,9 @@ private:
    GripperCommand _command{};
    GripperStatus _status{};
 
+   const std::unique_ptr<ConditionVariable> _statusRefreshed;
+   std::chrono::steady_clock::time_point _statusTimestamp{};
+   uint64_t _exchangeCount = 0;
    std::atomic<ConnectionState> _connectionState{ConnectionState::Connecting};
    std::atomic<bool> _running{false};
    // 32-bit: a 64-bit atomic needs __atomic_*_8 (no native 8-byte atomic on a

@@ -5,6 +5,7 @@
 #include "gripper_state.hpp"
 
 #include <algorithm>
+#include <memory>
 #include <mutex> // std::lock_guard — available even where std::mutex is not
 #include <string>
 #include <utility>
@@ -18,6 +19,17 @@ namespace {
 constexpr uint64_t kFaultThreshold = 3;
 //! Initial _status-read attempts before construction fails.
 constexpr uint64_t kInitialReadAttempts = 3;
+
+std::unique_ptr<ConditionVariable> checkedConditionVariable(Platform& platform)
+{
+   auto condition = platform.makeConditionVariable();
+   if(!condition)
+   {
+      throw DriverException("a Platform returned a null ConditionVariable — GripperSync has nothing to "
+                            "wait on");
+   }
+   return condition;
+}
 } // namespace
 
 GripperState::GripperState(std::unique_ptr<Serial> serial,
@@ -30,6 +42,7 @@ GripperState::GripperState(std::unique_ptr<Serial> serial,
    , _client(std::move(serial), slaveAddress, _logger)
    , _period(exchangePeriod)
    , _imageMutex(_platform->makeMutex())
+   , _statusRefreshed(checkedConditionVariable(*_platform))
 {
 }
 
@@ -65,6 +78,7 @@ void GripperState::initializeImage()
 
    const std::lock_guard<Mutex> lock(*_imageMutex);
    _status = fresh;
+   _statusTimestamp = std::chrono::steady_clock::now();
    _command = GripperCommand::defaults();
    _command.action.set(ActionRequestBit::Activate, fresh.gripperStatus.activated());
    _command.action.set(ActionRequestBit::GoTo, fresh.gripperStatus.goToEnabled());
@@ -81,9 +95,13 @@ void GripperState::exchangeOnce()
    }
 
    GripperStatus freshStatus;
+   std::chrono::steady_clock::time_point completedAt;
    try
    {
       freshStatus = _client.exchange(commandCopy);
+      // Taken before the lock: the closest this side of the wire gets to when
+      // the gripper sampled, and never delayed by a reader holding the image.
+      completedAt = std::chrono::steady_clock::now();
    }
    catch(...)
    {
@@ -100,7 +118,12 @@ void GripperState::exchangeOnce()
    {
       const std::lock_guard<Mutex> lock(*_imageMutex);
       _status = freshStatus;
+      _statusTimestamp = completedAt;
+      ++_exchangeCount;
    }
+   // Notified with the lock dropped: waiters registered under it, so
+   // none can miss this, and the cycle never queues behind one.
+   _statusRefreshed->notifyAll();
    _consecutiveFailures.store(0);
    if(_connectionState.exchange(ConnectionState::Operational) == ConnectionState::Faulted)
    {
@@ -155,9 +178,16 @@ GripperStatus GripperState::status() const
    return _status;
 }
 
+StampedStatus GripperState::stampedStatus() const
+{
+   const std::lock_guard<Mutex> lock(*_imageMutex);
+   return {_exchangeCount, _status, _statusTimestamp};
+}
+
 void GripperState::stop() noexcept
 {
    _running.store(false);
+   _statusRefreshed->notifyAll();
    if(_exchangeThread)
    {
       _exchangeThread->join();
