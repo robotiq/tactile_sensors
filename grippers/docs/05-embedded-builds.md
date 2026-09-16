@@ -46,18 +46,20 @@ instead of a `ConnectionConfig`, passing your own `Platform` and
 [`ports/threadx/threadx_platform.hpp`](../sdk_cpp/ports/threadx/threadx_platform.hpp)
 is a complete, working `Platform` over Azure RTOS ThreadX, and is the
 reference to copy when porting to a different RTOS — it implements
-exactly four members:
+exactly five members:
 
 | `Platform` member | ThreadX primitive underneath |
 |---|---|
 | `makeMutex()` | `tx_mutex_create` / `tx_mutex_get` / `tx_mutex_put` |
+| `makeConditionVariable()` | `tx_semaphore_create` / `tx_semaphore_get` / `tx_semaphore_put` |
 | `spawn(fn)` | `tx_thread_create`, running `fn` on a dedicated task |
 | `sleepUntil(timePoint)` | `tx_thread_sleep`, rounded up to whole ThreadX ticks |
 | `sleepFor(duration)` | same, duration-based |
 
 Porting to another RTOS (FreeRTOS, Zephyr, etc.) means writing the same
-four members over that RTOS's native mutex/task/sleep calls — nothing
-about `Gripper` itself needs to change.
+five members over that RTOS's native mutex/task/sleep calls — the
+condition variable is usually a semaphore or event flags — nothing about
+`Gripper` itself needs to change.
 
 Two integration mistakes are worth knowing about up front, both
 because they *don't* fail loudly — they just hang:

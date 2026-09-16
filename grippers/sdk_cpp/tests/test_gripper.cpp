@@ -121,6 +121,8 @@ public:
       return _real->makeMutex();
    }
 
+   std::unique_ptr<ConditionVariable> makeConditionVariable() override { return _real->makeConditionVariable(); }
+
    std::unique_ptr<Thread> spawn(std::function<void()> fn) override
    {
       ++threadsSpawned;

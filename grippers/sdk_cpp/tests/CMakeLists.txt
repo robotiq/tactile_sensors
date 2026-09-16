@@ -15,6 +15,7 @@ add_executable(grippers_tests
   test_gripper_modbus_client.cpp
   test_byte_packing.cpp
   test_logger.cpp
+  test_platform.cpp
   test_typed_layers.cpp
   test_units.cpp
   test_to_string.cpp
@@ -23,6 +24,7 @@ add_executable(grippers_tests
   test_default_serial.cpp
   test_exchange_period.cpp
   test_std_platform.cpp
+  test_threadx_ticks.cpp
   test_utils.hpp
 )
 
@@ -46,6 +48,10 @@ target_link_libraries(grippers_tests PRIVATE
 target_include_directories(grippers_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/../src
+  # The ThreadX port's tick arithmetic is pure, so it is tested on the host
+  # against the same stub headers the cortex-m55 syntax check uses.
+  ${CMAKE_CURRENT_SOURCE_DIR}/../ports/threadx
+  ${CMAKE_CURRENT_SOURCE_DIR}/../ports/threadx/compile_stub
 )
 include(GoogleTest)
 gtest_discover_tests(grippers_tests)

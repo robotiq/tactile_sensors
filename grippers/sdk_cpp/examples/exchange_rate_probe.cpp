@@ -45,6 +45,10 @@ class TimestampingPlatform final : public Robotiq::Platform
 {
 public:
    std::unique_ptr<Robotiq::Mutex> makeMutex() override { return _real->makeMutex(); }
+   std::unique_ptr<Robotiq::ConditionVariable> makeConditionVariable() override
+   {
+      return _real->makeConditionVariable();
+   }
    std::unique_ptr<Robotiq::Thread> spawn(std::function<void()> fn) override { return _real->spawn(std::move(fn)); }
    void sleepFor(std::chrono::milliseconds duration) override { _real->sleepFor(duration); }
 

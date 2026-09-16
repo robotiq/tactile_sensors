@@ -6,7 +6,7 @@
 //! Not compiled into the SDK: use it from your firmware project with ThreadX
 //! (tx_api.h) on the include path, and pass an instance to Gripper's
 //! platform-taking constructor. Porting to another RTOS means implementing
-//! the same four Platform members over the native primitives — this file is
+//! the same Platform members over the native primitives — this file is
 //! the template.
 //!
 //! Construct after the ThreadX kernel is running (the tx_*_create calls need
@@ -31,6 +31,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -38,6 +39,7 @@
 #include <string>
 #include <utility>
 
+#include "threadx_ticks.hpp"
 #include "tx_api.h"
 
 #include <Robotiq/gripper/platform.hpp>
@@ -66,6 +68,52 @@ public:
 
 private:
    TX_MUTEX _mutex{};
+};
+
+//! \brief ConditionVariable over a counting semaphore and a waiter count,
+//! ThreadX having none of its own.
+//!
+//! A notification is one token per registered waiter, and none is ever lost
+//! because waiters register while they still hold the caller's mutex. The
+//! cost of the emulation is that a waiter which timed out can consume a
+//! leftover token and return early — tolerated, not intended.
+class ThreadXConditionVariable final : public ConditionVariable
+{
+public:
+   ThreadXConditionVariable()
+   {
+      if(tx_semaphore_create(&_semaphore, const_cast<CHAR*>("grippers"), 0u) != TX_SUCCESS)
+      {
+         throw DriverException("tx_semaphore_create failed (is the ThreadX kernel running?)");
+      }
+   }
+
+   ~ThreadXConditionVariable() override { tx_semaphore_delete(&_semaphore); }
+
+   ThreadXConditionVariable(const ThreadXConditionVariable&) = delete;
+   ThreadXConditionVariable& operator=(const ThreadXConditionVariable&) = delete;
+
+   void waitUntil(Mutex& mutex, std::chrono::steady_clock::time_point timePoint) override
+   {
+      _waiters.fetch_add(1);
+      mutex.unlock();
+      // The status is dropped: timed out or notified, the caller re-checks either way.
+      tx_semaphore_get(&_semaphore, detail::blockingTicks(timePoint - std::chrono::steady_clock::now()));
+      _waiters.fetch_sub(1);
+      mutex.lock();
+   }
+
+   void notifyAll() override
+   {
+      for(int pending = _waiters.load(); pending > 0; --pending)
+      {
+         tx_semaphore_put(&_semaphore);
+      }
+   }
+
+private:
+   TX_SEMAPHORE _semaphore{};
+   std::atomic<int> _waiters{0};
 };
 
 class ThreadXThread final : public Thread
@@ -152,6 +200,11 @@ public:
 
    std::unique_ptr<Mutex> makeMutex() override { return std::make_unique<ThreadXMutex>(); }
 
+   std::unique_ptr<ConditionVariable> makeConditionVariable() override
+   {
+      return std::make_unique<ThreadXConditionVariable>();
+   }
+
    std::unique_ptr<Thread> spawn(std::function<void()> fn) override
    {
       return std::make_unique<ThreadXThread>(std::move(fn), _threadStackSize, _threadPriority);
@@ -161,32 +214,23 @@ public:
    // ThreadX tick, and a nonzero wait is rounded up so it never busy-spins.
    void sleepUntil(std::chrono::steady_clock::time_point timePoint) override
    {
-      const auto now = std::chrono::steady_clock::now();
-      if(timePoint <= now)
+      // Branched rather than leaning on tx_thread_sleep(0): whether the
+      // kernel treats that as a no-op or a yield is not worth depending on.
+      if(const ULONG ticks = detail::blockingTicks(timePoint - std::chrono::steady_clock::now()))
       {
-         return;
+         tx_thread_sleep(ticks);
       }
-      tx_thread_sleep(ticksFor(timePoint - now));
    }
 
    void sleepFor(std::chrono::milliseconds duration) override
    {
-      if(duration <= std::chrono::milliseconds::zero())
+      if(const ULONG ticks = detail::blockingTicks(duration))
       {
-         return;
+         tx_thread_sleep(ticks);
       }
-      tx_thread_sleep(ticksFor(duration));
    }
 
 private:
-   static ULONG ticksFor(std::chrono::nanoseconds duration)
-   {
-      const long long ns = duration.count();
-      const long long perSec = TX_TIMER_TICKS_PER_SECOND;
-      const long long ticks = (ns * perSec + 999999999LL) / 1000000000LL;
-      return ticks < 1 ? 1UL : static_cast<ULONG>(ticks);
-   }
-
    ULONG _threadStackSize;
    UINT _threadPriority;
 };

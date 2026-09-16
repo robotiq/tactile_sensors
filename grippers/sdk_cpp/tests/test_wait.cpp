@@ -23,6 +23,7 @@ public:
    int sleeps = 0;
 
    std::unique_ptr<Mutex> makeMutex() override { return nullptr; }
+   std::unique_ptr<ConditionVariable> makeConditionVariable() override { return nullptr; }
    std::unique_ptr<Thread> spawn(std::function<void()>) override { return nullptr; }
    void sleepUntil(std::chrono::steady_clock::time_point) override {}
    void sleepFor(std::chrono::milliseconds) override { ++sleeps; }
