@@ -9,7 +9,16 @@
 typedef char CHAR;
 typedef unsigned int UINT;
 typedef unsigned long ULONG;
+/* Guarded because Windows spells this one as a macro: <windows.h> does
+ * "#define VOID void", which would rewrite the typedef below into
+ * "typedef void void;". The host tests pull in gtest, which pulls in
+ * windows.h, so this header is reached with it already defined. CHAR, UINT
+ * and ULONG need no guard - Windows declares those as identical typedefs,
+ * and repeating a typedef is legal.
+ */
+#ifndef VOID
 typedef void VOID;
+#endif
 
 #define TX_SUCCESS 0x00u
 #define TX_NO_INHERIT 0u

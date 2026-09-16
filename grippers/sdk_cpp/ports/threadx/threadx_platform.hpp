@@ -39,21 +39,13 @@
 #include <string>
 #include <utility>
 
+#include "threadx_ticks.hpp"
 #include "tx_api.h"
 
 #include <Robotiq/gripper/platform.hpp>
 #include <Robotiq/gripper/driver_exception.hpp>
 
 namespace Robotiq::ports {
-namespace detail {
-inline ULONG ticksFor(std::chrono::nanoseconds duration)
-{
-   const long long ns = duration.count();
-   const long long perSec = TX_TIMER_TICKS_PER_SECOND;
-   const long long ticks = (ns * perSec + 999999999LL) / 1000000000LL;
-   return ticks < 1 ? 1UL : static_cast<ULONG>(ticks);
-}
-} // namespace detail
 
 class ThreadXMutex final : public Mutex
 {
@@ -105,9 +97,8 @@ public:
    {
       _waiters.fetch_add(1);
       mutex.unlock();
-      const auto now = std::chrono::steady_clock::now();
       // The status is dropped: timed out or notified, the caller re-checks either way.
-      tx_semaphore_get(&_semaphore, timePoint > now ? detail::ticksFor(timePoint - now) : TX_NO_WAIT);
+      tx_semaphore_get(&_semaphore, detail::blockingTicks(timePoint - std::chrono::steady_clock::now()));
       _waiters.fetch_sub(1);
       mutex.lock();
    }
@@ -223,21 +214,20 @@ public:
    // ThreadX tick, and a nonzero wait is rounded up so it never busy-spins.
    void sleepUntil(std::chrono::steady_clock::time_point timePoint) override
    {
-      const auto now = std::chrono::steady_clock::now();
-      if(timePoint <= now)
+      // Branched rather than leaning on tx_thread_sleep(0): whether the
+      // kernel treats that as a no-op or a yield is not worth depending on.
+      if(const ULONG ticks = detail::blockingTicks(timePoint - std::chrono::steady_clock::now()))
       {
-         return;
+         tx_thread_sleep(ticks);
       }
-      tx_thread_sleep(detail::ticksFor(timePoint - now));
    }
 
    void sleepFor(std::chrono::milliseconds duration) override
    {
-      if(duration <= std::chrono::milliseconds::zero())
+      if(const ULONG ticks = detail::blockingTicks(duration))
       {
-         return;
+         tx_thread_sleep(ticks);
       }
-      tx_thread_sleep(detail::ticksFor(duration));
    }
 
 private:
