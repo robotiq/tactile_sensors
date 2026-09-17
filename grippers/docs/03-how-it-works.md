@@ -1,13 +1,33 @@
 # How it works
 
-At the wire level, Robotiq grippers are controlled by writing commands to, and reading status from, their memory over Modbus RTU. With this SDK, though, you never issue Modbus RTU requests yourself: you call `setCommand()` and `getStatus()`, and the `Gripper` object handles the Modbus RTU exchange with the hardware in the background — a dedicated thread that continuously exchanges FC 0x17 Modbus (read&write) transactions with the gripper, up to ~250 Hz at 115200 baud. That thread is the only thing that directly communicates with the gripper; the C++ driver's design is built around maximizing that communication frequency.
+Robotiq grippers are controlled by writing commands to, and reading status
+from, their memory over Modbus RTU. With this SDK, you never issue Modbus RTU
+requests yourself: you call `setCommand()` and `getStatus()`, and the `Gripper`
+object handles the Modbus RTU exchange with the hardware in the background.
+A thread that continuously exchanges FC 0x17 Modbus (read&write) transactions
+with the gripper, up to ~250 Hz at 115200 baud.
 
-> **Note:** the exchange thread's Modbus protocol layer is
+The C++ driver's design is built around maximizing that communication frequency.
+
+```
+                      ┌───────────────┐                              ┌───────────────┐
+setCommand() ────────►│    Gripper    │         250 Hz loop          │    Gripper    │
+                      │     object    │◄────────────────────────────►│               │
+getStatus() ◄─────────│               │     FC 0x17 read & write     │               │
+                      └───────────────┘                              └───────────────┘
+```
+
+> **Note:**
+>
+> The exchange thread's Modbus protocol layer is
 > [nanoMODBUS](https://github.com/debevv/nanoMODBUS) (vendored under
 > `sdk_cpp/third_party/`, BSD-licensed); on a hosted build, its serial
 > transport is [libserialport](https://sigrok.org/wiki/Libserialport).
 
-Check the gripper user manual on the Robotiq support website if you want to learn more about the gripper's Modbus RTU communication.
+> **Note:**
+>
+> Check the gripper user manual on the Robotiq support website if you want to
+> learn more about the gripper's Modbus RTU communication.
 
 ## Command
 
@@ -29,7 +49,7 @@ The gripper action request byte is a packed bit field.
 |---|---|---|---|---|---|---|
 | Field | reserved | rARD | rATR | rGTO | reserved | rACT |
 
-This SDK translates this into a command with equivalent fields.
+This SDK translates this into a `command` with equivalent fields.
 
 Packed bytes are built using the `set` function and a dedicated enum.
 
@@ -81,7 +101,7 @@ than newtons.
 
 > **Note:**
 > The actual grip force is a function of the speed register, the force
-> register, and the hardness of the fingers and object material. As a
+> register, the hardness of the fingers and object material. As a
 > consequence, the force register cannot be converted into a value in newtons.
 
 <!-- snippet: snippets.cpp si-unit-conversion -->
@@ -91,7 +111,7 @@ namespace units = Robotiq::units;
 
 constexpr double kSpeed = 0.150; // m/s
 constexpr double kOpening = 0.040; // m
-constexpr double kEffort = 0.5; // fraction of maximum force
+constexpr double kEffort = 0.5;
 
 Robotiq::GripperCommand command = Robotiq::GripperCommand::defaults();
 command.speed = units::speedToRegister(kSpeed, k2F85).value();
@@ -103,7 +123,7 @@ double openingMetres = units::openingFromRegister(gripper.getStatus().position, 
 
 These conversions return `std::optional` and yield nothing for a quantity with
 no defensible register value, so `.value()` above is safe only because `k2F85`
-is a well-formed profile — a hand-written profile deserves a check; see
+is a well-formed profile. A hand-written profile deserves a check; see
 `moveTo()` in the [Robust example walkthrough](04-robust-example-walkthrough.md#checking-si-unit-conversions-before-asserting).
 
 ## Status
@@ -203,7 +223,7 @@ uint8_t gCU = status.current;
 
 **kFLT — `Robotiq::ControllerFault`**
 
-The gripper's own instruction manual defers this nibble to "your optional controller manual"; these are the codes reported by the optional Robotiq Universal Controller:
+These are the codes reported by the optional Robotiq Universal Controller:
 
 | Value | Meaning |
 |---|---|
@@ -213,6 +233,17 @@ The gripper's own instruction manual defers this nibble to "your optional contro
 | `CommunicationNotReady` (`0x09`) | Main communication protocol is booting. |
 | `EmergencyStop` (`0x0C`) | Emergency stop engaged. |
 | `Overcurrent` (`0x0E`) | Controller overcurrent protection tripped. |
+
+Example of how to use the object detection value:
+
+<!-- snippet: snippets.cpp status-object-detection-check -->
+```cpp
+Robotiq::ObjectDetection gOBJ = gripper.getStatus().gripperStatus.objectDetection();
+if(gOBJ == Robotiq::ObjectDetection::Moving)
+{
+   // fingers are still moving towards the requested position
+}
+```
 
 ### Human-readable output
 
@@ -228,18 +259,10 @@ Here is an example of what gets printed:
 gACT=1 gGTO=1 gSTA=Complete(0x3) gOBJ=AtRequestedPosition(0x3) gFLT=None(0x0) kFLT=None(0x0) gPR=100 gPO=100 gCU=0
 ```
 
-
-
 ## Gripper-related functions
 
 `Gripper`'s own methods — `setCommand()`, `getStatus()`, `getCommand()`,
 `connectionState()` — are used to set the command or read the status of the gripper.
-
-The local command image doesn't start out empty: it seeds from the
-gripper's own status echoes at construction, before any command is
-sent. Connecting to an already-running gripper therefore never disturbs
-it — `getCommand()` returns that echoed state until your first
-`setCommand()` overwrites it.
 
 > **Warning:** calling `setCommand()` does not necessarily mean the command
 > will effectively be sent to the gripper.
@@ -247,14 +270,14 @@ it — `getCommand()` returns that echoed state until your first
 These functions only read or write a local copy of the gripper's command and
 status blocks, owned by the gripper object. They do not send any Modbus RTU
 command to the gripper. The Modbus RTU communication is managed in the
-background by the gripper object, which runs a continuous communication
-thread with the gripper.
+background by the gripper object.
 
 As a consequence, if you write back-to-back `setCommand()` instructions, only
 the latest one will be taken into account.
 
-As an example, the code below sets an autorelease command and, right after
-that, a move command.
+As an example, the code below sets back to back an autorelease command followed
+by a move command. The autorelease command will be overwritten by the move
+command without taking effect.
 
 <!-- snippet: snippets.cpp autorelease-then-move -->
 ```cpp
@@ -271,20 +294,7 @@ gripper.setCommand(command);
 
 > **Note :**
 > Note that the same command object is used for the second setCommand. This
-> retains the previously set parameters.
-
-If the autorelease command is effectively sent to the gripper, the gripper will
-execute the autorelease, which has the effect of opening or closing the gripper
-and deactivating it. As a consequence, it is not possible to move the
-gripper after the autorelease.
-
-Looking at this code, you may think that the second command, asking for the
-gripper to move to position 100, will probably not be executed, but in fact it
-will be. The first `setCommand()` writes the autorelease command to the local
-copy of the command block, and it is immediately followed by another
-`setCommand()` which rewrites the local copy before it is effectively sent to
-the gripper. The consequence is that the autorelease command is not sent to the
-gripper, and the move command is executed instead.
+> is good practice to retain the previously set parameters.
 
 To have the autorelease command effectively sent to the gripper, it is
 necessary to wait for the gripper to acknowledge reception of the command
@@ -325,11 +335,17 @@ bool settled = Robotiq::waitFor(
    10s);
 ```
 
+In some cases, it helps to wait for a given gripper state before moving to the next
+instruction (wait for the gripper to acknowledge a command, wait for the
+gripper to complete its motion, ...).
+
 ### Activating the gripper
 
-Before sending motion commands, the gripper must be activated once.
-`activate()` is a blocking function that runs the activation handshake
-(or waits out one already in progress):
+Before sending motion commands, the gripper must be activated once. During
+the activation process the gripper fully opens and closes to detect its
+extreme positions.
+
+`activate()` runs the activation handshake:
 
 <!-- snippet: snippets.cpp activate-only -->
 ```cpp
@@ -349,21 +365,18 @@ tracking activation state yourself.
 
 ### Recovering from a fault
 
-If `activate()` returns `FaultLatched`, or a `Major` fault shows up
-later during operation (see [Error handling](#error-handling) below),
-call `Robotiq::recoverFromFault()`:
+`Robotiq::recoverFromFault()` is used to recover the gripper from a major fault
+(see [Error handling](#error-handling) below).
 
 <!-- snippet: snippets.cpp recover-from-fault-only -->
 ```cpp
 Robotiq::ActivationResult result = Robotiq::recoverFromFault(gripper);
 ```
 
-`recoverFromFault()` clears the activation bit (rACT) — which resets
-the gripper and clears its fault status — then sets it back to rerun
-the activation handshake, blocking until it completes.
+`recoverFromFault()` resets the gripper and reruns the activation handshake.
 
-> **Warning:** this releases any grip and sweeps the fingers through
-> their full range.
+> **Warning:** As the gripper opens and closes during the activation process,
+> any object inside it will be released.
 
 ## Error handling
 
@@ -508,10 +521,9 @@ health, independently of anything your own code does:
 - `Info` when the link recovers and `connectionState()` returns to
   `Operational`.
 
-Passing your own `Logger` (e.g. one that forwards to `rclcpp` in a
-ROS 2 node, or writes to a UART on an embedded target) lets you route
+Passing your own `Logger` lets you route
 these lines — and your own application's — through one sink instead of
 two independently-timed sources that could interleave confusingly, the
 same pattern
-[`move_gripper.cpp` uses](04-robust-example-walkthrough.md#sharing-one-logger)
+[`move_gripper.cpp` uses](04-robust-example-walkthrough.md#naming-the-loggers)
 for its own narration.

@@ -40,11 +40,8 @@ if(parsed < kMinBaudrate || parsed > kMaxBaudrate)
 }
 ```
 
-The lower bound isn't just documentation-by-example: `std::stoul("-1")`
-doesn't throw, it silently wraps around to a huge unsigned value.
-Without the `< kMinBaudrate` check, a typo'd negative baudrate would
-sail past `std::stoul` and only fail (or misbehave) much later, further
-from the actual mistake.
+The lower bound matters: `std::stoul("-1")` doesn't throw — it silently
+wraps to a huge unsigned value that the `< kMinBaudrate` check catches.
 
 ## Reporting a failed connection
 
@@ -98,10 +95,9 @@ they're there: a reader (or a log aggregator) can tell the SDK's own
 diagnostic lines apart from the example's own progress messages, instead
 of both landing unlabeled and easy to confuse with each other.
 
-## Handling a latched fault at activation
+## Handling a fault at activation
 
-Quick start's activation note shows how to force a gripper into a
-deactivated state. `move_gripper.cpp` instead handles the case where
+`move_gripper.cpp` handles the case where
 activation can't proceed at all because a fault is already latched:
 
 <!-- snippet: move_gripper.cpp activation-recovery -->
@@ -125,13 +121,6 @@ if(activation != ActivationResult::Activated && activation != ActivationResult::
 }
 ```
 
-The SDK never calls `recoverFromFault()` for you implicitly, because it
-releases any grip and sweeps the fingers through their full range —
-motion the caller needs to expect. Falling through to `EXIT_FAILURE`
-when the result is neither `Activated` nor `AlreadyActive` also
-catches a `Timeout` from either call, which a check for `FaultLatched`
-alone would miss.
-
 ## Checking SI unit conversions before asserting
 
 In `main()`, the speed and force conversions are checked before use:
@@ -148,7 +137,6 @@ if(!speed || !force)
 command.speed = *speed;
 command.force = *force;
 ```
-
 
 `moveTo()` does the same for the opening it's asked to reach:
 
@@ -220,9 +208,3 @@ if(!Robotiq::waitFor([&] { return motionSettled(gripper); }, 5s))
    actual completion: either the gripper reached the requested
    position, or it stopped early on a detected object. A timeout here
    fails the move.
-
-`command` itself is kept as one persistent `GripperCommand` across
-both moves in `main()` (built once via `GripperCommand::defaults()`,
-then mutated by each `moveTo()` call) rather than rebuilt from scratch
-per move, since only `positionRequest` and the `GoTo` bit actually
-change between them.

@@ -4,10 +4,13 @@
 📖 Full documentation: https://robotiq.github.io/docs/drivers/2F%20hande/SDK/C++/
 <!-- /docs-site:exclude -->
 
-The 2F-85, 2F-140 and Hand-E share one Modbus register map, so `Gripper` and
-the register blocks speak to all of them unchanged; the model enters only in
-the SI unit scaling, through a `DeviceProfile`. Hardware validation to date is
-on a 2F-85.
+C++ driver with functions to control `Robotiq` Adaptive Grippers: 2F85, 2F140 and Hand-E. It allows high communication frequency.
+
+> **Note:**
+> With the default baudrate of the gripper the maximum achievable communication
+> frequency is 250Hz. The communication frequency is set with the
+> `ConnectionConfig::connectionFrequency` parameter, which defaults to 100Hz.
+
 Cross-platform: Linux, Windows, macOS — and freestanding/RTOS targets such
 as STM32 microcontrollers.
 
@@ -20,8 +23,6 @@ as STM32 microcontrollers.
 - [How it works](docs/03-how-it-works.md)
 - [Robust example walkthrough](docs/04-robust-example-walkthrough.md)
 - [Embedded / bare-metal builds](docs/05-embedded-builds.md).
-
-<!-- /docs-site:exclude -->
 
 ## Feature requests and bug reports
 Submit here:
@@ -63,3 +64,5 @@ PickNik Robotics'
 [ros2_robotiq_gripper](https://github.com/PickNikRobotics/ros2_robotiq_gripper)
 driver (BSD-3-Clause), whose original copyright notices are preserved in the
 affected files, with the full history preserved in git.
+
+<!-- /docs-site:exclude -->
