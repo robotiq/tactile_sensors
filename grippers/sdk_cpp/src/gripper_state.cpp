@@ -6,7 +6,6 @@
 
 #include <algorithm>
 #include <memory>
-#include <mutex> // std::lock_guard — available even where std::mutex is not
 #include <string>
 #include <utility>
 
@@ -20,16 +19,6 @@ constexpr uint64_t kFaultThreshold = 3;
 //! Initial _status-read attempts before construction fails.
 constexpr uint64_t kInitialReadAttempts = 3;
 
-std::unique_ptr<ConditionVariable> checkedConditionVariable(Platform& platform)
-{
-   auto condition = platform.makeConditionVariable();
-   if(!condition)
-   {
-      throw DriverException("a Platform returned a null ConditionVariable — GripperSync has nothing to "
-                            "wait on");
-   }
-   return condition;
-}
 } // namespace
 
 GripperState::GripperState(std::unique_ptr<Serial> serial,
@@ -41,8 +30,7 @@ GripperState::GripperState(std::unique_ptr<Serial> serial,
    , _platform(std::move(os))
    , _client(std::move(serial), slaveAddress, _logger)
    , _period(exchangePeriod)
-   , _imageMutex(_platform->makeMutex())
-   , _statusRefreshed(checkedConditionVariable(*_platform))
+   , _image(*_platform)
 {
 }
 
@@ -76,23 +64,17 @@ void GripperState::initializeImage()
       }
    }
 
-   const std::lock_guard<Mutex> lock(*_imageMutex);
-   _status = fresh;
-   _statusTimestamp = std::chrono::steady_clock::now();
-   _command = GripperCommand::defaults();
-   _command.action.set(ActionRequestBit::Activate, fresh.gripperStatus.activated());
-   _command.action.set(ActionRequestBit::GoTo, fresh.gripperStatus.goToEnabled());
-   _command.positionRequest = fresh.positionRequestEcho;
+   GripperCommand command = GripperCommand::defaults();
+   command.action.set(ActionRequestBit::Activate, fresh.gripperStatus.activated());
+   command.action.set(ActionRequestBit::GoTo, fresh.gripperStatus.goToEnabled());
+   command.positionRequest = fresh.positionRequestEcho;
+   _image.seed(fresh, std::chrono::steady_clock::now(), command);
    _connectionState.store(ConnectionState::Operational);
 }
 
 void GripperState::exchangeOnce()
 {
-   GripperCommand commandCopy;
-   {
-      const std::lock_guard<Mutex> lock(*_imageMutex);
-      commandCopy = _command;
-   }
+   const GripperCommand commandCopy = _image.command();
 
    GripperStatus freshStatus;
    std::chrono::steady_clock::time_point completedAt;
@@ -115,15 +97,7 @@ void GripperState::exchangeOnce()
       throw;
    }
 
-   {
-      const std::lock_guard<Mutex> lock(*_imageMutex);
-      _status = freshStatus;
-      _statusTimestamp = completedAt;
-      ++_exchangeCount;
-   }
-   // Notified with the lock dropped: waiters registered under it, so
-   // none can miss this, and the cycle never queues behind one.
-   _statusRefreshed->notifyAll();
+   _image.publish(freshStatus, completedAt);
    _consecutiveFailures.store(0);
    if(_connectionState.exchange(ConnectionState::Operational) == ConnectionState::Faulted)
    {
@@ -162,32 +136,28 @@ void GripperState::start()
 
 void GripperState::setCommand(const GripperCommand& command)
 {
-   const std::lock_guard<Mutex> lock(*_imageMutex);
-   _command = command;
+   _image.setCommand(command);
 }
 
 GripperCommand GripperState::command() const
 {
-   const std::lock_guard<Mutex> lock(*_imageMutex);
-   return _command;
+   return _image.command();
 }
 
 GripperStatus GripperState::status() const
 {
-   const std::lock_guard<Mutex> lock(*_imageMutex);
-   return _status;
+   return _image.status();
 }
 
 StampedStatus GripperState::stampedStatus() const
 {
-   const std::lock_guard<Mutex> lock(*_imageMutex);
-   return {_exchangeCount, _status, _statusTimestamp};
+   return _image.stampedStatus();
 }
 
 void GripperState::stop() noexcept
 {
    _running.store(false);
-   _statusRefreshed->notifyAll();
+   _image.wakeAll();
    if(_exchangeThread)
    {
       _exchangeThread->join();

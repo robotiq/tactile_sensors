@@ -2,9 +2,9 @@
 //
 // Licensed under the BSD-3-Clause license; see LICENSE for details.
 
-//! \brief Internal: the link, the exchange thread and the process image
-//! behind Gripper. Owns the image lock, so no caller has to know there is
-//! one — reaching past it would be a data race waiting to happen.
+//! \brief Internal: the link and the exchange thread behind Gripper, driving
+//! a ProcessImage. The image owns its own lock, so nothing here reaches past
+//! it — see process_image.hpp.
 
 #pragma once
 
@@ -21,6 +21,8 @@
 #include <Robotiq/gripper/status.hpp>
 #include <Robotiq/detail/throttle.hpp>
 #include <Robotiq/gripper/modbus_client.hpp>
+
+#include "process_image.hpp"
 
 namespace Robotiq::detail {
 
@@ -65,13 +67,8 @@ private:
    detail::Throttle _failureLogThrottle{std::chrono::milliseconds(1000)};
    std::chrono::microseconds _period;
 
-   const std::unique_ptr<Mutex> _imageMutex;
-   GripperCommand _command{};
-   GripperStatus _status{};
+   ProcessImage _image;
 
-   const std::unique_ptr<ConditionVariable> _statusRefreshed;
-   std::chrono::steady_clock::time_point _statusTimestamp{};
-   uint64_t _exchangeCount = 0;
    std::atomic<ConnectionState> _connectionState{ConnectionState::Connecting};
    std::atomic<bool> _running{false};
    // 32-bit: a 64-bit atomic needs __atomic_*_8 (no native 8-byte atomic on a
