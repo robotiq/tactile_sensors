@@ -126,7 +126,7 @@ rerun the command above to confirm.
   driven by `docSnippetsCheck` in `scripts/external-jobs.js`), so a stale
   example fails the site's build too, not just this repo's CI. See
   "Verifying markdown code examples against real source" in that repo's
-  `docs/contribute.mdx` for the full story, including how another tool repo
+  `docs/contribute/api-reference-cpp.mdx` for the full story, including how another tool repo
   can adopt this same pattern (`templates/check_doc_snippets.py` there is
   the copy-pasteable starting point).
 

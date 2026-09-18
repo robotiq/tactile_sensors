@@ -107,6 +107,17 @@ StatusFields statusGripperStatusFields(Robotiq::Gripper& gripper)
    return {gOBJ, gSTA, gGTO, gACT, kFLT, gFLT, gPR, gPO, gCU};
 }
 
+void objectDetectionCheck(Robotiq::Gripper& gripper)
+{
+   //! [status-object-detection-check]
+   Robotiq::ObjectDetection gOBJ = gripper.getStatus().gripperStatus.objectDetection();
+   if(gOBJ == Robotiq::ObjectDetection::Moving)
+   {
+      // fingers are still moving towards the requested position
+   }
+   //! [status-object-detection-check]
+}
+
 double siUnitConversion(Robotiq::Gripper& gripper)
 {
    //! [si-unit-conversion]
@@ -115,7 +126,7 @@ double siUnitConversion(Robotiq::Gripper& gripper)
 
    constexpr double kSpeed = 0.150; // m/s
    constexpr double kOpening = 0.040; // m
-   constexpr double kEffort = 0.5; // fraction of maximum force
+   constexpr double kEffort = 0.5;
 
    Robotiq::GripperCommand command = Robotiq::GripperCommand::defaults();
    command.speed = units::speedToRegister(kSpeed, k2F85).value();

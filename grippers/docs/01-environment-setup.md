@@ -22,28 +22,46 @@ git submodule add https://github.com/robotiq/grippers third_party/grippers
 
 This creates a folder named "grippers" inside the "third_party" folder of your project.
 
-Check out the latest release so you build against a stable, tagged
-version rather than the tip of `main`:
+Check out the latest release (Linux) :
 
 ```bash
-git -C third_party/grippers checkout v1.0.0
+# 1. Navigate into the submodule
+cd third_party/grippers
+
+# 2. Fetch all the latest release tags
+git fetch --tags
+
+# 3. Find the most recent tag and save it to a variable
+LATEST_TAG=$(git describe --tags $(git rev-list --tags --max-count=1))
+
+# 4. Check out that specific version
+git checkout $LATEST_TAG
 ```
 
-Track `main` instead only if you need an unreleased fix or feature —
-in that case pin to an exact commit rather than floating on the branch.
+Check out the latest release (Windows) :
 
-Then wire it into your own `CMakeLists.txt`:
-
-```cmake
-add_subdirectory(third_party/grippers/sdk_cpp)
-target_link_libraries(your_app PRIVATE Robotiq::grippers)
+```PowerShell
+cd third_party\grippers
+git fetch --tags
+$LatestTag = git tag --sort=-v:refname | Select-Object -First 1
+git checkout $LatestTag
 ```
+
+> **Note:**
+>
+> You can later on update the checkout version.
+>
+> ```sh
+> cd third_party/grippers
+> git fetch
+> git checkout <new-tag-or-commit>
+> cd ../..
+> git add third_party/grippers
+> ```
 
 The SDK's own `CMakeLists.txt` also exposes a few build-configuration
-options (`GRIPPERS_HOSTED`, `GRIPPERS_BUILD_DEFAULT_SERIAL`, …); the
-defaults are right for a normal desktop build, so you only need to look
-at [CMake options](#cmake-options) below if you're consuming the SDK
-differently — e.g. on a target with no hosted C++ runtime.
+options; the defaults are right for a normal desktop build — see
+[CMake options](#cmake-options) below if you need something different.
 
 ## Compilation environment
 
@@ -67,15 +85,9 @@ brew install libserialport           # macOS
 
 ### Windows
 
-Because the C++ driver uses the libserialport library, compiling it on
-Windows is more difficult. libserialport supports Windows natively, but
-it uses a Linux-style build system (autotools) that's awkward to set up
-directly on Windows. The trick is to use MSYS2, which provides a
-Linux-like terminal and a prebuilt Windows-native toolchain (GCC,
-CMake, Ninja) so you can build against it directly, without touching
-autotools yourself.
-
-MSYS2 is a Windows distribution of Unix tooling with pacman (the Arch Linux package manager) and a large repository of prebuilt native libraries.
+On Windows the libserialport library used by the C++ driver requires using
+MSYS2 for its compilation. MSYS2 is a Linux-like terminal which can run GCC,
+CMake and Ninja.
 
 1. Install MSYS2 from [msys2.org](https://www.msys2.org)
    (or `winget install MSYS2.MSYS2`).
@@ -83,37 +95,67 @@ MSYS2 is a Windows distribution of Unix tooling with pacman (the Arch Linux pack
 3. Install the toolchain and dependencies:
 
    ```sh
+   # Synchronize package databases and upgrade all installed packages to their
+   # latest versions
    pacman -Syu
-   pacman -S --needed mingw-w64-ucrt-x86_64-gcc \
-             mingw-w64-ucrt-x86_64-cmake \
-             mingw-w64-ucrt-x86_64-ninja \
-             mingw-w64-ucrt-x86_64-libserialport \
-             mingw-w64-ucrt-x86_64-gdb
+
+   # Install the core development tools for the 64-bit UCRT
+   # (Universal C Runtime) environment, skipping any packages that are already
+   # up to date (--needed)
+   pacman -S --needed \
+            mingw-w64-ucrt-x86_64-gcc \
+            mingw-w64-ucrt-x86_64-cmake \
+            mingw-w64-ucrt-x86_64-ninja \
+            mingw-w64-ucrt-x86_64-libserialport \
+            mingw-w64-ucrt-x86_64-gdb
    ```
-4. You will be prompted to close the shell to complete the install. Close it.
 
 ## Compile from the terminal
 
-Once the SDK is wired into your `CMakeLists.txt`, configuring and building is
-the same CMake invocation on every platform, from your project's root:
+```cmake
+# 1. Define the minimum version of CMake required to build this project
+cmake_minimum_required(VERSION 3.16)
+
+# 2. Name your project and specify it uses C++
+project(RobotiqGripperApp LANGUAGES CXX)
+
+# 3. Force C++17 standard (standard practice for modern SDKs)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# 4. Include the third-party gripper library directory
+add_subdirectory(third_party/grippers/sdk_cpp)
+
+# 5. Tell CMake to create your executable program ("your_app") from main.cpp
+add_executable(your_app main.cpp)
+
+# 6. Link the gripper library to your executable
+target_link_libraries(your_app PRIVATE Robotiq::grippers)
+```
+
+CMake can then be called from your project's root:
 
 ```sh
+# 1. Configure the build system
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+# 2. Compile/build the project using all available CPU cores
 cmake --build build -j
 ```
 
-**Windows**: run these commands from the **MSYS2 UCRT64** shell (Start
-menu) — that's what puts `cmake`, `ninja`, and `gcc` on `PATH` (see
-[Windows](#windows) above for installing that toolchain). Pass an
-explicit generator, since `cmake` outside a Visual Studio environment
-doesn't reliably pick Ninja on its own:
+> **Windows**: run from the **MSYS2 UCRT64** shell (Start menu), replacing
+> step 1 above with:
+> 
+> ```sh
+> cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+> ```
+>
+> Step 2 (`cmake --build build -j`) is unchanged.
 
-```sh
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-```
+Your application will then be compiled and you will be able to launch it
+passing whatever arguments your own application expects:
 
-Then run the built binary directly, passing whatever arguments your
-own application expects (e.g. the serial port):
+Example:
 
 ```sh
 ./build/your_app /dev/ttyUSB0        # Linux/macOS
@@ -125,10 +167,12 @@ own application expects (e.g. the serial port):
 1. Install the **C/C++** and **CMake Tools** extensions (both
    publisher `ms-vscode`).
 2. **Windows only** — as mentioned above, you need the MSYS2 GCC
-   toolchain, since libserialport ships no MSVC package. Register a
-   compilation kit once via Command Palette → **CMake: Edit User-Local
-   CMake Kits**, so it's offered in every workspace on your machine:
+   toolchain.
 
+   Register a compilation kit once via Command Palette →
+   **CMake: Edit User-Local CMake Kits**, so it's offered in every
+   workspace on your machine:
+   
    ```json
    {
      "name": "MSYS2 UCRT64 GCC",
@@ -145,49 +189,34 @@ own application expects (e.g. the serial port):
    }
    ```
 
-   Together these settings produce a fully static executable:
-   `SERIALPORT_LIBRARY` points at libserialport's static archive instead
-   of its `.dll`, and `-static -static-libgcc -static-libstdc++`
-   statically links the C/C++ runtime too — without that second part
-   you'd still need MSYS2's own `libstdc++`/`libgcc` DLLs at runtime
-   even with libserialport itself linked statically. That's what lets
-   what you build run on any Windows machine with no MSYS2 or its DLLs
-   installed.
 3. Command Palette → **CMake: Select a Kit**.
    On Windows, pick the **MSYS2 UCRT64 GCC** kit registered above.
    On Linux/macOS, pick whichever kit CMake Tools finds for your system compiler.
 4. **CMake: Configure**, then **CMake: Build** (or the matching buttons
    in the status bar at the bottom of the window).
 5. To run your own target, once it's built: select it as the active
-   target in the status bar's target picker (this also happens
-   automatically the first time you build it), then click **Run** (▷)
-   in the status bar, or open a terminal and run the built `.exe`
-   directly. Either way, if your program takes arguments (e.g. a
-   serial port like `COM3`), set them once in `cmake.debugConfig.args`
-   in your own `.vscode/settings.json` (`.vscode/` is gitignored except
-   for `extensions.json`, so this file is yours alone — create it if it
-   doesn't exist yet) and the status bar's Run/Debug buttons will pass
-   them automatically.
+   target in the status bar's target picker, then click **Run** (▷)
+   in the status bar, or open a terminal and run the built executable
+   directly.
+   
+   If your program takes arguments (e.g. a serial port like `COM3`), set them
+   once in `cmake.debugConfig.args` in your own `.vscode/settings.json`
+   and the status bar's Run/Debug buttons will pass them automatically.
 
-You can develop and test without a physical gripper at all: call
-[`makeFakeGripper()`](../sdk_cpp/include/Robotiq/gripper/fake/gripper_factory.hpp)
-instead of constructing a `Gripper` from a `ConnectionConfig` — same API
-from there on, so swapping in a real gripper later is a one-line change.
+   ```json
+   {
+      "cmake.debugConfig.args": [
+         "COM3"
+         // "/dev/ttyUSB0"
+      ]
+   }
+   ```
 
-## Updating the SDK later
+> **Note:**
+> You can develop and test without a physical gripper using a fake gripper
+> object — see [Without a gripper](03-how-it-works.md#without-a-gripper).
 
-Update the submodule pointer to the new commit or tag, then rebuild —
-no separate reinstall step:
-
-```sh
-cd third_party/grippers
-git fetch
-git checkout <new-tag-or-commit>
-cd ../..
-git add third_party/grippers
-```
-
-## Serial port notes
+## Serial port settings
 
 - **Linux**: add yourself to the `dialout` group for `/dev/ttyUSB*` access:
 
@@ -195,12 +224,13 @@ git add third_party/grippers
   sudo usermod -aG dialout $USER
   ```
   Log out and back in (or reboot) for the new group membership to take
-  effect — it's read when your login session starts, so a new terminal
-  alone isn't enough. Without it, opening the port fails with a
-  permission error even though the device shows up in `/dev`.
-  The SDK sets the FTDI `latency_timer` to 1 ms automatically when it has
-  permission (the kernel default of 16 ms triples Modbus latency); for
-  unprivileged use, ship a udev rule that sets it at plug time.
+  effect.
+
+  > **Warning:**
+  >
+  > The SDK sets the FTDI `latency_timer` to 1 ms automatically when it has
+  > permission (the kernel default of 16 ms triples Modbus latency); for
+  > unprivileged use, ship a udev rule that sets it at plug time.
 - **Windows**: the FTDI latency timer is a driver setting (Device Manager →
   COM port → Port Settings → Advanced → Latency Timer); set it to 1 ms for
   high-rate control.
@@ -212,8 +242,8 @@ git add third_party/grippers
   driver in System Settings → Privacy & Security and make sure it — not
   Apple's built-in FTDI driver — binds your adapter (`kextstat | grep -i ftdi`).
   Otherwise ~60 Hz is the ceiling on the default driver.
-  **Unproven:** this procedure hasn't been verified on real hardware; if you
-  try it, please report back with what worked (or didn't).
+  > **Unproven:** this procedure hasn't been verified on real hardware; if you
+  > try it, please report back with what worked (or didn't).
 - Factory-default link settings: 115200 baud, 8N1, Modbus slave 0x09.
 - Port naming: `/dev/ttyUSB0` on Linux, `COM3` on Windows,
   `/dev/tty.usbserial-XXXX` on macOS.
