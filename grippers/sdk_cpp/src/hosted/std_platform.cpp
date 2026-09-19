@@ -115,7 +115,7 @@ public:
       _condition.wait_until(lockable, timePoint);
    }
 
-   void notifyAll() override { _condition.notify_all(); }
+   void notifyAll() noexcept override { _condition.notify_all(); }
 
 private:
    struct LockableMutex
