@@ -42,7 +42,10 @@ void ProcessImage::seed(const GripperStatus& status,
                         const GripperCommand& command)
 {
    const std::lock_guard<Mutex> lock(*_mutex);
-   _stamped = {0, status, at};
+   _stamped.metadata.exchangeCount = 0;
+   _stamped.metadata.timestamp = at;
+   _stamped.command = command;
+   _stamped.status = status;
    _command = command;
 }
 
@@ -64,25 +67,30 @@ GripperStatus ProcessImage::status() const
    return _stamped.status;
 }
 
-StampedStatus ProcessImage::stampedStatus() const
+StampedExchange ProcessImage::stampedExchange() const
 {
    const std::lock_guard<Mutex> lock(*_mutex);
    return _stamped;
 }
 
-void ProcessImage::publish(const GripperStatus& status, std::chrono::steady_clock::time_point completedAt)
+void ProcessImage::publish(const GripperCommand& command,
+                           const GripperStatus& status,
+                           std::chrono::steady_clock::time_point completedAt)
 {
    {
       const std::lock_guard<Mutex> lock(*_mutex);
-      _stamped = {_stamped.exchangeCount + 1, status, completedAt};
+      ++_stamped.metadata.exchangeCount;
+      _stamped.metadata.timestamp = completedAt;
+      _stamped.command = command;
+      _stamped.status = status;
    }
    _statusRefreshed->notifyAll();
 }
 
-StampedStatus ProcessImage::sync(uint64_t count, std::chrono::steady_clock::time_point deadline) const
+StampedExchange ProcessImage::sync(uint64_t count, std::chrono::steady_clock::time_point deadline) const
 {
    const std::lock_guard<Mutex> lock(*_mutex);
-   while(_stamped.exchangeCount <= count && !_closed && std::chrono::steady_clock::now() < deadline)
+   while(_stamped.metadata.exchangeCount <= count && !_closed && std::chrono::steady_clock::now() < deadline)
    {
       _statusRefreshed->waitUntil(*_mutex, deadline);
    }

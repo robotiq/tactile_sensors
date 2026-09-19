@@ -16,6 +16,7 @@
 #include <Robotiq/gripper/connection_state.hpp>
 #include <Robotiq/gripper/logger.hpp>
 #include <Robotiq/gripper/command.hpp>
+#include <Robotiq/gripper/stamped_exchange.hpp>
 #include <Robotiq/gripper/status.hpp>
 #include <Robotiq/gripper/to_string.hpp>
 #include <Robotiq/gripper/wait.hpp>
@@ -96,6 +97,9 @@ public:
    //! \return A snapshot of the gripper's last received status block.
    [[nodiscard]] GripperStatus getStatus() const;
 
+   //! \return The most recent stamped exchange.
+   [[nodiscard]] StampedExchange getMostRecentStampedExchange() const;
+
    //! \brief Block until an exchange completes or a timeout occurs.
    //!
    //! This form is typically used to wait for an event to occur, such as
@@ -103,7 +107,7 @@ public:
    //! \param timeout How long to wait; 30 s by default.
    //! \return The first exchange completed after the call — the latest, if
    //!         several did; empty when \p timeout elapsed first.
-   [[nodiscard]] std::optional<StampedStatus> waitForExchange(
+   [[nodiscard]] std::optional<StampedExchange> waitForExchange(
       std::chrono::milliseconds timeout = std::chrono::seconds(30)) const;
 
    //! \overload
@@ -115,7 +119,7 @@ public:
    //! \param timeout How long to wait; 30 s by default.
    //! \return The latest exchange once the count is reached; empty when
    //!         \p timeout elapsed first.
-   [[nodiscard]] std::optional<StampedStatus> waitForExchange(
+   [[nodiscard]] std::optional<StampedExchange> waitForExchange(
       uint64_t desiredExchangeCount,
       std::chrono::milliseconds timeout = std::chrono::seconds(30)) const;
 

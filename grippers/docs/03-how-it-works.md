@@ -17,6 +17,14 @@ getStatus() ◄─────────│               │     FC 0x17 read
                       └───────────────┘                              └───────────────┘
 ```
 
+Each completed exchange leaves a record, `StampedExchange`: the command
+block it wrote, the status block it read back, and the count and instant
+that name it. `getMostRecentStampedExchange()` returns the latest;
+`waitForExchange()` blocks until the next one completes and returns it,
+so a control loop can run in step with the cycle, acting on every
+exchange exactly once. Asking it for one past the exchange last acted on
+makes a loop that fell behind catch up on the newest at once.
+
 > **Note:**
 >
 > The exchange thread's Modbus protocol layer is

@@ -74,16 +74,21 @@ GripperStatus Gripper::getStatus() const
    return _impl->status();
 }
 
-std::optional<StampedStatus> Gripper::waitForExchange(std::chrono::milliseconds timeout) const
+StampedExchange Gripper::getMostRecentStampedExchange() const
 {
-   return waitForExchange(_impl->stampedStatus().exchangeCount + 1, timeout);
+   return _impl->stampedExchange();
 }
 
-std::optional<StampedStatus> Gripper::waitForExchange(uint64_t desiredExchangeCount,
-                                                      std::chrono::milliseconds timeout) const
+std::optional<StampedExchange> Gripper::waitForExchange(std::chrono::milliseconds timeout) const
 {
-   const StampedStatus fresh = _impl->waitForExchange(desiredExchangeCount, deadlineAfter(timeout));
-   if(fresh.exchangeCount < desiredExchangeCount)
+   return waitForExchange(_impl->stampedExchange().metadata.exchangeCount + 1, timeout);
+}
+
+std::optional<StampedExchange> Gripper::waitForExchange(uint64_t desiredExchangeCount,
+                                                        std::chrono::milliseconds timeout) const
+{
+   const StampedExchange fresh = _impl->waitForExchange(desiredExchangeCount, deadlineAfter(timeout));
+   if(fresh.metadata.exchangeCount < desiredExchangeCount)
    {
       // timeout or dead gripper
       return std::nullopt;

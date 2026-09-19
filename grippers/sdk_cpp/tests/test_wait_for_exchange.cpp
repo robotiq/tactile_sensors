@@ -14,6 +14,7 @@
 #include <Robotiq/gripper.hpp>
 #include <Robotiq/gripper/fault_status.hpp>
 #include <Robotiq/gripper/platform.hpp>
+#include <Robotiq/gripper/stamped_exchange.hpp>
 #include <Robotiq/gripper/status.hpp>
 
 #include "fake_gripper_fixture.hpp"
@@ -67,7 +68,7 @@ TEST_F(TestWaitForExchange, a_wait_for_a_count_returns_an_exchange_that_reached_
    // Activated first: the fake, like the gripper, only latches a fault
    // while rACT is set.
    ASSERT_EQ(activate(gripper, kWait), ActivationResult::Activated);
-   const std::optional<StampedStatus> before = gripper.waitForExchange(kWait);
+   const std::optional<StampedExchange> before = gripper.waitForExchange(kWait);
    ASSERT_TRUE(before.has_value());
    ASSERT_EQ(before->status.faultStatus.gripperFault(), GripperFault::None);
 
@@ -78,24 +79,64 @@ TEST_F(TestWaitForExchange, a_wait_for_a_count_returns_an_exchange_that_reached_
                        std::chrono::milliseconds(1)));
 
    // Asking for one past the count acted on returns the exchange that carries it.
-   const std::optional<StampedStatus> after = gripper.waitForExchange(before->exchangeCount + 1, kWait);
+   const std::optional<StampedExchange> after = gripper.waitForExchange(before->metadata.exchangeCount + 1, kWait);
    ASSERT_TRUE(after.has_value());
    EXPECT_EQ(after->status.faultStatus.gripperFault(), GripperFault::Overcurrent);
-   EXPECT_GT(after->exchangeCount, before->exchangeCount);
+   EXPECT_GT(after->metadata.exchangeCount, before->metadata.exchangeCount);
 }
 
 TEST_F(TestWaitForExchange, timestamps_advance_with_the_cycle_count)
 {
-   std::optional<StampedStatus> previous = gripper.waitForExchange(kWait);
+   std::optional<StampedExchange> previous = gripper.waitForExchange(kWait);
    ASSERT_TRUE(previous.has_value());
    for(int wake = 0; wake < 5; ++wake)
    {
-      const std::optional<StampedStatus> stamped = gripper.waitForExchange(previous->exchangeCount + 1, kWait);
+      const std::optional<StampedExchange> stamped =
+         gripper.waitForExchange(previous->metadata.exchangeCount + 1, kWait);
       ASSERT_TRUE(stamped.has_value()) << "wake " << wake;
-      EXPECT_GT(stamped->exchangeCount, previous->exchangeCount) << "wake " << wake;
-      EXPECT_GT(stamped->timestamp, previous->timestamp) << "wake " << wake;
+      EXPECT_GT(stamped->metadata.exchangeCount, previous->metadata.exchangeCount) << "wake " << wake;
+      EXPECT_GT(stamped->metadata.timestamp, previous->metadata.timestamp) << "wake " << wake;
       previous = stamped;
    }
+}
+
+TEST_F(TestWaitForExchange, the_most_recent_exchange_has_a_usable_timestamp_from_the_start)
+{
+   // The seeding read stamps the first record, not a zero clock: a derived
+   // parameter seeded from it starts with a usable interval.
+   const StampedExchange stamped = gripper.getMostRecentStampedExchange();
+   EXPECT_GT(stamped.metadata.timestamp, std::chrono::steady_clock::time_point{});
+   EXPECT_LE(stamped.metadata.timestamp, std::chrono::steady_clock::now());
+}
+
+TEST_F(TestWaitForExchange, the_most_recent_exchange_is_never_behind_the_one_a_wait_returned)
+{
+   const std::optional<StampedExchange> woke = gripper.waitForExchange(kWait);
+   ASSERT_TRUE(woke.has_value());
+   EXPECT_GE(gripper.getMostRecentStampedExchange().metadata.exchangeCount, woke->metadata.exchangeCount);
+}
+
+TEST_F(TestWaitForExchange, an_exchange_pairs_the_command_it_wrote_with_the_status_that_answered_it)
+{
+   ASSERT_EQ(activate(gripper, kWait), ActivationResult::Activated);
+   GripperCommand command = GripperCommand::defaults();
+   command.positionRequest = 42;
+   gripper.setCommand(command);
+
+   // The fake echoes a request in the status that answers its write, so the
+   // first record carrying the block also carries its echo.
+   std::optional<StampedExchange> stamped;
+   for(int wake = 0; wake < 10; ++wake)
+   {
+      stamped = gripper.waitForExchange(kWait);
+      ASSERT_TRUE(stamped.has_value());
+      if(stamped->command.positionRequest == 42)
+      {
+         break;
+      }
+   }
+   ASSERT_EQ(stamped->command.positionRequest, 42);
+   EXPECT_EQ(stamped->status.positionRequestEcho, 42);
 }
 
 TEST_F(TestWaitForExchange, the_largest_timeout_waits_for_the_cycle_instead_of_expiring_at_once)
@@ -117,7 +158,7 @@ TEST(TestWaitForExchangePlatform, waits_on_the_platforms_condition_variable_not_
    EXPECT_EQ(platform->sleepFors.load(), 0);
 }
 
-TEST(TestWaitForExchangePlatform, a_control_loop_busy_acting_on_a_status_never_holds_the_exchange_cycle_up)
+TEST(TestWaitForExchangePlatform, a_control_loop_busy_acting_on_an_exchange_never_holds_the_cycle_up)
 {
    InstrumentedFakeGripperServer fakeServer;
    const Gripper gripper = makeGripper(fakeServer, kFastPeriod);
@@ -126,20 +167,20 @@ TEST(TestWaitForExchangePlatform, a_control_loop_busy_acting_on_a_status_never_h
    std::atomic<bool> release{false};
    std::atomic<uint64_t> skippedWhileBusy{0};
    std::thread controlLoop([&] {
-      const std::optional<StampedStatus> before = gripper.waitForExchange(kWait);
-      // Stands in for arbitrarily slow application work on that status.
+      const std::optional<StampedExchange> before = gripper.waitForExchange(kWait);
+      // Stands in for arbitrarily slow application work on that exchange.
       busy.store(true);
       while(!release.load())
       {
          std::this_thread::sleep_for(std::chrono::milliseconds(1));
       }
-      // Back from the "work": resumes on the newest status at once, whose
+      // Back from the "work": resumes on the newest exchange at once, whose
       // count says what went by.
-      const std::optional<StampedStatus> after =
-         before ? gripper.waitForExchange(before->exchangeCount + 1, kWait) : std::nullopt;
+      const std::optional<StampedExchange> after =
+         before ? gripper.waitForExchange(before->metadata.exchangeCount + 1, kWait) : std::nullopt;
       if(before && after)
       {
-         skippedWhileBusy.store(after->exchangeCount - before->exchangeCount - 1);
+         skippedWhileBusy.store(after->metadata.exchangeCount - before->metadata.exchangeCount - 1);
       }
    });
    // A failed assertion returns early; the loop must not outlive the
