@@ -10,6 +10,10 @@ setters and getters.
 - `move_gripper` — activate, close, and open a gripper through
   `Gripper`'s typed accessors, with error handling and logging. See the
   [walkthrough](../../docs/04-robust-example-walkthrough.md).
+- `exchange_log` — one CSV row per exchange cycle, taken in step with the
+  cycle through `waitForExchangeCount()`: timestamp, exchange count, and the command
+  and status blocks of that exchange, while the gripper opens at full
+  speed and then moves at minimum speed.
 - `gripper_events.hpp` / `gripper_events.cpp` — what the examples share: connecting with a
   checklist on failure, activating with fault recovery, and a move that
   waits for its outcome.
