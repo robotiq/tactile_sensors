@@ -10,6 +10,9 @@ setters and getters.
 - `move_gripper` — activate, close, and open a gripper through
   `Gripper`'s typed accessors, with error handling and logging. See the
   [walkthrough](../../docs/04-robust-example-walkthrough.md).
+- `gripper_events.hpp` / `gripper_events.cpp` — what the examples share: connecting with a
+  checklist on failure, activating with fault recovery, and a move that
+  waits for its outcome.
 - `snippets.cpp` Brief, compiled code examples for the documentation.
 - `exchange_rate_probe` — a diagnostic tool, not a usage example: measures
   the background exchange loop's actual pacing against its configured

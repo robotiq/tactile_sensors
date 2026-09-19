@@ -159,7 +159,7 @@ private:
 //! \return ActivationResult
 //!
 //! \par Example
-//! \snippet move_gripper.cpp activation-recovery
+//! \snippet gripper_events.cpp activation-recovery
 ActivationResult activate(Gripper& gripper, std::chrono::milliseconds timeout = std::chrono::seconds(15));
 
 //! \ingroup activation

@@ -7,27 +7,22 @@
 //! jaws clear.
 //! Usage: move_gripper <port> [baudrate]
 
-#include <chrono> // duration literals for the waitFor() timeouts below (1s, 200ms, ...)
-#include <cmath> // std::lround for the settled-position log line
 #include <cstdlib> // EXIT_SUCCESS / EXIT_FAILURE, main()'s return codes below — unrelated to Gripper itself
 #include <memory> // smart pointers: std::unique_ptr to own the Gripper, std::shared_ptr for the Logger it takes
 #include <optional> // std::optional from the unit-conversion functions below
-#include <iostream> // std::cerr for usage/connection error messages
-#include <string> // std::string (withStatus()'s return type), std::stoul (baudrate parsing)
+#include <iostream> // std::cerr for usage errors
+#include <string> // std::stoul (baudrate parsing)
 
-#include <Robotiq/gripper.hpp> // Gripper, GripperCommand/Status, activate(), recoverFromFault()
+#include <Robotiq/gripper.hpp> // Gripper, GripperCommand/Status
 #include <Robotiq/gripper/device_profile.hpp> // DeviceProfile, profiles::k2F85
 #include <Robotiq/gripper/stderr_logger.hpp>
 #include <Robotiq/gripper/units.hpp>
 
-using namespace std::chrono_literals; // enables the 1s / 200ms / 5s literals below
+#include "gripper_events.hpp" // connectGripper(), activateOrRecover(), moveTo(): shared with the other examples
 
 // The handful of SDK types this example touches directly:
-using Robotiq::ActionRequestBit;
-using Robotiq::ActivationResult;
 using Robotiq::Gripper;
 using Robotiq::GripperCommand;
-using Robotiq::ObjectDetection;
 using Robotiq::profiles::k2F85;
 
 namespace {
@@ -40,90 +35,6 @@ constexpr unsigned long kMaxBaudrate = 1000000;
 
 constexpr double kSpeed = 0.150; // m/s, the 2F-85's full scale
 constexpr double kEffort = 1.0; // maximum grip effort
-
-//! \brief Whether the fingers have stopped moving.
-//!
-//! \param gripper The gripper to read status from.
-//! \return true once motion has settled (stopped on an object, or reached
-//!         the requested position); false while still moving.
-bool motionSettled(Gripper& gripper)
-{
-   return gripper.getStatus().gripperStatus.objectDetection() != ObjectDetection::Moving;
-}
-
-//! \brief Return the input message associated with the gripper's current
-//!        status, for logging and error reporting.
-//!
-//! \param message The message to prepend before the appended status.
-//! \param gripper The gripper to read the connection state and status from.
-//! \return \p message followed by "; link=<state> <decoded status>".
-std::string withStatus(std::string message, Gripper& gripper)
-{
-   const std::string status = Robotiq::toString(gripper.getStatus());
-   message += "; link=";
-   message += Robotiq::toString(gripper.connectionState());
-   message += ' ';
-   message += status;
-   return message;
-}
-
-//! \brief Send the gripper to an opening and block until it gets there.
-//!
-//! \param gripper The gripper to command.
-//! \param command The persistent command block; positionRequest and the
-//!        GoTo bit are set on it before sending.
-//! \param openingMetres Target jaw opening, in metres (k2F85.minOpening = fully closed,
-//!        k2F85.maxOpening = fully open).
-//! \param logger Where to narrate progress and report failures.
-//! \return true once the gripper echoed the request and motion settled;
-//!         false if either wait timed out.
-bool moveTo(Gripper& gripper, GripperCommand& command, double openingMetres, Robotiq::Logger& logger)
-{
-   //! [opening-optional-check]
-   const std::optional<uint8_t> position = Robotiq::units::openingToRegister(openingMetres, k2F85);
-   if(!position)
-   {
-      logger.log(Robotiq::Logger::Level::Error, "the requested opening has no register value");
-      return false;
-   }
-   //! [opening-optional-check]
-   command.positionRequest = *position;
-   command.action.set(ActionRequestBit::GoTo, true); // execute the move
-   gripper.setCommand(command);
-   logger.log(Robotiq::Logger::Level::Debug, "sending: " + Robotiq::toString(command));
-   //! [move-to-three-waits]
-   if(!Robotiq::waitFor([&] { return gripper.getStatus().positionRequestEcho == *position; }, 1s))
-   {
-      logger.log(Robotiq::Logger::Level::Error, withStatus("the gripper never echoed the position request", gripper));
-      return false;
-   }
-   // Object detection can lag the echo by a few cycles: give the motion
-   // a moment to start (returns early once it does). A short move can be
-   // over before it is ever seen moving, so this one is only advisory.
-   if(!Robotiq::waitFor([&] { return gripper.getStatus().gripperStatus.objectDetection() == ObjectDetection::Moving; },
-                        200ms))
-   {
-      logger.log(Robotiq::Logger::Level::Debug, "no motion seen within 200 ms; it may already be done");
-   }
-   if(!Robotiq::waitFor([&] { return motionSettled(gripper); }, 5s))
-   {
-      logger.log(Robotiq::Logger::Level::Error, withStatus("the motion never settled", gripper));
-      return false;
-   }
-   //! [move-to-three-waits]
-   //! [opening-from-register-optional-check]
-   const std::optional<double> opening = Robotiq::units::openingFromRegister(gripper.getStatus().position, k2F85);
-   if(!opening)
-   {
-      logger.log(Robotiq::Logger::Level::Error,
-                 withStatus("the settled position has no opening in this profile", gripper));
-      return false;
-   }
-   //! [opening-from-register-optional-check]
-   logger.log(Robotiq::Logger::Level::Info,
-              withStatus("settled at " + std::to_string(std::lround(*opening * 1000.0)) + " mm", gripper));
-   return true;
-}
 } // namespace
 
 //! \brief Connect, activate, open, then close — see the file header comment.
@@ -171,46 +82,17 @@ int main(int argc, char* argv[])
    auto logger = std::make_shared<Robotiq::StderrLogger>("example");
    //! [logger-example-name]
 
-   std::unique_ptr<Gripper> gripper;
-   try
+   const std::unique_ptr<Gripper> gripper = examples::connectGripper(config);
+   if(!gripper)
    {
-      //! [logger-robotiq-name]
-      gripper =
-         std::make_unique<Gripper>(config,
-                                   std::make_shared<Robotiq::StderrLogger>("robotiq")); // opens and starts exchanging
-      //! [logger-robotiq-name]
-   }
-   //! [connection-error-checklist]
-   catch(const std::exception& ex)
-   {
-      std::cerr << "Error: " << ex.what() << "\n\n"
-                << "Could not open a gripper on '" << argv[1] << "'. Check that:\n"
-                << "  - the gripper is connected and powered;\n"
-                << "  - the port name is correct (Linux /dev/ttyUSB0, macOS /dev/tty.usbserial-*, Windows COM3);\n"
-                << "  - you have permission to use it (Linux: join the 'dialout' group).\n";
       return EXIT_FAILURE;
    }
-   //! [connection-error-checklist]
 
    logger->log(Robotiq::Logger::Level::Info, "Activating...");
-   //! [activation-recovery]
-   ActivationResult activation = Robotiq::activate(*gripper);
-   if(activation == ActivationResult::FaultLatched)
+   if(!examples::activateOrRecover(*gripper, *logger))
    {
-      // Recovery releases any grip and sweeps the fingers, so the SDK
-      // never runs it implicitly; this example has no part to drop.
-      logger->log(Robotiq::Logger::Level::Warn, "fault latched; recovering (the fingers will move)");
-      activation = Robotiq::recoverFromFault(*gripper);
-   }
-   //! [activation-recovery]
-   //! [activation-final-check]
-   if(activation != ActivationResult::Activated && activation != ActivationResult::AlreadyActive)
-   {
-      logger->log(Robotiq::Logger::Level::Error, withStatus("activation failed or timed out", *gripper));
       return EXIT_FAILURE;
    }
-   //! [activation-final-check]
-   logger->log(Robotiq::Logger::Level::Info, withStatus("activated", *gripper));
 
    // Keep one command block and update it before each send: it is
    // persistent state, not rebuilt per move.
@@ -228,13 +110,13 @@ int main(int argc, char* argv[])
    //! [speed-optional-check]
 
    logger->log(Robotiq::Logger::Level::Info, "Opening...");
-   if(!moveTo(*gripper, command, k2F85.maxOpening, *logger))
+   if(!examples::moveTo(*gripper, command, k2F85.maxOpening, k2F85, *logger))
    {
       return EXIT_FAILURE;
    }
 
    logger->log(Robotiq::Logger::Level::Info, "Closing...");
-   if(!moveTo(*gripper, command, k2F85.minOpening, *logger))
+   if(!examples::moveTo(*gripper, command, k2F85.minOpening, k2F85, *logger))
    {
       return EXIT_FAILURE;
    }

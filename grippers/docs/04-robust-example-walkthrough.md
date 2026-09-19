@@ -3,9 +3,11 @@
 [Quick start](02-quick-start.md) shows the bare minimum to move a
 gripper and intentionally skips error handling. [`move_gripper.cpp`](../sdk_cpp/examples/move_gripper.cpp)
 is the same connect → activate → command → wait → status flow made
-robust, using the functions from [How it works](03-how-it-works.md).
-This page doesn't re-walk that flow — it covers what's different about
-the robust version and why.
+robust, using the functions from [How it works](03-how-it-works.md);
+the parts every example needs — connecting, activating, moving — live
+in [`gripper_events.cpp`](../sdk_cpp/examples/gripper_events.cpp), which it calls. This
+page doesn't re-walk that flow — it covers what's different about the
+robust version and why.
 
 ## Argument handling
 
@@ -47,19 +49,19 @@ wraps to a huge unsigned value that the `< kMinBaudrate` check catches.
 
 Constructing `Gripper` can throw (`SerialIOException` or
 `DriverException` — see [Error handling](03-how-it-works.md#error-handling)).
-The example catches it once, right at construction, and turns it into a
-checklist instead of a raw exception message:
+`connectGripper()` catches it once, right at construction, and turns it
+into a checklist instead of a raw exception message:
 
-<!-- snippet: move_gripper.cpp connection-error-checklist -->
+<!-- snippet: gripper_events.cpp connection-error-checklist -->
 ```cpp
 catch(const std::exception& ex)
 {
    std::cerr << "Error: " << ex.what() << "\n\n"
-             << "Could not open a gripper on '" << argv[1] << "'. Check that:\n"
+             << "Could not open a gripper on '" << config.serial.port << "'. Check that:\n"
              << "  - the gripper is connected and powered;\n"
              << "  - the port name is correct (Linux /dev/ttyUSB0, macOS /dev/tty.usbserial-*, Windows COM3);\n"
              << "  - you have permission to use it (Linux: join the 'dialout' group).\n";
-   return EXIT_FAILURE;
+   return nullptr;
 }
 ```
 
@@ -79,14 +81,14 @@ named `"example"`, for its own narration ("Activating...", "Opening...",
 auto logger = std::make_shared<Robotiq::StderrLogger>("example");
 ```
 
-...and a second, separately-named `"robotiq"` instance passed directly
-to the `Gripper` constructor, for the SDK's own internal logging:
+...and `connectGripper()` passes a second, separately-named `"robotiq"`
+instance to the `Gripper` constructor, for the SDK's own internal logging:
 
-<!-- snippet: move_gripper.cpp logger-robotiq-name -->
+<!-- snippet: gripper_events.cpp logger-robotiq-name -->
 ```cpp
-gripper =
-   std::make_unique<Gripper>(config,
-                             std::make_shared<Robotiq::StderrLogger>("robotiq")); // opens and starts exchanging
+return std::make_unique<Gripper>(
+   config,
+   std::make_shared<Robotiq::StderrLogger>("robotiq")); // opens and starts exchanging
 ```
 
 Both still write to the same stream (stderr), so this isn't about
@@ -97,27 +99,27 @@ of both landing unlabeled and easy to confuse with each other.
 
 ## Handling a fault at activation
 
-`move_gripper.cpp` handles the case where
+`activateOrRecover()` handles the case where
 activation can't proceed at all because a fault is already latched:
 
-<!-- snippet: move_gripper.cpp activation-recovery -->
+<!-- snippet: gripper_events.cpp activation-recovery -->
 ```cpp
-ActivationResult activation = Robotiq::activate(*gripper);
+ActivationResult activation = Robotiq::activate(gripper);
 if(activation == ActivationResult::FaultLatched)
 {
    // Recovery releases any grip and sweeps the fingers, so the SDK
-   // never runs it implicitly; this example has no part to drop.
-   logger->log(Robotiq::Logger::Level::Warn, "fault latched; recovering (the fingers will move)");
-   activation = Robotiq::recoverFromFault(*gripper);
+   // never runs it implicitly; the examples have no part to drop.
+   logger.log(Robotiq::Logger::Level::Warn, "fault latched; recovering (the fingers will move)");
+   activation = Robotiq::recoverFromFault(gripper);
 }
 ```
 
-<!-- snippet: move_gripper.cpp activation-final-check -->
+<!-- snippet: gripper_events.cpp activation-final-check -->
 ```cpp
 if(activation != ActivationResult::Activated && activation != ActivationResult::AlreadyActive)
 {
-   logger->log(Robotiq::Logger::Level::Error, withStatus("activation failed or timed out", *gripper));
-   return EXIT_FAILURE;
+   logger.log(Robotiq::Logger::Level::Error, withStatus("activation failed or timed out", gripper));
+   return false;
 }
 ```
 
@@ -140,9 +142,9 @@ command.force = *force;
 
 `moveTo()` does the same for the opening it's asked to reach:
 
-<!-- snippet: move_gripper.cpp opening-optional-check -->
+<!-- snippet: gripper_events.cpp opening-optional-check -->
 ```cpp
-const std::optional<uint8_t> position = Robotiq::units::openingToRegister(openingMetres, k2F85);
+const std::optional<uint8_t> position = Robotiq::units::openingToRegister(openingMetres, profile);
 if(!position)
 {
    logger.log(Robotiq::Logger::Level::Error, "the requested opening has no register value");
@@ -153,9 +155,9 @@ if(!position)
 ...and for the reverse conversion, reading the settled position back out as
 an opening once motion has finished:
 
-<!-- snippet: move_gripper.cpp opening-from-register-optional-check -->
+<!-- snippet: gripper_events.cpp opening-from-register-optional-check -->
 ```cpp
-const std::optional<double> opening = Robotiq::units::openingFromRegister(gripper.getStatus().position, k2F85);
+const std::optional<double> opening = Robotiq::units::openingFromRegister(gripper.getStatus().position, profile);
 if(!opening)
 {
    logger.log(Robotiq::Logger::Level::Error,
@@ -174,7 +176,7 @@ Sending a `GoTo` command doesn't mean the move is done, or even that
 the gripper received it. `moveTo()` waits in three stages, each
 catching a different phase of the movement sequence.
 
-<!-- snippet: move_gripper.cpp move-to-three-waits -->
+<!-- snippet: gripper_events.cpp move-to-three-waits -->
 ```cpp
 if(!Robotiq::waitFor([&] { return gripper.getStatus().positionRequestEcho == *position; }, 1s))
 {
