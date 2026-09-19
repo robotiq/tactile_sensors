@@ -35,8 +35,9 @@ public:
    //! \param timePoint The point in time to return if not notified.
    virtual void waitUntil(Mutex& mutex, std::chrono::steady_clock::time_point timePoint) = 0;
 
-   //! Unblocks every thread currently waiting.
-   virtual void notifyAll() = 0;
+   //! Unblocks every thread currently waiting. Called from destructors, so
+   //! it cannot throw; waking waiters has no failure worth reporting.
+   virtual void notifyAll() noexcept = 0;
 };
 
 //! \ingroup platform

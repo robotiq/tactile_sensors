@@ -103,7 +103,7 @@ public:
       mutex.lock();
    }
 
-   void notifyAll() override
+   void notifyAll() noexcept override
    {
       for(int pending = _waiters.load(); pending > 0; --pending)
       {

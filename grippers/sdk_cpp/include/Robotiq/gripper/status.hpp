@@ -5,6 +5,7 @@
 #pragma once
 
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -119,6 +120,16 @@ struct GripperStatus
    [[nodiscard]] uint8_t* data() { return reinterpret_cast<uint8_t*>(this); }
    //! \return The width of the status block in bytes (16, per the manual).
    [[nodiscard]] static constexpr std::size_t size() { return detail::rm::kStatusBlockBytes; }
+};
+
+//! \ingroup status
+//! \brief A status block with the cycle count that carried it and the timestamp it
+//!        landed.
+struct StampedStatus
+{
+   uint64_t exchangeCount = 0; //!< Completed exchanges.
+   GripperStatus status; //!< Gripper status.
+   std::chrono::steady_clock::time_point timestamp{}; //!< Status timestamp.
 };
 
 //! \cond DOXYGEN_EXCLUDE
