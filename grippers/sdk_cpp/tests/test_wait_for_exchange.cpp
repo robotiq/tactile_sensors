@@ -271,5 +271,18 @@ TEST(TestWaitForExchangeStall, a_stalled_bus_times_the_wait_out)
    EXPECT_FALSE(gripper->waitForExchange(std::chrono::milliseconds(30)).has_value());
 }
 
+TEST_F(TestWaitForExchange, a_block_is_carried_once_a_cycle_writes_it)
+{
+   GripperCommand command = gripper.getCommand();
+   command.positionRequest = 42;
+
+   const std::optional<StampedExchange> carried = setCommandAndWaitForExchange(gripper, command, kWait);
+   ASSERT_TRUE(carried.has_value());
+   EXPECT_EQ(carried->command, command);
+   EXPECT_EQ(gripper.getCommand(), command);
+   // Carried means the gripper has it, not that it is on its way.
+   EXPECT_EQ(fakeServer.model.command().positionRequest, 42);
+}
+
 } // namespace
 } // namespace Robotiq::test

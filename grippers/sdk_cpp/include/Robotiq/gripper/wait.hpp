@@ -26,6 +26,28 @@ inline std::chrono::steady_clock::time_point deadlineAfter(std::chrono::millisec
    constexpr auto longest = duration_cast<milliseconds>(steady_clock::duration::max()) / 2;
    return steady_clock::now() + std::min(timeout, longest);
 }
+
+template <typename Predicate>
+std::optional<StampedExchange> waitForExchangeAfter(const Gripper& gripper,
+                                                    uint64_t afterCount,
+                                                    Predicate predicate,
+                                                    std::chrono::milliseconds timeout)
+{
+   const auto deadline = deadlineAfter(timeout);
+   uint64_t desired = afterCount + 1;
+   while(true)
+   {
+      const auto now = std::chrono::steady_clock::now();
+      const auto remaining =
+         deadline > now ? std::chrono::ceil<std::chrono::milliseconds>(deadline - now) : std::chrono::milliseconds(0);
+      std::optional<StampedExchange> exchange = gripper.waitForExchangeCount(desired, remaining);
+      if(!exchange || predicate(std::as_const(*exchange)))
+      {
+         return exchange;
+      }
+      desired = exchange->metadata.exchangeCount + 1;
+   }
+}
 //! \endcond
 } // namespace detail
 
@@ -122,20 +144,23 @@ std::optional<StampedExchange> waitFor(const Gripper& gripper,
                                        Predicate predicate,
                                        std::chrono::milliseconds timeout = std::chrono::seconds(30))
 {
-   const auto deadline = detail::deadlineAfter(timeout);
-   uint64_t desired = gripper.getMostRecentStampedExchange().metadata.exchangeCount + 1;
-   while(true)
-   {
-      const auto now = std::chrono::steady_clock::now();
-      const auto remaining =
-         deadline > now ? std::chrono::ceil<std::chrono::milliseconds>(deadline - now) : std::chrono::milliseconds(0);
-      std::optional<StampedExchange> exchange = gripper.waitForExchangeCount(desired, remaining);
-      if(!exchange || predicate(std::as_const(*exchange)))
-      {
-         return exchange;
-      }
-      desired = exchange->metadata.exchangeCount + 1;
-   }
+   return detail::waitForExchangeAfter(gripper,
+                                       gripper.getMostRecentStampedExchange().metadata.exchangeCount,
+                                       std::move(predicate),
+                                       timeout);
 }
+
+//! \ingroup wait
+//! \brief Set \p command and wait for the exchange that sends it.
+//!
+//! \param gripper The gripper to command.
+//! \param command The whole command block to transmit; see GripperCommand.
+//! \param timeout How long to wait for an exchange to carry it.
+//! \return The first exchange that carried the block; empty when none did
+//!         before \p timeout.
+std::optional<StampedExchange> setCommandAndWaitForExchange(
+   Gripper& gripper,
+   const GripperCommand& command,
+   std::chrono::milliseconds timeout = std::chrono::seconds(30));
 
 } // namespace Robotiq

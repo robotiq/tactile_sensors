@@ -30,6 +30,21 @@ records every exchange to a CSV file that way.
 `waitFor(gripper, predicate, timeout)` runs a predicate on each exchange
 until one holds.
 
+`setCommand()` hands its block to that cycle rather than to the wire. The
+block goes out on the next cycle to *start*, which is not always the next
+one to complete: a cycle already on the wire carries the block latched
+before it began. Waiting one cycle is therefore not proof that a command
+was sent. `setCommandAndWaitForExchange()` is: it hands the block over and
+waits, through `waitFor()`, for an exchange whose record holds a block
+equal to it — from any `setCommand()`, since the gripper has the block
+either way — and returns that exchange, with the status that answered it.
+
+One commander, any number of observers: a single thread calls
+`setCommand()`, while any thread may read status, take exchange records and
+wait on them. Several uncoordinated commanders are undefined behaviour,
+since the SDK keeps one command image and a block replaced before a cycle
+latches it is never sent.
+
 > **Note:**
 >
 > The exchange thread's Modbus protocol layer is
@@ -309,23 +324,19 @@ gripper.setCommand(command);
 > Note that the same command object is used for the second setCommand. This
 > is good practice to retain the previously set parameters.
 
-To have the autorelease command effectively sent to the gripper, it is
-necessary to wait for the gripper to acknowledge reception of the command
-before the next `setCommand()`.
+To have the autorelease command effectively sent to the gripper, its block
+must reach the wire before the next `setCommand()` replaces it.
+`setCommandAndWaitForExchange()` returns once a cycle carried it:
 
 <!-- snippet: snippets.cpp autorelease-then-move-with-wait -->
 ```cpp
-// Build and set an autorelease command
+// Build and set an autorelease command, and wait for a cycle to carry it
 Robotiq::GripperCommand command = Robotiq::GripperCommand::defaults();
 command.action.set(Robotiq::ActionRequestBit::AutoRelease);
-gripper.setCommand(command);
-
-// Wait
-Robotiq::waitFor(
-   [&] {
-      return (gripper.getStatus().faultStatus.gripperFault() == Robotiq::GripperFault::AutomaticReleaseInProgress);
-   },
-   10s);
+if(!Robotiq::setCommandAndWaitForExchange(gripper, command, 10s))
+{
+   return; // no cycle carried it before the timeout
+}
 
 // Build and set a command to move the gripper to the position 100
 command.action.set(Robotiq::ActionRequestBit::GoTo);

@@ -272,17 +272,13 @@ void autoreleaseThenMove(Robotiq::Gripper& gripper)
 void autoreleaseThenMoveWithWait(Robotiq::Gripper& gripper)
 {
    //! [autorelease-then-move-with-wait]
-   // Build and set an autorelease command
+   // Build and set an autorelease command, and wait for a cycle to carry it
    Robotiq::GripperCommand command = Robotiq::GripperCommand::defaults();
    command.action.set(Robotiq::ActionRequestBit::AutoRelease);
-   gripper.setCommand(command);
-
-   // Wait
-   Robotiq::waitFor(
-      [&] {
-         return (gripper.getStatus().faultStatus.gripperFault() == Robotiq::GripperFault::AutomaticReleaseInProgress);
-      },
-      10s);
+   if(!Robotiq::setCommandAndWaitForExchange(gripper, command, 10s))
+   {
+      return; // no cycle carried it before the timeout
+   }
 
    // Build and set a command to move the gripper to the position 100
    command.action.set(Robotiq::ActionRequestBit::GoTo);
