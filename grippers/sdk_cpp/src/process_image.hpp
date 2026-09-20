@@ -35,14 +35,16 @@ public:
 
    void publish(const GripperStatus& status, std::chrono::steady_clock::time_point completedAt);
 
-   // Wake every waiter without publishing anything — for shutdown.
-   void wakeAll() noexcept;
+   [[nodiscard]] StampedStatus sync(uint64_t count, std::chrono::steady_clock::time_point deadline) const;
+
+   void close() noexcept;
 
 private:
    const std::unique_ptr<Mutex> _mutex;
    const std::unique_ptr<ConditionVariable> _statusRefreshed;
    GripperCommand _command{};
    StampedStatus _stamped{};
+   bool _closed = false;
 };
 
 } // namespace Robotiq::detail

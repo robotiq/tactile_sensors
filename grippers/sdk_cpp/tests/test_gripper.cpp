@@ -7,8 +7,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
-#include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -26,6 +26,7 @@
 #include "fake/status_writer.hpp"
 #include "fake_gripper_fixture.hpp"
 #include "gripper_test_helpers.hpp"
+#include "instrumented_platform.hpp"
 #include "test_utils.hpp"
 
 namespace Robotiq::test {
@@ -308,9 +309,11 @@ TEST(TestGripperPlatform, exchange_runs_entirely_on_the_injected_platform)
                       std::make_shared<NullLogger>());
       // The gripper runs on — and reports — the platform it was given.
       EXPECT_EQ(&gripper.platform(), platform.get());
-      // One exchange thread, one image lock — and nothing else.
+      // One exchange thread, one image lock, one condition variable to
+      // announce the image with — and nothing else.
       EXPECT_EQ(platform->threadsSpawned.load(), 1);
       EXPECT_EQ(platform->mutexesCreated.load(), 1);
+      EXPECT_EQ(platform->conditionVariablesCreated.load(), 1);
       // The loop paces every cycle through the platform's sleep.
       ASSERT_TRUE(Robotiq::waitFor([&] { return platform->sleepUntils.load() >= 3; },
                                    std::chrono::seconds(2),

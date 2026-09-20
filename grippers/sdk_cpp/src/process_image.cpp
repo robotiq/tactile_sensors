@@ -79,8 +79,22 @@ void ProcessImage::publish(const GripperStatus& status, std::chrono::steady_cloc
    _statusRefreshed->notifyAll();
 }
 
-void ProcessImage::wakeAll() noexcept
+StampedStatus ProcessImage::sync(uint64_t count, std::chrono::steady_clock::time_point deadline) const
 {
+   const std::lock_guard<Mutex> lock(*_mutex);
+   while(_stamped.exchangeCount <= count && !_closed && std::chrono::steady_clock::now() < deadline)
+   {
+      _statusRefreshed->waitUntil(*_mutex, deadline);
+   }
+   return _stamped;
+}
+
+void ProcessImage::close() noexcept
+{
+   {
+      const std::lock_guard<Mutex> lock(*_mutex);
+      _closed = true;
+   }
    _statusRefreshed->notifyAll();
 }
 

@@ -4,20 +4,22 @@
 
 #pragma once
 
+#include "fake/gripper_serial.hpp"
 #include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <vector>
 
+#include <Robotiq/gripper/platform.hpp>
 #include <Robotiq/gripper/serial_io_exception.hpp>
-
-#include "fake_gripper_fixture.hpp"
-#include "instrumented_platform.hpp"
 
 namespace Robotiq::test {
 
 inline constexpr uint8_t kSlave = 0x09;
 inline constexpr std::chrono::milliseconds kFastPeriod{1};
+//! Slow enough that the next cycle is always still ahead when a wait
+//! starts, so what a sync test observes is a real wait.
+inline constexpr std::chrono::milliseconds kSyncPeriod{20};
 
 //! GripperSerial whose writes fail while failing is set — a link
 //! that starts healthy, drops out, and comes back. Failing on write
