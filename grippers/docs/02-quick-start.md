@@ -18,6 +18,7 @@ Refer to API documentation to get more details.
 ```cpp
 // Import gripper C++ driver
 #include <Robotiq/gripper.hpp>
+#include <Robotiq/gripper/wait.hpp>
 
 // Import utilities libraries
 #include <iostream>

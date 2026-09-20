@@ -39,7 +39,7 @@ public:
                 const GripperStatus& status,
                 std::chrono::steady_clock::time_point completedAt);
 
-   [[nodiscard]] StampedExchange sync(uint64_t count, std::chrono::steady_clock::time_point deadline) const;
+   StampedExchange sync(uint64_t count, std::chrono::steady_clock::time_point deadline) const;
 
    // Final: every waiter returns at once, and so does every later sync().
    // Nothing reopens an image — a GripperState stops once, in its

@@ -11,6 +11,7 @@
 #include <string>
 
 #include <Robotiq/gripper.hpp>
+#include <Robotiq/gripper/wait.hpp>
 #include <Robotiq/gripper/device_profile.hpp>
 #include <Robotiq/gripper/stderr_logger.hpp>
 #include <Robotiq/gripper/units.hpp>

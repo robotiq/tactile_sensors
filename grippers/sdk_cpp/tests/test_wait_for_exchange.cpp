@@ -12,6 +12,7 @@
 #include <utility>
 
 #include <Robotiq/gripper.hpp>
+#include <Robotiq/gripper/wait.hpp>
 #include <Robotiq/gripper/fault_status.hpp>
 #include <Robotiq/gripper/platform.hpp>
 #include <Robotiq/gripper/stamped_exchange.hpp>
@@ -137,6 +138,50 @@ TEST_F(TestWaitForExchange, an_exchange_pairs_the_command_it_wrote_with_the_stat
    }
    ASSERT_EQ(stamped->command.positionRequest, 42);
    EXPECT_EQ(stamped->status.positionRequestEcho, 42);
+}
+
+TEST_F(TestWaitForExchange, wait_for_returns_the_first_exchange_the_predicate_holds_for)
+{
+   ASSERT_EQ(activate(gripper, kWait), ActivationResult::Activated);
+   GripperCommand command = GripperCommand::defaults();
+   command.positionRequest = 42;
+   gripper.setCommand(command);
+   const uint64_t before = gripper.getMostRecentStampedExchange().metadata.exchangeCount;
+
+   int evaluated = 0;
+   const std::optional<StampedExchange> echoed = waitFor(
+      gripper,
+      [&](const StampedExchange& exchange) {
+         ++evaluated;
+         return exchange.status.positionRequestEcho == 42;
+      },
+      kWait);
+   ASSERT_TRUE(echoed.has_value());
+   EXPECT_EQ(echoed->status.positionRequestEcho, 42);
+   EXPECT_EQ(echoed->command.positionRequest, 42);
+   // At most one evaluation per exchange; fewer when the test thread fell
+   // behind the cycle and was handed the newest.
+   EXPECT_LE(static_cast<uint64_t>(evaluated), echoed->metadata.exchangeCount - before);
+}
+
+TEST_F(TestWaitForExchange, wait_for_hands_the_predicate_each_exchange_once)
+{
+   std::optional<uint64_t> previous;
+   const std::optional<StampedExchange> fifth = waitFor(
+      gripper,
+      [&](const StampedExchange& exchange) {
+         if(previous)
+         {
+            // Never the same exchange twice, never backwards; not always
+            // +1, since a thread that fell behind is handed the newest.
+            EXPECT_GT(exchange.metadata.exchangeCount, *previous);
+         }
+         previous = exchange.metadata.exchangeCount;
+         return exchange.metadata.exchangeCount >= 5;
+      },
+      kWait);
+   ASSERT_TRUE(fifth.has_value());
+   EXPECT_EQ(fifth->metadata.exchangeCount, *previous);
 }
 
 TEST_F(TestWaitForExchange, the_largest_timeout_waits_for_the_cycle_instead_of_expiring_at_once)

@@ -27,6 +27,8 @@ last acted on: nothing completed in between is skipped, and a loop that
 fell behind catches up on the newest at once.
 [`sdk_cpp/examples/exchange_log.cpp`](../sdk_cpp/examples/exchange_log.cpp)
 records every exchange to a CSV file that way.
+`waitFor(gripper, predicate, timeout)` runs a predicate on each exchange
+until one holds.
 
 > **Note:**
 >
@@ -343,6 +345,21 @@ elapses:
 ```cpp
 bool settled = Robotiq::waitFor(
    [&] { return gripper.getStatus().gripperStatus.objectDetection() != Robotiq::ObjectDetection::Moving; },
+   10s);
+```
+
+A poll can miss a state the gripper only passes through. Prefer
+`waitFor(gripper, predicate, timeout)`: the predicate runs on each
+exchange completed after the call, as long as the caller keeps up with the
+cycle, and the exchange it held for comes back as the result.
+
+<!-- snippet: snippets.cpp wait-for-exchange-predicate -->
+```cpp
+std::optional<Robotiq::StampedExchange> settled = Robotiq::waitFor(
+   gripper,
+   [](const Robotiq::StampedExchange& exchange) {
+      return exchange.status.gripperStatus.objectDetection() != Robotiq::ObjectDetection::Moving;
+   },
    10s);
 ```
 

@@ -11,6 +11,7 @@
 // this file is only for the ones with no other home.
 
 #include <Robotiq/gripper.hpp>
+#include <Robotiq/gripper/wait.hpp>
 #include <Robotiq/gripper/device_profile.hpp>
 #include <Robotiq/gripper/fake/gripper_factory.hpp>
 #include <Robotiq/gripper/stderr_logger.hpp>
@@ -297,6 +298,19 @@ bool waitForMotionSettled(Robotiq::Gripper& gripper)
       [&] { return gripper.getStatus().gripperStatus.objectDetection() != Robotiq::ObjectDetection::Moving; },
       10s);
    //! [wait-for-motion-settled]
+   return settled;
+}
+
+std::optional<Robotiq::StampedExchange> waitForMotionSettledByExchange(Robotiq::Gripper& gripper)
+{
+   //! [wait-for-exchange-predicate]
+   std::optional<Robotiq::StampedExchange> settled = Robotiq::waitFor(
+      gripper,
+      [](const Robotiq::StampedExchange& exchange) {
+         return exchange.status.gripperStatus.objectDetection() != Robotiq::ObjectDetection::Moving;
+      },
+      10s);
+   //! [wait-for-exchange-predicate]
    return settled;
 }
 

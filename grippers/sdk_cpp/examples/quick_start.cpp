@@ -1,6 +1,7 @@
 //! [qs-includes]
 // Import gripper C++ driver
 #include <Robotiq/gripper.hpp>
+#include <Robotiq/gripper/wait.hpp>
 
 // Import utilities libraries
 #include <iostream>

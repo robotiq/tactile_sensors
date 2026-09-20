@@ -19,7 +19,6 @@
 #include <Robotiq/gripper/stamped_exchange.hpp>
 #include <Robotiq/gripper/status.hpp>
 #include <Robotiq/gripper/to_string.hpp>
-#include <Robotiq/gripper/wait.hpp>
 
 namespace Robotiq {
 class Serial;
@@ -111,8 +110,7 @@ public:
    //!         several did; empty when \p timeout elapsed first.
    //! \par Example
    //! \snippet snippets.cpp wait-for-exchange
-   [[nodiscard]] std::optional<StampedExchange> waitForExchange(
-      std::chrono::milliseconds timeout = std::chrono::seconds(30)) const;
+   std::optional<StampedExchange> waitForExchange(std::chrono::milliseconds timeout = std::chrono::seconds(30)) const;
 
    //! \brief Block until the exchange count reaches a value or a timeout
    //!  occurs.
@@ -128,7 +126,7 @@ public:
    //!         \p timeout elapsed first.
    //! \par Example
    //! \snippet exchange_log.cpp sync-loop
-   [[nodiscard]] std::optional<StampedExchange> waitForExchangeCount(
+   std::optional<StampedExchange> waitForExchangeCount(
       uint64_t desiredExchangeCount,
       std::chrono::milliseconds timeout = std::chrono::seconds(30)) const;
 
