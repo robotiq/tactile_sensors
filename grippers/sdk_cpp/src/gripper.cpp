@@ -6,7 +6,11 @@
 
 #include "gripper_state.hpp"
 
+#include <algorithm>
+#include <chrono>
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include <Robotiq/gripper/connection_state.hpp>
@@ -19,9 +23,15 @@
 
 namespace Robotiq {
 namespace {
-} // namespace
+std::chrono::steady_clock::time_point deadlineAfter(std::chrono::milliseconds timeout)
+{
+   using namespace std::chrono;
+   // Capped so that the sum, and a platform's conversion of the deadline to
+   // another clock, cannot overflow when a caller passes milliseconds::max().
+   constexpr auto longest = duration_cast<milliseconds>(steady_clock::duration::max()) / 2;
+   return steady_clock::now() + std::min(timeout, longest);
+}
 
-namespace {
 std::shared_ptr<Platform> checkedPlatform(std::shared_ptr<Platform> platform)
 {
    if(!platform)
@@ -62,6 +72,23 @@ GripperCommand Gripper::getCommand() const
 GripperStatus Gripper::getStatus() const
 {
    return _impl->status();
+}
+
+std::optional<StampedStatus> Gripper::waitForExchange(std::chrono::milliseconds timeout) const
+{
+   return waitForExchange(_impl->stampedStatus().exchangeCount + 1, timeout);
+}
+
+std::optional<StampedStatus> Gripper::waitForExchange(uint64_t desiredExchangeCount,
+                                                      std::chrono::milliseconds timeout) const
+{
+   const StampedStatus fresh = _impl->waitForExchange(desiredExchangeCount, deadlineAfter(timeout));
+   if(fresh.exchangeCount < desiredExchangeCount)
+   {
+      // timeout or dead gripper
+      return std::nullopt;
+   }
+   return fresh;
 }
 
 ConnectionState Gripper::connectionState() const

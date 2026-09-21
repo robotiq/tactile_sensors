@@ -169,7 +169,8 @@ jobs:
       - name: Assert the stack really is in the image
         run: |
           symbols=$(arm-none-eabi-nm -C n6.elf)
-          for want in '_tx_thread_create' 'ThreadXPlatform::spawn' 'Gripper::Gripper' '__cxa_throw'; do
+          for want in '_tx_thread_create' 'ThreadXPlatform::spawn' 'Gripper::Gripper' \
+                      'Gripper::waitForExchange' '__cxa_throw'; do
             echo "$symbols" | grep -q "$want" \
               || { echo "::error::$want missing from the linked image"; exit 1; }
             echo "present: $want"

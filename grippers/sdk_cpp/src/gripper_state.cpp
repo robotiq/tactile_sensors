@@ -154,6 +154,14 @@ StampedStatus GripperState::stampedStatus() const
    return _image.stampedStatus();
 }
 
+StampedStatus GripperState::waitForExchange(uint64_t desiredExchangeCount,
+                                            std::chrono::steady_clock::time_point deadline) const
+{
+   // sync() waits for a count past the one given; a count of zero is met
+   // by the seed image itself.
+   return desiredExchangeCount == 0 ? _image.stampedStatus() : _image.sync(desiredExchangeCount - 1, deadline);
+}
+
 void GripperState::stop() noexcept
 {
    _running.store(false);

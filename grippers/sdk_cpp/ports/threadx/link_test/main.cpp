@@ -43,9 +43,11 @@ extern "C" int gripper_entry(void)
    Robotiq::Gripper gripper(std::make_unique<StubSerial>(), 9, std::chrono::microseconds{10000}, platform);
 
    // Pull the blocking helpers in too: they sleep on the platform, so this
-   // covers the seam the RTOS port has to satisfy.
+   // covers the seam the RTOS port has to satisfy. waitForExchange() covers
+   // the other half of it, the port's condition variable.
    const auto result = Robotiq::activate(gripper, std::chrono::seconds(2));
    gripper.setCommand(gripper.getCommand());
+   (void)gripper.waitForExchange(std::chrono::milliseconds(1));
    return static_cast<int>(result);
 }
 

@@ -54,6 +54,10 @@ public:
    [[nodiscard]] GripperStatus status() const;
 
    [[nodiscard]] StampedStatus stampedStatus() const;
+   // The image once its count reaches \p desiredExchangeCount, or as it
+   // stands when \p deadline passes.
+   [[nodiscard]] StampedStatus waitForExchange(uint64_t desiredExchangeCount,
+                                               std::chrono::steady_clock::time_point deadline) const;
 
    [[nodiscard]] ConnectionState connectionState() const { return _connectionState.load(); }
    [[nodiscard]] Platform& platform() const noexcept { return *_platform; }

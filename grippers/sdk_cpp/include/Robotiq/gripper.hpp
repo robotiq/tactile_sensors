@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 #include <Robotiq/detail/config.hpp>
 #include <Robotiq/gripper/platform.hpp>
@@ -41,7 +42,8 @@ class GripperState;
 //! thread reads/writes the wire. Reads are whole snapshots and writes are
 //! whole commands — no per-field accessors, deliberately: every
 //! transmitted frame is a command the application composed, and two
-//! fields never come from different exchange cycles.
+//! fields never come from different exchange cycles. The one blocking
+//! call is waitForExchange().
 class Gripper
 {
 public:
@@ -94,8 +96,28 @@ public:
    //! \return A snapshot of the gripper's last received status block.
    [[nodiscard]] GripperStatus getStatus() const;
 
-   // TODO: add an exchange-cycle sync primitive so a caller's control loop
-   // can run in step with the background exchange without polling
+   //! \brief Block until an exchange completes or a timeout occurs.
+   //!
+   //! This form is typically used to wait for an event to occur, such as
+   //! a desired status.
+   //! \param timeout How long to wait; 30 s by default.
+   //! \return The first exchange completed after the call — the latest, if
+   //!         several did; empty when \p timeout elapsed first.
+   [[nodiscard]] std::optional<StampedStatus> waitForExchange(
+      std::chrono::milliseconds timeout = std::chrono::seconds(30)) const;
+
+   //! \overload
+   //! This form is typically used for control loop synchronization: a loop
+   //! asks for one past the exchange it last acted on, and one that fell
+   //! behind gets the newest at once instead of waiting a cycle.
+   //! \param desiredExchangeCount Wait until at least this many exchanges
+   //!        have completed since the connection to the gripper.
+   //! \param timeout How long to wait; 30 s by default.
+   //! \return The latest exchange once the count is reached; empty when
+   //!         \p timeout elapsed first.
+   [[nodiscard]] std::optional<StampedStatus> waitForExchange(
+      uint64_t desiredExchangeCount,
+      std::chrono::milliseconds timeout = std::chrono::seconds(30)) const;
 
    //! \return The current state of the background exchange; see ConnectionState.
    [[nodiscard]] ConnectionState connectionState() const;
