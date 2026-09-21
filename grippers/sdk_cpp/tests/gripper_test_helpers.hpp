@@ -13,9 +13,10 @@
 #include <Robotiq/gripper/platform.hpp>
 #include <Robotiq/gripper/serial_io_exception.hpp>
 
+#include "test_utils.hpp"
+
 namespace Robotiq::test {
 
-inline constexpr uint8_t kSlave = 0x09;
 inline constexpr std::chrono::milliseconds kFastPeriod{1};
 //! Slow enough that the next cycle is always still ahead when a wait
 //! starts, so what a sync test observes is a real wait.

@@ -36,14 +36,26 @@ private:
 };
 
 //! Condition variable that counts the waits it serves, on the way through
-//! to the real one.
+//! to the real one, and registers itself in \p latest while it lives.
 class WaitCountingConditionVariable : public ConditionVariable
 {
 public:
-   WaitCountingConditionVariable(std::unique_ptr<ConditionVariable> real, std::atomic<int>& waits)
+   WaitCountingConditionVariable(std::unique_ptr<ConditionVariable> real,
+                                 std::atomic<int>& waits,
+                                 std::atomic<ConditionVariable*>& latest)
       : _real(std::move(real))
       , _waits(waits)
+      , _latest(latest)
    {
+      _latest.store(this);
+   }
+
+   // The platform outlives the gripper that owns this; leave it nothing to
+   // dereference.
+   ~WaitCountingConditionVariable() override
+   {
+      ConditionVariable* self = this;
+      _latest.compare_exchange_strong(self, nullptr);
    }
 
    void waitUntil(Mutex& mutex, std::chrono::steady_clock::time_point timePoint) override
@@ -57,6 +69,7 @@ public:
 private:
    std::unique_ptr<ConditionVariable> _real;
    std::atomic<int>& _waits;
+   std::atomic<ConditionVariable*>& _latest;
 };
 
 //! Platform that delegates to the default std-backed one but counts
@@ -81,9 +94,7 @@ public:
    std::unique_ptr<ConditionVariable> makeConditionVariable() override
    {
       ++conditionVariablesCreated;
-      auto counting = std::make_unique<WaitCountingConditionVariable>(_real->makeConditionVariable(), conditionWaits);
-      _created.store(counting.get());
-      return counting;
+      return std::make_unique<WaitCountingConditionVariable>(_real->makeConditionVariable(), conditionWaits, _created);
    }
 
    std::unique_ptr<Thread> spawn(std::function<void()> fn) override

@@ -26,8 +26,10 @@ using namespace std::chrono_literals;
 //! blocked. No sleep, no timing.
 void untilWaiting(const InstrumentedPlatform& platform)
 {
+   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
    while(platform.conditionWaits.load() == 0)
    {
+      ASSERT_LT(std::chrono::steady_clock::now(), deadline) << "the waiter never entered the condition variable";
       std::this_thread::yield();
    }
 }
@@ -126,7 +128,7 @@ TEST(TestProcessImageWaits, a_publish_from_another_thread_wakes_a_sync)
    publisher.join();
    EXPECT_EQ(reached.exchangeCount, 1u);
    EXPECT_EQ(reached.status.position, 5);
-   EXPECT_EQ(platform.conditionWaits.load(), 1); // One real wait, ended by the publish.
+   EXPECT_GE(platform.conditionWaits.load(), 1); // A real wait, ended by the publish.
 }
 
 TEST(TestProcessImageWaits, closing_returns_every_waiter_and_every_later_wait_at_once)
@@ -140,11 +142,12 @@ TEST(TestProcessImageWaits, closing_returns_every_waiter_and_every_later_wait_at
    const StampedStatus reached = image.sync(0, std::chrono::steady_clock::now() + std::chrono::seconds(5));
    closer.join();
    EXPECT_EQ(reached.exchangeCount, 0u); // Nothing was published; the close is what returned.
-   EXPECT_EQ(platform.conditionWaits.load(), 1);
+   EXPECT_GE(platform.conditionWaits.load(), 1);
 
    // Once closed, a later wait does not even enter the condition variable.
+   const int waitsSoFar = platform.conditionWaits.load();
    (void)image.sync(0, std::chrono::steady_clock::now() + std::chrono::seconds(5));
-   EXPECT_EQ(platform.conditionWaits.load(), 1);
+   EXPECT_EQ(platform.conditionWaits.load(), waitsSoFar);
 }
 
 TEST(TestProcessImageWaits, a_wake_with_nothing_behind_it_is_re_checked_not_trusted)

@@ -37,6 +37,9 @@ public:
 
    [[nodiscard]] StampedStatus sync(uint64_t count, std::chrono::steady_clock::time_point deadline) const;
 
+   // Final: every waiter returns at once, and so does every later sync().
+   // Nothing reopens an image — a GripperState stops once, in its
+   // destructor — so a closed image is not reused.
    void close() noexcept;
 
 private:
