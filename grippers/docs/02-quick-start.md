@@ -2,6 +2,8 @@
 
 This is a minimalist introduction showing how to control the gripper using the C++ driver.
 
+[![Quick start walkthrough](https://img.youtube.com/vi/RSUoc7jSA7E/0.jpg)](https://youtu.be/RSUoc7jSA7E)
+
 Refer to API documentation to get more details.
 
 > **Note :**

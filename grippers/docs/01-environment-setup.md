@@ -1,9 +1,11 @@
 # Environment setup
-This page covers setting up a project that *uses* the Robotiq gripper C++
+This page covers setting up a project that uses the Robotiq gripper C++
 SDK as a dependency: installing prerequisites, bringing the SDK into your
 own build.
 
 CMake ≥ 3.16, a C++17 compiler, libserialport.
+
+[![Environment setup walkthrough](https://img.youtube.com/vi/J4jhFiG1VNE/0.jpg)](https://youtu.be/J4jhFiG1VNE)
 
 ## Bring the SDK into your project
 Add the **grippers** complete repository (or just `sdk_cpp/`) as a git submodule inside your own project.
@@ -12,6 +14,8 @@ Navigate to the project folder:
 
 ```bash
 cd /path/to/your/main-project
+
+git init
 ```
 
 Add the sdk as a submodule of your project using git:
@@ -112,6 +116,8 @@ CMake and Ninja.
 
 ## Compile from the terminal
 
+Add a `CMakeLists.txt` to your project's root. Here below is an example:
+
 ```cmake
 # 1. Define the minimum version of CMake required to build this project
 cmake_minimum_required(VERSION 3.16)
@@ -126,12 +132,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 4. Include the third-party gripper library directory
 add_subdirectory(third_party/grippers/sdk_cpp)
 
-# 5. Tell CMake to create your executable program ("your_app") from main.cpp
-add_executable(your_app main.cpp)
+# 5. Tell CMake to create your executable program ("quick_start") from main.cpp
+add_executable(quick_start main.cpp)
 
 # 6. Link the gripper library to your executable
-target_link_libraries(your_app PRIVATE Robotiq::grippers)
+target_link_libraries(quick_start PRIVATE Robotiq::grippers)
 ```
+
+This assumes a `main.cpp` file (your application's entry point) also exists
+at your project's root — create one if you don't already have it.
 
 CMake can then be called from your project's root:
 
@@ -158,8 +167,8 @@ passing whatever arguments your own application expects:
 Example:
 
 ```sh
-./build/your_app /dev/ttyUSB0        # Linux/macOS
-./build/your_app.exe COM3            # Windows
+./build/quick_start /dev/ttyUSB0        # Linux/macOS
+./build/quick_start.exe COM3            # Windows
 ```
 
 ## Instructions to set up VS Code
