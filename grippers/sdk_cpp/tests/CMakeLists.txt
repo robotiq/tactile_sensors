@@ -16,6 +16,7 @@ add_executable(grippers_tests
   test_byte_packing.cpp
   test_logger.cpp
   test_platform.cpp
+  instrumented_platform.hpp
   test_process_image.cpp
   test_typed_layers.cpp
   test_units.cpp
@@ -35,6 +36,7 @@ if(GRIPPERS_BUILD_FAKE)
   target_sources(grippers_tests PRIVATE
     fake_gripper_fixture.hpp
     fake_gripper_fixture.cpp
+    gripper_test_helpers.hpp
     test_gripper.cpp
     test_fake_gripper_server.cpp
     test_make_fake_gripper.cpp

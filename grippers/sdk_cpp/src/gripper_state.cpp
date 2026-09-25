@@ -157,7 +157,7 @@ StampedStatus GripperState::stampedStatus() const
 void GripperState::stop() noexcept
 {
    _running.store(false);
-   _image.wakeAll();
+   _image.close();
    if(_exchangeThread)
    {
       _exchangeThread->join();

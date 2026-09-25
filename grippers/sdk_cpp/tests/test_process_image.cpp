@@ -6,16 +6,33 @@
 
 #include <chrono>
 #include <memory>
+#include <thread>
 
 #include <Robotiq/gripper/command.hpp>
 #include <Robotiq/gripper/platform.hpp>
 #include <Robotiq/gripper/status.hpp>
 
+#include "instrumented_platform.hpp"
 #include "process_image.hpp"
 
 namespace Robotiq::detail {
 namespace {
+using Robotiq::test::InstrumentedPlatform;
 using namespace std::chrono_literals;
+
+//! The waiter increments the count before it enters the real wait, and holds
+//! the image lock until that wait releases it — so once this returns, anything
+//! that takes the lock (publish, close) runs strictly after the waiter is
+//! blocked. No sleep, no timing.
+void untilWaiting(const InstrumentedPlatform& platform)
+{
+   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+   while(platform.conditionWaits.load() == 0)
+   {
+      ASSERT_LT(std::chrono::steady_clock::now(), deadline) << "the waiter never entered the condition variable";
+      std::this_thread::yield();
+   }
+}
 
 GripperStatus statusAt(uint8_t position)
 {
@@ -87,11 +104,81 @@ TEST_F(TestProcessImage, publishing_does_not_touch_the_command)
    EXPECT_EQ(image.command().positionRequest, 99);
 }
 
-TEST_F(TestProcessImage, waking_with_nobody_waiting_is_harmless)
+TEST(TestProcessImageWaits, a_sync_on_a_count_already_passed_never_enters_a_wait)
 {
-   image.wakeAll();
-   image.publish(statusAt(3), t0);
-   EXPECT_EQ(image.stampedStatus().exchangeCount, 1u);
+   InstrumentedPlatform platform;
+   ProcessImage image{platform};
+   image.publish(statusAt(3), std::chrono::steady_clock::now());
+
+   const StampedStatus reached = image.sync(0, std::chrono::steady_clock::now() + std::chrono::seconds(5));
+
+   EXPECT_EQ(reached.exchangeCount, 1u);
+   EXPECT_EQ(platform.conditionWaits.load(), 0);
+}
+
+TEST(TestProcessImageWaits, a_publish_from_another_thread_wakes_a_sync)
+{
+   InstrumentedPlatform platform;
+   ProcessImage image{platform};
+   std::thread publisher([&] {
+      untilWaiting(platform);
+      image.publish(statusAt(5), std::chrono::steady_clock::now());
+   });
+   const StampedStatus reached = image.sync(0, std::chrono::steady_clock::now() + std::chrono::seconds(5));
+   publisher.join();
+   EXPECT_EQ(reached.exchangeCount, 1u);
+   EXPECT_EQ(reached.status.position, 5);
+   EXPECT_GE(platform.conditionWaits.load(), 1); // A real wait, ended by the publish.
+}
+
+TEST(TestProcessImageWaits, closing_returns_every_waiter_and_every_later_wait_at_once)
+{
+   InstrumentedPlatform platform;
+   ProcessImage image{platform};
+   std::thread closer([&] {
+      untilWaiting(platform);
+      image.close();
+   });
+   const StampedStatus reached = image.sync(0, std::chrono::steady_clock::now() + std::chrono::seconds(5));
+   closer.join();
+   EXPECT_EQ(reached.exchangeCount, 0u); // Nothing was published; the close is what returned.
+   EXPECT_GE(platform.conditionWaits.load(), 1);
+
+   // Once closed, a later wait does not even enter the condition variable.
+   const int waitsSoFar = platform.conditionWaits.load();
+   (void)image.sync(0, std::chrono::steady_clock::now() + std::chrono::seconds(5));
+   EXPECT_EQ(platform.conditionWaits.load(), waitsSoFar);
+}
+
+TEST(TestProcessImageWaits, a_wake_with_nothing_behind_it_is_re_checked_not_trusted)
+{
+   // A notification carrying no new status is what a spurious wake is, and
+   // what the ThreadX emulation can produce from a leftover token. A sync
+   // that returned on it without looking at the count would hand back a
+   // status it never received.
+   InstrumentedPlatform platform;
+   ProcessImage image{platform};
+   image.publish(statusAt(1), std::chrono::steady_clock::now());
+
+   std::thread disturber([&] {
+      untilWaiting(platform);
+      // Notified without the image lock, so a single notify can land in the
+      // gap between the waiter counting itself and actually blocking, and be
+      // lost. Keep notifying until the waiter has demonstrably come back
+      // round and waited again; only then publish something real.
+      while(platform.conditionWaits.load() < 2)
+      {
+         platform.notifyWithNoNews();
+         std::this_thread::yield();
+      }
+      image.publish(statusAt(2), std::chrono::steady_clock::now());
+   });
+   const StampedStatus reached = image.sync(1, std::chrono::steady_clock::now() + std::chrono::seconds(5));
+   disturber.join();
+
+   EXPECT_EQ(reached.exchangeCount, 2u);
+   EXPECT_EQ(reached.status.position, 2);
+   EXPECT_GE(platform.conditionWaits.load(), 2); // At least one spurious wake was re-checked, not trusted.
 }
 
 } // namespace
