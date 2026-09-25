@@ -16,7 +16,9 @@ namespace Robotiq {
 //! \brief Exchange metadata.
 struct ExchangeMetadata
 {
-   uint64_t exchangeCount = 0; //!< Completed exchanges, this one included.
+   //! Completed exchanges, this one included. 0 names the record seeded at
+   //! connection: its command was inferred from the gripper's echo, not written.
+   uint64_t exchangeCount = 0;
    std::chrono::steady_clock::time_point timestamp{}; //!< When the exchange completed.
 };
 

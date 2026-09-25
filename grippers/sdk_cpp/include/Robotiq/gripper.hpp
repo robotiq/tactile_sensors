@@ -43,8 +43,8 @@ class GripperState;
 //! thread reads/writes the wire. Reads are whole snapshots and writes are
 //! whole commands — no per-field accessors, deliberately: every
 //! transmitted frame is a command the application composed, and two
-//! fields never come from different exchange cycles. The one blocking
-//! call is waitForExchange().
+//! fields never come from different exchange cycles. The blocking calls
+//! are waitForExchange() and waitForExchangeCount().
 class Gripper
 {
 public:
@@ -103,23 +103,32 @@ public:
    //! \brief Block until an exchange completes or a timeout occurs.
    //!
    //! This form is typically used to wait for an event to occur, such as
-   //! a desired status.
+   //! a desired status. Exchanges that complete between two calls are not
+   //! returned; a loop that must see every exchange uses
+   //! waitForExchangeCount().
    //! \param timeout How long to wait; 30 s by default.
    //! \return The first exchange completed after the call — the latest, if
    //!         several did; empty when \p timeout elapsed first.
+   //! \par Example
+   //! \snippet snippets.cpp wait-for-exchange
    [[nodiscard]] std::optional<StampedExchange> waitForExchange(
       std::chrono::milliseconds timeout = std::chrono::seconds(30)) const;
 
-   //! \overload
+   //! \brief Block until the exchange count reaches a value or a timeout
+   //!  occurs.
+   //!
    //! This form is typically used for control loop synchronization: a loop
-   //! asks for one past the exchange it last acted on, and one that fell
-   //! behind gets the newest at once instead of waiting a cycle.
+   //! asks for one past the exchange it last acted on, so it sees every
+   //! exchange exactly once, and one that fell behind gets the newest at
+   //! once instead of waiting a cycle.
    //! \param desiredExchangeCount Wait until at least this many exchanges
    //!        have completed since the connection to the gripper.
    //! \param timeout How long to wait; 30 s by default.
    //! \return The latest exchange once the count is reached; empty when
    //!         \p timeout elapsed first.
-   [[nodiscard]] std::optional<StampedExchange> waitForExchange(
+   //! \par Example
+   //! \snippet snippets.cpp sync-loop
+   [[nodiscard]] std::optional<StampedExchange> waitForExchangeCount(
       uint64_t desiredExchangeCount,
       std::chrono::milliseconds timeout = std::chrono::seconds(30)) const;
 

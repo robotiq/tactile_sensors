@@ -79,7 +79,7 @@ TEST_F(TestWaitForExchange, a_wait_for_a_count_returns_an_exchange_that_reached_
                        std::chrono::milliseconds(1)));
 
    // Asking for one past the count acted on returns the exchange that carries it.
-   const std::optional<StampedExchange> after = gripper.waitForExchange(before->metadata.exchangeCount + 1, kWait);
+   const std::optional<StampedExchange> after = gripper.waitForExchangeCount(before->metadata.exchangeCount + 1, kWait);
    ASSERT_TRUE(after.has_value());
    EXPECT_EQ(after->status.faultStatus.gripperFault(), GripperFault::Overcurrent);
    EXPECT_GT(after->metadata.exchangeCount, before->metadata.exchangeCount);
@@ -92,7 +92,7 @@ TEST_F(TestWaitForExchange, timestamps_advance_with_the_cycle_count)
    for(int wake = 0; wake < 5; ++wake)
    {
       const std::optional<StampedExchange> stamped =
-         gripper.waitForExchange(previous->metadata.exchangeCount + 1, kWait);
+         gripper.waitForExchangeCount(previous->metadata.exchangeCount + 1, kWait);
       ASSERT_TRUE(stamped.has_value()) << "wake " << wake;
       EXPECT_GT(stamped->metadata.exchangeCount, previous->metadata.exchangeCount) << "wake " << wake;
       EXPECT_GT(stamped->metadata.timestamp, previous->metadata.timestamp) << "wake " << wake;
@@ -177,7 +177,7 @@ TEST(TestWaitForExchangePlatform, a_control_loop_busy_acting_on_an_exchange_neve
       // Back from the "work": resumes on the newest exchange at once, whose
       // count says what went by.
       const std::optional<StampedExchange> after =
-         before ? gripper.waitForExchange(before->metadata.exchangeCount + 1, kWait) : std::nullopt;
+         before ? gripper.waitForExchangeCount(before->metadata.exchangeCount + 1, kWait) : std::nullopt;
       if(before && after)
       {
          skippedWhileBusy.store(after->metadata.exchangeCount - before->metadata.exchangeCount - 1);

@@ -81,11 +81,11 @@ StampedExchange Gripper::getMostRecentStampedExchange() const
 
 std::optional<StampedExchange> Gripper::waitForExchange(std::chrono::milliseconds timeout) const
 {
-   return waitForExchange(_impl->stampedExchange().metadata.exchangeCount + 1, timeout);
+   return waitForExchangeCount(_impl->stampedExchange().metadata.exchangeCount + 1, timeout);
 }
 
-std::optional<StampedExchange> Gripper::waitForExchange(uint64_t desiredExchangeCount,
-                                                        std::chrono::milliseconds timeout) const
+std::optional<StampedExchange> Gripper::waitForExchangeCount(uint64_t desiredExchangeCount,
+                                                             std::chrono::milliseconds timeout) const
 {
    const StampedExchange fresh = _impl->waitForExchange(desiredExchangeCount, deadlineAfter(timeout));
    if(fresh.metadata.exchangeCount < desiredExchangeCount)
