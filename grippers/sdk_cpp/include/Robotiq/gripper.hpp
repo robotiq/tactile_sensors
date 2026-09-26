@@ -127,7 +127,7 @@ public:
    //! \return The latest exchange once the count is reached; empty when
    //!         \p timeout elapsed first.
    //! \par Example
-   //! \snippet snippets.cpp sync-loop
+   //! \snippet exchange_log.cpp sync-loop
    [[nodiscard]] std::optional<StampedExchange> waitForExchangeCount(
       uint64_t desiredExchangeCount,
       std::chrono::milliseconds timeout = std::chrono::seconds(30)) const;

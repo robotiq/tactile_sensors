@@ -7,12 +7,18 @@
 //! Meanwhile the main thread activates the gripper, opens it at full
 //! speed, then moves it to a 30 mm opening at minimum speed.
 //!
+//! A row exists only for an exchange that completed, so a link outage
+//! shows as a gap in the timestamps. A recorder that fell behind the cycle
+//! skips to the newest exchange and warns with the counts it missed; if
+//! that happens on a loaded host, raise the recorder thread's priority.
+//!
 //! Usage: exchange_log <port> [file.csv]
 
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -37,7 +43,7 @@ constexpr const char* kDefaultFile = "exchange_log.csv";
 // The manual's register names, so the file reads with it open.
 constexpr const char* kMetadataColumns = "time_s,exchange_count";
 constexpr const char* kCommandColumns = "rACT,rGTO,rATR,rARD,rPR,rSP,rFR";
-constexpr const char* kStatusColumns = "gACT,gGTO,gSTA,gOBJ,gFLT,gPR,gPO,gCU";
+constexpr const char* kStatusColumns = "gACT,gGTO,gSTA,gOBJ,gFLT,kFLT,gPR,gPO,gCU";
 
 void writeHeader(std::ostream& csv)
 {
@@ -73,7 +79,8 @@ void writeStatus(std::ostream& csv, const GripperStatus& status)
        << flags.goToEnabled() << ',' //
        << +static_cast<uint8_t>(flags.activationState()) << ',' //
        << +static_cast<uint8_t>(flags.objectDetection()) << ',' //
-       << +status.faultStatus.raw() << ',' //
+       << +static_cast<uint8_t>(status.faultStatus.gripperFault()) << ',' //
+       << +static_cast<uint8_t>(status.faultStatus.controllerFault()) << ',' //
        << +status.positionRequestEcho << ',' //
        << +status.position << ',' //
        << +status.current;
@@ -92,25 +99,29 @@ void writeRow(std::ostream& csv, std::chrono::steady_clock::time_point start, co
 class Recorder
 {
 public:
-   Recorder(const Gripper& gripper, std::ostream& csv)
+   Recorder(const Gripper& gripper, std::ostream& csv, Logger& logger)
       : _gripper(gripper)
       , _csv(csv)
+      , _logger(logger)
       , _thread([this] { run(); })
    {
    }
 
    ~Recorder() { stop(); }
 
-   // \return The rows written.
-   uint64_t stop()
+   // \return false when a write to the stream failed; the rows before it stand.
+   bool stop()
    {
       _stop = true;
       if(_thread.joinable())
       {
          _thread.join();
       }
-      return _rows;
+      return !_writeFailed;
    }
+
+   uint64_t rows() const { return _rows; }
+   uint64_t skipped() const { return _skipped; }
 
 private:
    void run()
@@ -118,6 +129,7 @@ private:
       const StampedExchange first = _gripper.getMostRecentStampedExchange();
       const auto start = first.metadata.timestamp;
       uint64_t written = first.metadata.exchangeCount;
+      _csv << std::fixed << std::setprecision(4); // time_s at 0.1 ms, however long the run
       writeHeader(_csv);
       while(!_stop)
       {
@@ -127,17 +139,35 @@ private:
          {
             continue; // a stalled link: nothing landed, so nothing to log
          }
+         const uint64_t count = exchange->metadata.exchangeCount;
+         if(count != written + 1)
+         {
+            // The count reached is the newest, not the next: the loop fell behind.
+            _skipped += count - written - 1;
+            _logger.log(Logger::Level::Warn,
+                        "fell behind: exchanges " + std::to_string(written + 1) + " to " + std::to_string(count - 1)
+                           + " not logged");
+         }
          writeRow(_csv, start, *exchange);
-         written = exchange->metadata.exchangeCount;
+         written = count;
          //! [sync-loop]
+         if(!_csv)
+         {
+            _logger.log(Logger::Level::Error, "writing the CSV file failed after " + std::to_string(_rows) + " rows");
+            _writeFailed = true;
+            return;
+         }
          ++_rows;
       }
    }
 
    const Gripper& _gripper;
    std::ostream& _csv;
+   Logger& _logger;
    std::atomic<bool> _stop{false};
+   bool _writeFailed = false;
    uint64_t _rows = 0;
+   uint64_t _skipped = 0;
    std::thread _thread;
 };
 
@@ -182,7 +212,7 @@ int main(int argc, char* argv[])
       return EXIT_FAILURE;
    }
 
-   Recorder recorder(*gripper, csv);
+   Recorder recorder(*gripper, csv, *logger);
 
    logger->log(Logger::Level::Info, "Activating...");
    if(!examples::activateOrRecover(*gripper, *logger))
@@ -201,6 +231,11 @@ int main(int argc, char* argv[])
         && examples::moveTo(*gripper, command, kTargetOpening, profiles::k2F85, *logger);
    }
 
-   logger->log(Logger::Level::Info, std::to_string(recorder.stop()) + " rows written to " + file);
-   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
+   bool logged = recorder.stop();
+   csv.close();
+   logged = logged && !csv.fail();
+   logger->log(logged ? Logger::Level::Info : Logger::Level::Error,
+               std::to_string(recorder.rows()) + " rows written to " + file + (logged ? "" : " before a write failed")
+                  + ", " + std::to_string(recorder.skipped()) + " exchanges skipped");
+   return ok && logged ? EXIT_SUCCESS : EXIT_FAILURE;
 }

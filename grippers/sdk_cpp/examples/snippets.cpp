@@ -20,7 +20,6 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <ostream>
 #include <string>
 #include <string_view>
 #include <iostream>
@@ -253,25 +252,6 @@ bool waitForMotionEnd(Robotiq::Gripper& gripper)
    return false; // no exchange completed within the timeout
 }
 //! [wait-for-exchange]
-
-//! [sync-loop]
-void logEveryExchange(Robotiq::Gripper& gripper, std::ostream& out)
-{
-   uint64_t actedOn = gripper.getMostRecentStampedExchange().metadata.exchangeCount;
-   for(int cycle = 0; cycle < 100; ++cycle)
-   {
-      // One past the exchange last acted on: none is skipped, and a loop
-      // that fell behind gets the newest at once.
-      std::optional<Robotiq::StampedExchange> exchange = gripper.waitForExchangeCount(actedOn + 1, 1s);
-      if(!exchange)
-      {
-         break; // the link stalled
-      }
-      out << exchange->metadata.exchangeCount << ',' << static_cast<int>(exchange->status.position) << '\n';
-      actedOn = exchange->metadata.exchangeCount;
-   }
-}
-//! [sync-loop]
 
 void autoreleaseThenMove(Robotiq::Gripper& gripper)
 {
