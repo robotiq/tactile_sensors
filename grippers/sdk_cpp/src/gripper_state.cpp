@@ -97,7 +97,7 @@ void GripperState::exchangeOnce()
       throw;
    }
 
-   _image.publish(freshStatus, completedAt);
+   _image.publish(commandCopy, freshStatus, completedAt);
    _consecutiveFailures.store(0);
    if(_connectionState.exchange(ConnectionState::Operational) == ConnectionState::Faulted)
    {
@@ -149,9 +149,17 @@ GripperStatus GripperState::status() const
    return _image.status();
 }
 
-StampedStatus GripperState::stampedStatus() const
+StampedExchange GripperState::waitForExchange(uint64_t desiredExchangeCount,
+                                              std::chrono::steady_clock::time_point deadline) const
 {
-   return _image.stampedStatus();
+   // sync() waits for a count past the one given; a count of zero is met
+   // by the seed image itself.
+   return desiredExchangeCount == 0 ? _image.stampedExchange() : _image.sync(desiredExchangeCount - 1, deadline);
+}
+
+StampedExchange GripperState::stampedExchange() const
+{
+   return _image.stampedExchange();
 }
 
 void GripperState::stop() noexcept

@@ -52,8 +52,12 @@ public:
    void setCommand(const GripperCommand& command);
    [[nodiscard]] GripperCommand command() const;
    [[nodiscard]] GripperStatus status() const;
+   [[nodiscard]] StampedExchange stampedExchange() const;
 
-   [[nodiscard]] StampedStatus stampedStatus() const;
+   // The image once its count reaches \p desiredExchangeCount, or as it
+   // stands when \p deadline passes.
+   [[nodiscard]] StampedExchange waitForExchange(uint64_t desiredExchangeCount,
+                                                 std::chrono::steady_clock::time_point deadline) const;
 
    [[nodiscard]] ConnectionState connectionState() const { return _connectionState.load(); }
    [[nodiscard]] Platform& platform() const noexcept { return *_platform; }

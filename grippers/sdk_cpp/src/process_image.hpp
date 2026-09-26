@@ -2,10 +2,10 @@
 //
 // Licensed under the BSD-3-Clause license; see LICENSE for details.
 
-//! \brief Internal: the command and status blocks the exchange cycle carries,
-//! with the count and instant that name the status, behind one lock. Every
-//! method takes the lock on entry, so nothing outside can read a status paired
-//! with another cycle's count or publish one half of a snapshot.
+//! \brief Internal: the command block for the next exchange and the exchange of
+//! the last one, behind one lock. Every method takes the lock on entry, so
+//! nothing outside can read a status paired with another cycle's count or
+//! command, or publish one half of a record.
 
 #pragma once
 
@@ -14,6 +14,7 @@
 
 #include <Robotiq/gripper/command.hpp>
 #include <Robotiq/gripper/platform.hpp>
+#include <Robotiq/gripper/stamped_exchange.hpp>
 #include <Robotiq/gripper/status.hpp>
 
 namespace Robotiq::detail {
@@ -31,11 +32,14 @@ public:
    void setCommand(const GripperCommand& command);
    [[nodiscard]] GripperCommand command() const;
    [[nodiscard]] GripperStatus status() const;
-   [[nodiscard]] StampedStatus stampedStatus() const;
+   [[nodiscard]] StampedExchange stampedExchange() const;
 
-   void publish(const GripperStatus& status, std::chrono::steady_clock::time_point completedAt);
+   // Record the exchange that wrote \p command and read \p status back.
+   void publish(const GripperCommand& command,
+                const GripperStatus& status,
+                std::chrono::steady_clock::time_point completedAt);
 
-   [[nodiscard]] StampedStatus sync(uint64_t count, std::chrono::steady_clock::time_point deadline) const;
+   [[nodiscard]] StampedExchange sync(uint64_t count, std::chrono::steady_clock::time_point deadline) const;
 
    // Final: every waiter returns at once, and so does every later sync().
    // Nothing reopens an image — a GripperState stops once, in its
@@ -46,7 +50,7 @@ private:
    const std::unique_ptr<Mutex> _mutex;
    const std::unique_ptr<ConditionVariable> _statusRefreshed;
    GripperCommand _command{};
-   StampedStatus _stamped{};
+   StampedExchange _stamped{};
    bool _closed = false;
 };
 

@@ -2,6 +2,7 @@ target_sources(grippers_objects PRIVATE
   gripper.hpp
   gripper/command.hpp
   gripper/status.hpp
+  gripper/stamped_exchange.hpp
   gripper/fault_status.hpp
   gripper/wait.hpp
   gripper/activation_result.hpp
