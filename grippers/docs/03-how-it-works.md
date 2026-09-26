@@ -25,6 +25,8 @@ A control loop that must act on every exchange exactly once uses
 `waitForExchangeCount()` instead, asking for one past the exchange it
 last acted on: nothing completed in between is skipped, and a loop that
 fell behind catches up on the newest at once.
+[`sdk_cpp/examples/exchange_log.cpp`](../sdk_cpp/examples/exchange_log.cpp)
+records every exchange to a CSV file that way.
 
 > **Note:**
 >

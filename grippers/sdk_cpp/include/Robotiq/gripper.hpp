@@ -127,7 +127,7 @@ public:
    //! \return The latest exchange once the count is reached; empty when
    //!         \p timeout elapsed first.
    //! \par Example
-   //! \snippet snippets.cpp sync-loop
+   //! \snippet exchange_log.cpp sync-loop
    [[nodiscard]] std::optional<StampedExchange> waitForExchangeCount(
       uint64_t desiredExchangeCount,
       std::chrono::milliseconds timeout = std::chrono::seconds(30)) const;
@@ -159,7 +159,7 @@ private:
 //! \return ActivationResult
 //!
 //! \par Example
-//! \snippet move_gripper.cpp activation-recovery
+//! \snippet gripper_events.cpp activation-recovery
 ActivationResult activate(Gripper& gripper, std::chrono::milliseconds timeout = std::chrono::seconds(15));
 
 //! \ingroup activation

@@ -1,11 +1,18 @@
+# What the examples share; see gripper_events.hpp.
+add_library(gripper_events STATIC gripper_events.cpp gripper_events.hpp)
+target_link_libraries(gripper_events PUBLIC grippers_sdk PRIVATE grippers_warnings)
+
 add_executable(move_gripper move_gripper.cpp)
-target_link_libraries(move_gripper PRIVATE grippers_sdk grippers_warnings)
+target_link_libraries(move_gripper PRIVATE gripper_events grippers_warnings)
 
 add_executable(exchange_rate_probe exchange_rate_probe.cpp)
 target_link_libraries(exchange_rate_probe PRIVATE grippers_sdk grippers_warnings)
 
 add_executable(quick_start quick_start.cpp)
 target_link_libraries(quick_start PRIVATE grippers_sdk grippers_warnings)
+
+add_executable(exchange_log exchange_log.cpp)
+target_link_libraries(exchange_log PRIVATE gripper_events grippers_warnings)
 
 # Backs the header \snippet examples that aren't already covered by
 # quick_start/move_gripper (see snippets.cpp). Compiled by every normal
