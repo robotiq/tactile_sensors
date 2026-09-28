@@ -19,7 +19,6 @@
 #include <Robotiq/gripper/stamped_exchange.hpp>
 #include <Robotiq/gripper/status.hpp>
 #include <Robotiq/gripper/to_string.hpp>
-#include <Robotiq/gripper/wait.hpp>
 
 namespace Robotiq {
 class Serial;
@@ -38,9 +37,11 @@ class GripperState;
 //! image seeds from the gripper's own status echoes, so connecting never
 //! disturbs a gripper that is already running.
 //!
-//! **Concurrency model:** accessors are thread-safe; the intended use is
-//! one control thread writing commands while a background exchange
-//! thread reads/writes the wire. Reads are whole snapshots and writes are
+//! **Concurrency model:** one commander, any number of observers. A single
+//! thread calls setCommand(); any thread may read status, take exchange
+//! records and wait on them, while a background exchange thread runs the
+//! wire. Several uncoordinated commanders are undefined behaviour: there
+//! is one command image. Reads are whole snapshots and writes are
 //! whole commands — no per-field accessors, deliberately: every
 //! transmitted frame is a command the application composed, and two
 //! fields never come from different exchange cycles. The blocking calls
@@ -86,7 +87,12 @@ public:
    Gripper(const Gripper&) = delete;
    Gripper& operator=(const Gripper&) = delete;
 
-   //! \brief Send a new command block on the next exchange cycle.
+   //! \brief Hand a new command block to the exchange cycle.
+   //!
+   //! The block goes out on the next cycle to *start*, which is not always
+   //! the next to complete: a cycle already on the wire carries the previous
+   //! block. Waiting one cycle is therefore not proof of transmission —
+   //! setCommandAndWaitForExchange() is.
    //! \param command The whole command block to transmit; see GripperCommand.
    void setCommand(const GripperCommand& command);
 
@@ -111,8 +117,7 @@ public:
    //!         several did; empty when \p timeout elapsed first.
    //! \par Example
    //! \snippet snippets.cpp wait-for-exchange
-   [[nodiscard]] std::optional<StampedExchange> waitForExchange(
-      std::chrono::milliseconds timeout = std::chrono::seconds(30)) const;
+   std::optional<StampedExchange> waitForExchange(std::chrono::milliseconds timeout = std::chrono::seconds(30)) const;
 
    //! \brief Block until the exchange count reaches a value or a timeout
    //!  occurs.
@@ -128,7 +133,7 @@ public:
    //!         \p timeout elapsed first.
    //! \par Example
    //! \snippet exchange_log.cpp sync-loop
-   [[nodiscard]] std::optional<StampedExchange> waitForExchangeCount(
+   std::optional<StampedExchange> waitForExchangeCount(
       uint64_t desiredExchangeCount,
       std::chrono::milliseconds timeout = std::chrono::seconds(30)) const;
 

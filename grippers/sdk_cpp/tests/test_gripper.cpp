@@ -14,6 +14,7 @@
 #include <Robotiq/gripper/platform.hpp>
 
 #include <Robotiq/gripper.hpp>
+#include <Robotiq/gripper/wait.hpp>
 #include <Robotiq/gripper/connection_state.hpp>
 #include <Robotiq/gripper/command.hpp>
 #include <Robotiq/gripper/driver_exception.hpp>

@@ -47,7 +47,7 @@ extern "C" int gripper_entry(void)
    // the other half of it, the port's condition variable.
    const auto result = Robotiq::activate(gripper, std::chrono::seconds(2));
    gripper.setCommand(gripper.getCommand());
-   (void)gripper.waitForExchange(std::chrono::milliseconds(1));
+   gripper.waitForExchange(std::chrono::milliseconds(1));
    return static_cast<int>(result);
 }
 

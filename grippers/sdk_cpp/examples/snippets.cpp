@@ -11,6 +11,7 @@
 // this file is only for the ones with no other home.
 
 #include <Robotiq/gripper.hpp>
+#include <Robotiq/gripper/wait.hpp>
 #include <Robotiq/gripper/device_profile.hpp>
 #include <Robotiq/gripper/fake/gripper_factory.hpp>
 #include <Robotiq/gripper/stderr_logger.hpp>
@@ -271,17 +272,13 @@ void autoreleaseThenMove(Robotiq::Gripper& gripper)
 void autoreleaseThenMoveWithWait(Robotiq::Gripper& gripper)
 {
    //! [autorelease-then-move-with-wait]
-   // Build and set an autorelease command
+   // Build and set an autorelease command, and wait for a cycle to carry it
    Robotiq::GripperCommand command = Robotiq::GripperCommand::defaults();
    command.action.set(Robotiq::ActionRequestBit::AutoRelease);
-   gripper.setCommand(command);
-
-   // Wait
-   Robotiq::waitFor(
-      [&] {
-         return (gripper.getStatus().faultStatus.gripperFault() == Robotiq::GripperFault::AutomaticReleaseInProgress);
-      },
-      10s);
+   if(!Robotiq::setCommandAndWaitForExchange(gripper, command, 10s))
+   {
+      return; // no cycle carried it before the timeout
+   }
 
    // Build and set a command to move the gripper to the position 100
    command.action.set(Robotiq::ActionRequestBit::GoTo);
@@ -297,6 +294,19 @@ bool waitForMotionSettled(Robotiq::Gripper& gripper)
       [&] { return gripper.getStatus().gripperStatus.objectDetection() != Robotiq::ObjectDetection::Moving; },
       10s);
    //! [wait-for-motion-settled]
+   return settled;
+}
+
+std::optional<Robotiq::StampedExchange> waitForMotionSettledByExchange(Robotiq::Gripper& gripper)
+{
+   //! [wait-for-exchange-predicate]
+   std::optional<Robotiq::StampedExchange> settled = Robotiq::waitFor(
+      gripper,
+      [](const Robotiq::StampedExchange& exchange) {
+         return exchange.status.gripperStatus.objectDetection() != Robotiq::ObjectDetection::Moving;
+      },
+      10s);
+   //! [wait-for-exchange-predicate]
    return settled;
 }
 

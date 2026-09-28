@@ -10,6 +10,7 @@ target_sources(grippers_objects PRIVATE
   to_string.cpp
   units.cpp
   modbus_client.cpp
+  wait.cpp
 )
 
 # TU selection does the platform work: the core above never mentions an OS,

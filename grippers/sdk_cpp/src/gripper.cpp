@@ -20,18 +20,10 @@
 #include <Robotiq/gripper/logger.hpp>
 #include <Robotiq/gripper/platform.hpp>
 #include <Robotiq/gripper/serial.hpp>
+#include <Robotiq/gripper/wait.hpp>
 
 namespace Robotiq {
 namespace {
-std::chrono::steady_clock::time_point deadlineAfter(std::chrono::milliseconds timeout)
-{
-   using namespace std::chrono;
-   // Capped so that the sum, and a platform's conversion of the deadline to
-   // another clock, cannot overflow when a caller passes milliseconds::max().
-   constexpr auto longest = duration_cast<milliseconds>(steady_clock::duration::max()) / 2;
-   return steady_clock::now() + std::min(timeout, longest);
-}
-
 std::shared_ptr<Platform> checkedPlatform(std::shared_ptr<Platform> platform)
 {
    if(!platform)
@@ -87,7 +79,7 @@ std::optional<StampedExchange> Gripper::waitForExchange(std::chrono::millisecond
 std::optional<StampedExchange> Gripper::waitForExchangeCount(uint64_t desiredExchangeCount,
                                                              std::chrono::milliseconds timeout) const
 {
-   const StampedExchange fresh = _impl->waitForExchange(desiredExchangeCount, deadlineAfter(timeout));
+   const StampedExchange fresh = _impl->waitForExchange(desiredExchangeCount, detail::deadlineAfter(timeout));
    if(fresh.metadata.exchangeCount < desiredExchangeCount)
    {
       // timeout or dead gripper
