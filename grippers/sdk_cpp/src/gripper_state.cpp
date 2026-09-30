@@ -97,9 +97,12 @@ void GripperState::exchangeOnce()
       throw;
    }
 
-   _image.publish(commandCopy, freshStatus, completedAt);
+   // The state turns before the record that announces it, so a waiter the
+   // record wakes reads Operational.
    _consecutiveFailures.store(0);
-   if(_connectionState.exchange(ConnectionState::Operational) == ConnectionState::Faulted)
+   const bool recovered = _connectionState.exchange(ConnectionState::Operational) == ConnectionState::Faulted;
+   _image.publish(commandCopy, freshStatus, completedAt);
+   if(recovered)
    {
       _logger->log(Logger::Level::Info, "link recovered; the process image is live again");
    }
