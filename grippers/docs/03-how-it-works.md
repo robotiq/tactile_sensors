@@ -28,7 +28,8 @@ fell behind catches up on the newest at once.
 [`sdk_cpp/examples/exchange_log.cpp`](../sdk_cpp/examples/exchange_log.cpp)
 records every exchange to a CSV file that way.
 `waitFor(gripper, predicate, timeout)` runs a predicate on each exchange
-until one holds.
+until one holds; the named waits, such as `waitForMotionEnd()`, are
+built on it.
 
 `setCommand()` hands its block to that cycle rather than to the wire. The
 block goes out on the next cycle to *start*, which is not always the next
@@ -348,35 +349,45 @@ The following section presents the wait function used in the code above.
 
 ### Waiting for a condition
 
-`waitFor()` (and `waitUntil()`, which takes a deadline instead of a
-timeout) polls a predicate until it becomes true or the timeout
-elapses:
+The named waits cover the steps of a motion: `setCommandAndWaitForExchange()`
+for the command reaching the gripper, `waitForObjectDetection()` for a
+given object-detection state such as `Moving`, and `waitForMotionEnd()`
+for the fingers stopping, at the requested position or on an object. Each
+returns the exchange that ended the wait, with the status that showed the
+condition, or nothing when the timeout elapsed first:
 
-<!-- snippet: snippets.cpp wait-for-motion-settled -->
+<!-- snippet: snippets.cpp named-waits -->
 ```cpp
-bool settled = Robotiq::waitFor(
-   [&] { return gripper.getStatus().gripperStatus.objectDetection() != Robotiq::ObjectDetection::Moving; },
-   10s);
+// Hand the command over and wait for an exchange to carry it, then for
+// the fingers to stop; each wait returns the exchange that ended it.
+if(!Robotiq::setCommandAndWaitForExchange(gripper, command, 1s))
+{
+   std::cerr << "no exchange carried the command within 1 s\n";
+}
+std::optional<Robotiq::StampedExchange> stopped = Robotiq::waitForMotionEnd(gripper, 5s);
+if(!stopped)
+{
+   std::cerr << "the fingers were still moving after 5 s\n";
+}
 ```
 
-A poll can miss a state the gripper only passes through. Prefer
-`waitFor(gripper, predicate, timeout)`: the predicate runs on each
-exchange completed after the call, as long as the caller keeps up with the
-cycle, and the exchange it held for comes back as the result.
+Any other condition goes through `waitFor(gripper, predicate, timeout)`.
+The predicate runs on each exchange completed after the call, as long as
+the caller keeps up with the cycle, and the exchange it held for comes back
+as the result:
 
 <!-- snippet: snippets.cpp wait-for-exchange-predicate -->
 ```cpp
-std::optional<Robotiq::StampedExchange> settled = Robotiq::waitFor(
+// A condition no named wait covers: the fingers passing a position.
+std::optional<Robotiq::StampedExchange> halfway = Robotiq::waitFor(
    gripper,
-   [](const Robotiq::StampedExchange& exchange) {
-      return exchange.status.gripperStatus.objectDetection() != Robotiq::ObjectDetection::Moving;
-   },
+   [](const Robotiq::StampedExchange& exchange) { return exchange.status.position >= 128; },
    10s);
 ```
 
-In some cases, it helps to wait for a given gripper state before moving to the next
-instruction (wait for the gripper to acknowledge a command, wait for the
-gripper to complete its motion, ...).
+Only an exchange can end the wait: a link that stops completing them
+ends it through the timeout, which is the signal a caller wants for a
+gripper that stopped answering.
 
 ### Activating the gripper
 
@@ -450,8 +461,7 @@ if(Robotiq::severity(fault.gripperFault()) == Robotiq::FaultSeverity::Major)
 The communication flow to control the gripper is typically the following:
 - Build a command
 - Send the command to the gripper
-- Wait for the gripper to acknowledge the command
-- Wait for the gripper to complete the action
+- Wait for the motion to end
 - Check final status
 
 Build a command:
@@ -472,29 +482,22 @@ Send the command:
 gripper.setCommand(command);
 ```
 
-Wait for the gripper to acknowledge the command, then wait for it to complete:
+Wait for the gripper to start moving, then to stop:
 
 <!-- snippet: quick_start.cpp qs-wait -->
 ```cpp
-// 6- Wait for the gripper to echo
-Robotiq::waitFor([&] { return gripper.getStatus().positionRequestEcho == command.positionRequest; }, 1s);
+// 6- Wait for the gripper to start moving
+Robotiq::waitForObjectDetection(gripper, Robotiq::ObjectDetection::Moving, 200ms);
 
-// 7- Wait for the gripper to start moving
-Robotiq::waitFor(
-   [&] { return (gripper.getStatus().gripperStatus.objectDetection() == Robotiq::ObjectDetection::Moving); },
-   200ms);
-
-// 8- Wait for the gripper to stop
-Robotiq::waitFor(
-   [&] { return (gripper.getStatus().gripperStatus.objectDetection() != Robotiq::ObjectDetection::Moving); },
-   5s);
+// 7- Wait for the gripper to stop
+Robotiq::waitForMotionEnd(gripper, 5s);
 ```
 
 Check final status:
 
 <!-- snippet: quick_start.cpp qs-status -->
 ```cpp
-// 9- retrieve status
+// 8- retrieve status
 uint8_t currentPosition = gripper.getStatus().position;
 
 // Print retrieved status

@@ -25,6 +25,7 @@ using Robotiq::DeviceProfile;
 using Robotiq::Gripper;
 using Robotiq::GripperCommand;
 using Robotiq::ObjectDetection;
+using Robotiq::StampedExchange;
 
 namespace examples {
 
@@ -36,11 +37,6 @@ std::string withStatus(std::string message, Gripper& gripper)
    message += ' ';
    message += status;
    return message;
-}
-
-bool motionSettled(Gripper& gripper)
-{
-   return gripper.getStatus().gripperStatus.objectDetection() != ObjectDetection::Moving;
 }
 
 std::unique_ptr<Gripper> connectGripper(const Robotiq::ConnectionConfig& config)
@@ -105,30 +101,29 @@ bool moveTo(Gripper& gripper,
    //! [opening-optional-check]
    command.positionRequest = *position;
    command.action.set(ActionRequestBit::GoTo, true); // execute the move
-   gripper.setCommand(command);
    logger.log(Robotiq::Logger::Level::Debug, "sending: " + Robotiq::toString(command));
    //! [move-to-three-waits]
-   if(!Robotiq::waitFor([&] { return gripper.getStatus().positionRequestEcho == *position; }, 1s))
+   if(!Robotiq::setCommandAndWaitForExchange(gripper, command, 1s))
    {
-      logger.log(Robotiq::Logger::Level::Error, withStatus("the gripper never echoed the position request", gripper));
+      logger.log(Robotiq::Logger::Level::Error, withStatus("no exchange carried the command", gripper));
       return false;
    }
-   // Object detection can lag the echo by a few cycles: give the motion
+   // Object detection can lag the command by a few cycles: give the motion
    // a moment to start (returns early once it does). A short move can be
    // over before it is ever seen moving, so this one is only advisory.
-   if(!Robotiq::waitFor([&] { return gripper.getStatus().gripperStatus.objectDetection() == ObjectDetection::Moving; },
-                        200ms))
+   if(!Robotiq::waitForObjectDetection(gripper, ObjectDetection::Moving, 200ms))
    {
       logger.log(Robotiq::Logger::Level::Debug, "no motion seen within 200 ms; it may already be done");
    }
-   if(!Robotiq::waitFor([&] { return motionSettled(gripper); }, 5s))
+   const std::optional<StampedExchange> settled = Robotiq::waitForMotionEnd(gripper, 5s);
+   if(!settled)
    {
       logger.log(Robotiq::Logger::Level::Error, withStatus("the motion never settled", gripper));
       return false;
    }
    //! [move-to-three-waits]
    //! [opening-from-register-optional-check]
-   const std::optional<double> opening = Robotiq::units::openingFromRegister(gripper.getStatus().position, profile);
+   const std::optional<double> opening = Robotiq::units::openingFromRegister(settled->status.position, profile);
    if(!opening)
    {
       logger.log(Robotiq::Logger::Level::Error,

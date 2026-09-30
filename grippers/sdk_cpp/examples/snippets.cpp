@@ -229,18 +229,8 @@ void makeFakeGripperUsage()
    //! [make-fake-gripper]
 }
 
-//! [wait-with-platform]
-bool waitWithPlatform(Robotiq::Gripper& gripper, uint8_t target)
-{
-   bool settled = Robotiq::waitFor([&] { return gripper.getStatus().positionRequestEcho == target; },
-                                   gripper.platform(),
-                                   std::chrono::seconds(1));
-   return settled;
-}
-//! [wait-with-platform]
-
 //! [wait-for-exchange]
-bool waitForMotionEnd(Robotiq::Gripper& gripper)
+bool waitForMotionEndByHand(Robotiq::Gripper& gripper)
 {
    // Each wake-up sees the newest exchange; the ones in between are not needed here.
    while(std::optional<Robotiq::StampedExchange> exchange = gripper.waitForExchange(1s))
@@ -287,27 +277,35 @@ void autoreleaseThenMoveWithWait(Robotiq::Gripper& gripper)
    //! [autorelease-then-move-with-wait]
 }
 
-bool waitForMotionSettled(Robotiq::Gripper& gripper)
+std::optional<Robotiq::StampedExchange> waitForMotionToComplete(Robotiq::Gripper& gripper,
+                                                                const Robotiq::GripperCommand& command)
 {
-   //! [wait-for-motion-settled]
-   bool settled = Robotiq::waitFor(
-      [&] { return gripper.getStatus().gripperStatus.objectDetection() != Robotiq::ObjectDetection::Moving; },
-      10s);
-   //! [wait-for-motion-settled]
-   return settled;
+   //! [named-waits]
+   // Hand the command over and wait for an exchange to carry it, then for
+   // the fingers to stop; each wait returns the exchange that ended it.
+   if(!Robotiq::setCommandAndWaitForExchange(gripper, command, 1s))
+   {
+      std::cerr << "no exchange carried the command within 1 s\n";
+   }
+   std::optional<Robotiq::StampedExchange> stopped = Robotiq::waitForMotionEnd(gripper, 5s);
+   if(!stopped)
+   {
+      std::cerr << "the fingers were still moving after 5 s\n";
+   }
+   //! [named-waits]
+   return stopped;
 }
 
-std::optional<Robotiq::StampedExchange> waitForMotionSettledByExchange(Robotiq::Gripper& gripper)
+std::optional<Robotiq::StampedExchange> waitForHalfwayClosed(Robotiq::Gripper& gripper)
 {
    //! [wait-for-exchange-predicate]
-   std::optional<Robotiq::StampedExchange> settled = Robotiq::waitFor(
+   // A condition no named wait covers: the fingers passing a position.
+   std::optional<Robotiq::StampedExchange> halfway = Robotiq::waitFor(
       gripper,
-      [](const Robotiq::StampedExchange& exchange) {
-         return exchange.status.gripperStatus.objectDetection() != Robotiq::ObjectDetection::Moving;
-      },
+      [](const Robotiq::StampedExchange& exchange) { return exchange.status.position >= 128; },
       10s);
    //! [wait-for-exchange-predicate]
-   return settled;
+   return halfway;
 }
 
 Robotiq::ActivationResult activateOnly(Robotiq::Gripper& gripper)

@@ -157,7 +157,7 @@ an opening once motion has finished:
 
 <!-- snippet: gripper_events.cpp opening-from-register-optional-check -->
 ```cpp
-const std::optional<double> opening = Robotiq::units::openingFromRegister(gripper.getStatus().position, profile);
+const std::optional<double> opening = Robotiq::units::openingFromRegister(settled->status.position, profile);
 if(!opening)
 {
    logger.log(Robotiq::Logger::Level::Error,
@@ -178,35 +178,35 @@ catching a different phase of the movement sequence.
 
 <!-- snippet: gripper_events.cpp move-to-three-waits -->
 ```cpp
-if(!Robotiq::waitFor([&] { return gripper.getStatus().positionRequestEcho == *position; }, 1s))
+if(!Robotiq::setCommandAndWaitForExchange(gripper, command, 1s))
 {
-   logger.log(Robotiq::Logger::Level::Error, withStatus("the gripper never echoed the position request", gripper));
+   logger.log(Robotiq::Logger::Level::Error, withStatus("no exchange carried the command", gripper));
    return false;
 }
-// Object detection can lag the echo by a few cycles: give the motion
+// Object detection can lag the command by a few cycles: give the motion
 // a moment to start (returns early once it does). A short move can be
 // over before it is ever seen moving, so this one is only advisory.
-if(!Robotiq::waitFor([&] { return gripper.getStatus().gripperStatus.objectDetection() == ObjectDetection::Moving; },
-                     200ms))
+if(!Robotiq::waitForObjectDetection(gripper, ObjectDetection::Moving, 200ms))
 {
    logger.log(Robotiq::Logger::Level::Debug, "no motion seen within 200 ms; it may already be done");
 }
-if(!Robotiq::waitFor([&] { return motionSettled(gripper); }, 5s))
+const std::optional<StampedExchange> settled = Robotiq::waitForMotionEnd(gripper, 5s);
+if(!settled)
 {
    logger.log(Robotiq::Logger::Level::Error, withStatus("the motion never settled", gripper));
    return false;
 }
 ```
 
-1. **Wait for the position-request echo** (`positionRequestEcho`) —
+1. **Wait for an exchange to carry the command** (`setCommandAndWaitForExchange()`) —
    confirms the gripper actually received this command, as opposed to
    it being lost or still in flight. A timeout here fails the move.
-2. **Wait (briefly) to see `objectDetection() == Moving`** — advisory
-   only, and its own timeout is *not* treated as failure. `objectDetection()`
-   can lag the echo by a few exchange cycles, and a short move can
-   finish before it's ever observed mid-motion — so "never saw it
-   moving" doesn't mean anything went wrong.
-3. **Wait for `objectDetection() != Moving`** (`motionSettled()`) — the
+2. **Wait (briefly) to see `objectDetection() == Moving`** (`waitForObjectDetection()`) —
+   advisory only, and its own timeout is *not* treated as failure.
+   `objectDetection()` can lag the command by a few exchange cycles, and
+   a short move can finish before it's ever observed mid-motion — so
+   "never saw it moving" doesn't mean anything went wrong.
+3. **Wait for the fingers to stop** (`waitForMotionEnd()`) — the
    actual completion: either the gripper reached the requested
    position, or it stopped early on a detected object. A timeout here
    fails the move.
