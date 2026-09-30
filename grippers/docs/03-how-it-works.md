@@ -389,6 +389,11 @@ Only an exchange can end the wait: a link that stops completing them
 ends it through the timeout, which is the signal a caller wants for a
 gripper that stopped answering.
 
+The polling `waitFor(predicate, timeout)` and `waitUntil(predicate,
+deadline)` of earlier releases are deprecated. They could miss a state the
+gripper only passes through, and woke up to a poll period after the
+exchange that showed it; they are removed in the next major release.
+
 ### Activating the gripper
 
 Before sending motion commands, the gripper must be activated once. During

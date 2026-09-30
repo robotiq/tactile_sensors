@@ -168,7 +168,8 @@
 //! the gripper, the fingers moving, the fingers stopping. waitFor() takes a
 //! predicate for any other condition. Every wait wakes on the exchange
 //! itself, so it neither misses a state the gripper only passes through
-//! nor spends CPU between cycles.
+//! nor spends CPU between cycles. The polling forms that took a nullary
+//! predicate are deprecated.
 //!
 //! \par Example
 //! \snippet snippets.cpp named-waits
