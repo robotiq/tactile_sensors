@@ -163,4 +163,26 @@ std::optional<StampedExchange> setCommandAndWaitForExchange(
    const GripperCommand& command,
    std::chrono::milliseconds timeout = std::chrono::seconds(30));
 
+//! \ingroup wait
+//! \brief Wait for the exchange on which the gripper reports \p detection.
+//!
+//! \param gripper The gripper whose exchanges to wait on.
+//! \param detection The object-detection state to wait for; see ObjectDetection.
+//! \param timeout How long to wait, starting now.
+//! \return The first exchange whose status reports \p detection; empty when
+//!         none did before \p timeout.
+std::optional<StampedExchange> waitForObjectDetection(const Gripper& gripper,
+                                                      ObjectDetection detection,
+                                                      std::chrono::milliseconds timeout = std::chrono::seconds(30));
+
+//! \ingroup wait
+//! \brief Wait for the gripper motion to stop.
+//!
+//! \param gripper The gripper whose exchanges to wait on.
+//! \param timeout How long to wait, starting now.
+//! \return The first exchange whose status is no longer ObjectDetection::Moving;
+//!         empty when none was before \p timeout.
+std::optional<StampedExchange> waitForMotionEnd(const Gripper& gripper,
+                                                std::chrono::milliseconds timeout = std::chrono::seconds(30));
+
 } // namespace Robotiq

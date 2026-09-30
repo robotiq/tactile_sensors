@@ -164,6 +164,43 @@ TEST_F(TestWaitForExchange, wait_for_returns_the_first_exchange_the_predicate_ho
    EXPECT_LE(static_cast<uint64_t>(evaluated), echoed->metadata.exchangeCount - before);
 }
 
+TEST_F(TestWaitForExchange, wait_for_object_detection_returns_the_exchange_that_reports_it)
+{
+   // The fake reports Moving until a GoTo lands, then AtRequestedPosition
+   // on the exchange that carries it.
+   ASSERT_EQ(activate(gripper, kWait), ActivationResult::Activated);
+   const std::optional<StampedExchange> idle = waitForObjectDetection(gripper, ObjectDetection::Moving, kWait);
+   ASSERT_TRUE(idle.has_value());
+   EXPECT_EQ(idle->status.gripperStatus.objectDetection(), ObjectDetection::Moving);
+
+   GripperCommand command = gripper.getCommand();
+   command.action.set(ActionRequestBit::GoTo, true);
+   gripper.setCommand(command);
+   const std::optional<StampedExchange> arrived =
+      waitForObjectDetection(gripper, ObjectDetection::AtRequestedPosition, kWait);
+   ASSERT_TRUE(arrived.has_value());
+   EXPECT_EQ(arrived->status.gripperStatus.objectDetection(), ObjectDetection::AtRequestedPosition);
+   EXPECT_GT(arrived->metadata.exchangeCount, idle->metadata.exchangeCount);
+}
+
+TEST_F(TestWaitForExchange, wait_for_motion_end_returns_the_exchange_on_which_the_fingers_stopped)
+{
+   ASSERT_EQ(activate(gripper, kWait), ActivationResult::Activated);
+   GripperCommand command = gripper.getCommand();
+   command.action.set(ActionRequestBit::GoTo, true);
+   gripper.setCommand(command);
+
+   const std::optional<StampedExchange> stopped = waitForMotionEnd(gripper, kWait);
+   ASSERT_TRUE(stopped.has_value());
+   EXPECT_EQ(stopped->status.gripperStatus.objectDetection(), ObjectDetection::AtRequestedPosition);
+}
+
+TEST_F(TestWaitForExchange, named_waits_report_a_timeout_as_no_exchange)
+{
+   EXPECT_FALSE(waitForObjectDetection(gripper, ObjectDetection::Moving, std::chrono::milliseconds(0)));
+   EXPECT_FALSE(waitForMotionEnd(gripper, std::chrono::milliseconds(0)));
+}
+
 TEST_F(TestWaitForExchange, wait_for_hands_the_predicate_each_exchange_once)
 {
    std::optional<uint64_t> previous;
