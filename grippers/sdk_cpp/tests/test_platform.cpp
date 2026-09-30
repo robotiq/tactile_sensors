@@ -12,7 +12,8 @@
 #include <vector>
 
 #include <Robotiq/gripper/platform.hpp>
-#include <Robotiq/gripper/wait.hpp>
+
+#include "test_utils.hpp"
 
 namespace Robotiq::test {
 namespace {
@@ -56,7 +57,7 @@ TEST_F(TestConditionVariable, one_notification_wakes_every_waiter)
       });
    }
 
-   ASSERT_TRUE(waitFor([&] { return waiting.load() == kWaiters; }, std::chrono::seconds(2)));
+   ASSERT_TRUE(pollFor([&] { return waiting.load() == kWaiters; }, std::chrono::seconds(2)));
    // \__All threads are waiting for the condition to notify
 
    {
@@ -66,7 +67,7 @@ TEST_F(TestConditionVariable, one_notification_wakes_every_waiter)
    condition->notifyAll();
 
    // notifyAll(), not one-at-a-time: every waiter is woken.
-   EXPECT_TRUE(waitFor([&] { return woken.load() == kWaiters; }, std::chrono::seconds(2)));
+   EXPECT_TRUE(pollFor([&] { return woken.load() == kWaiters; }, std::chrono::seconds(2)));
    for(auto& waiter : waiters)
    {
       waiter.join();

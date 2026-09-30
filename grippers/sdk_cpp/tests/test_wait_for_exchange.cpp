@@ -51,9 +51,7 @@ std::unique_ptr<Gripper> makeStalledGripper(InstrumentedFakeGripperServer& fakeS
                                             makeDefaultPlatform(),
                                             std::make_shared<NullLogger>());
    link.failing.store(true);
-   EXPECT_TRUE(Robotiq::waitFor([&] { return gripper->connectionState() == ConnectionState::Faulted; },
-                                kWait,
-                                std::chrono::milliseconds(1)));
+   EXPECT_TRUE(pollFor([&] { return gripper->connectionState() == ConnectionState::Faulted; }, kWait));
    return gripper;
 }
 
@@ -74,10 +72,12 @@ TEST_F(TestWaitForExchange, a_wait_for_a_count_returns_an_exchange_that_reached_
    ASSERT_EQ(before->status.faultStatus.gripperFault(), GripperFault::None);
 
    fakeServer.model.setFault(GripperFault::Overcurrent);
-   ASSERT_TRUE(
-      Robotiq::waitFor([&] { return gripper.getStatus().faultStatus.gripperFault() == GripperFault::Overcurrent; },
-                       kWait,
-                       std::chrono::milliseconds(1)));
+   ASSERT_TRUE(Robotiq::waitFor(
+      gripper,
+      [](const StampedExchange& exchange) {
+         return exchange.status.faultStatus.gripperFault() == GripperFault::Overcurrent;
+      },
+      kWait));
 
    // Asking for one past the count acted on returns the exchange that carries it.
    const std::optional<StampedExchange> after = gripper.waitForExchangeCount(before->metadata.exchangeCount + 1, kWait);
@@ -282,7 +282,7 @@ TEST(TestWaitForExchangePlatform, a_control_loop_busy_acting_on_an_exchange_neve
       }
    } const releaser{release, controlLoop};
 
-   ASSERT_TRUE(Robotiq::waitFor([&] { return busy.load(); }, kWait, std::chrono::milliseconds(1)));
+   ASSERT_TRUE(pollFor([&] { return busy.load(); }, kWait));
 
    // That cycles keep completing is the assertion; how fast is not.
    for(int cycle = 0; cycle < 100; ++cycle)

@@ -5,10 +5,12 @@
 #pragma once
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <deque>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -21,6 +23,26 @@ namespace Robotiq::test {
 
 //! The gripper's slave address, from the single source of truth.
 constexpr uint8_t kSlaveAddress = kDefaultModbusSlaveAddress;
+
+//! Polls \p predicate until it holds or \p timeout elapses, for the two
+//! conditions no exchange record can announce: a link going Faulted, which
+//! is the absence of exchanges, and a test thread's own progress.
+template <typename Predicate>
+bool pollFor(Predicate predicate,
+             std::chrono::milliseconds timeout,
+             std::chrono::milliseconds period = std::chrono::milliseconds(1))
+{
+   const auto deadline = std::chrono::steady_clock::now() + timeout;
+   while(!predicate())
+   {
+      if(std::chrono::steady_clock::now() >= deadline)
+      {
+         return false;
+      }
+      std::this_thread::sleep_for(period);
+   }
+   return true;
+}
 
 //! Captures every delivered line.
 class CollectingLogger : public Logger

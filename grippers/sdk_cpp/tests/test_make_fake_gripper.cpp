@@ -113,7 +113,10 @@ TEST(MakeFakeGripper, FingersAreWhereverTheyWereLastCommanded)
       command.positionRequest = target;
       gripper->setCommand(command);
 
-      EXPECT_TRUE(waitFor([&] { return gripper->getStatus().position == target; }, kSettle))
+      EXPECT_TRUE(waitFor(
+         *gripper,
+         [&](const StampedExchange& exchange) { return exchange.status.position == target; },
+         kSettle))
          << "position never reached " << static_cast<int>(target) << "; stuck at "
          << static_cast<int>(gripper->getStatus().position);
    }
@@ -134,7 +137,10 @@ TEST(MakeFakeGripper, ClearingTheCommandBlockDeactivates)
    ASSERT_EQ(ActivationResult::Activated, recoverFromFault(*gripper, kSettle));
 
    gripper->setCommand(GripperCommand{});
-   EXPECT_TRUE(waitFor([&] { return !gripper->getStatus().gripperStatus.activated(); }, kSettle));
+   EXPECT_TRUE(waitFor(
+      *gripper,
+      [](const StampedExchange& exchange) { return !exchange.status.gripperStatus.activated(); },
+      kSettle));
 
    // ...and it can be brought back up afterwards.
    EXPECT_EQ(ActivationResult::Activated, recoverFromFault(*gripper, kSettle));
@@ -177,7 +183,8 @@ TEST(MakeFakeGripper, EachGripperGetsItsOwnDevice)
    command.positionRequest = 0xC0;
    first->setCommand(command);
 
-   ASSERT_TRUE(waitFor([&] { return first->getStatus().position == 0xC0; }, kSettle));
+   ASSERT_TRUE(
+      waitFor(*first, [](const StampedExchange& exchange) { return exchange.status.position == 0xC0; }, kSettle));
    EXPECT_NE(0xC0, second->getStatus().position) << "the two dummies share a device";
 }
 } // namespace Robotiq::test
