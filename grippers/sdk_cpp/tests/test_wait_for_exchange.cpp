@@ -51,9 +51,7 @@ std::unique_ptr<Gripper> makeStalledGripper(InstrumentedFakeGripperServer& fakeS
                                             makeDefaultPlatform(),
                                             std::make_shared<NullLogger>());
    link.failing.store(true);
-   EXPECT_TRUE(Robotiq::waitFor([&] { return gripper->connectionState() == ConnectionState::Faulted; },
-                                kWait,
-                                std::chrono::milliseconds(1)));
+   EXPECT_TRUE(pollFor([&] { return gripper->connectionState() == ConnectionState::Faulted; }, kWait));
    return gripper;
 }
 
@@ -74,10 +72,12 @@ TEST_F(TestWaitForExchange, a_wait_for_a_count_returns_an_exchange_that_reached_
    ASSERT_EQ(before->status.faultStatus.gripperFault(), GripperFault::None);
 
    fakeServer.model.setFault(GripperFault::Overcurrent);
-   ASSERT_TRUE(
-      Robotiq::waitFor([&] { return gripper.getStatus().faultStatus.gripperFault() == GripperFault::Overcurrent; },
-                       kWait,
-                       std::chrono::milliseconds(1)));
+   ASSERT_TRUE(Robotiq::waitFor(
+      gripper,
+      [](const StampedExchange& exchange) {
+         return exchange.status.faultStatus.gripperFault() == GripperFault::Overcurrent;
+      },
+      kWait));
 
    // Asking for one past the count acted on returns the exchange that carries it.
    const std::optional<StampedExchange> after = gripper.waitForExchangeCount(before->metadata.exchangeCount + 1, kWait);
@@ -164,6 +164,43 @@ TEST_F(TestWaitForExchange, wait_for_returns_the_first_exchange_the_predicate_ho
    EXPECT_LE(static_cast<uint64_t>(evaluated), echoed->metadata.exchangeCount - before);
 }
 
+TEST_F(TestWaitForExchange, wait_for_object_detection_returns_the_exchange_that_reports_it)
+{
+   // The fake reports Moving until a GoTo lands, then AtRequestedPosition
+   // on the exchange that carries it.
+   ASSERT_EQ(activate(gripper, kWait), ActivationResult::Activated);
+   const std::optional<StampedExchange> idle = waitForObjectDetection(gripper, ObjectDetection::Moving, kWait);
+   ASSERT_TRUE(idle.has_value());
+   EXPECT_EQ(idle->status.gripperStatus.objectDetection(), ObjectDetection::Moving);
+
+   GripperCommand command = gripper.getCommand();
+   command.action.set(ActionRequestBit::GoTo, true);
+   gripper.setCommand(command);
+   const std::optional<StampedExchange> arrived =
+      waitForObjectDetection(gripper, ObjectDetection::AtRequestedPosition, kWait);
+   ASSERT_TRUE(arrived.has_value());
+   EXPECT_EQ(arrived->status.gripperStatus.objectDetection(), ObjectDetection::AtRequestedPosition);
+   EXPECT_GT(arrived->metadata.exchangeCount, idle->metadata.exchangeCount);
+}
+
+TEST_F(TestWaitForExchange, wait_for_motion_end_returns_the_exchange_on_which_the_fingers_stopped)
+{
+   ASSERT_EQ(activate(gripper, kWait), ActivationResult::Activated);
+   GripperCommand command = gripper.getCommand();
+   command.action.set(ActionRequestBit::GoTo, true);
+   gripper.setCommand(command);
+
+   const std::optional<StampedExchange> stopped = waitForMotionEnd(gripper, kWait);
+   ASSERT_TRUE(stopped.has_value());
+   EXPECT_EQ(stopped->status.gripperStatus.objectDetection(), ObjectDetection::AtRequestedPosition);
+}
+
+TEST_F(TestWaitForExchange, named_waits_report_a_timeout_as_no_exchange)
+{
+   EXPECT_FALSE(waitForObjectDetection(gripper, ObjectDetection::Moving, std::chrono::milliseconds(0)));
+   EXPECT_FALSE(waitForMotionEnd(gripper, std::chrono::milliseconds(0)));
+}
+
 TEST_F(TestWaitForExchange, wait_for_hands_the_predicate_each_exchange_once)
 {
    std::optional<uint64_t> previous;
@@ -245,7 +282,7 @@ TEST(TestWaitForExchangePlatform, a_control_loop_busy_acting_on_an_exchange_neve
       }
    } const releaser{release, controlLoop};
 
-   ASSERT_TRUE(Robotiq::waitFor([&] { return busy.load(); }, kWait, std::chrono::milliseconds(1)));
+   ASSERT_TRUE(pollFor([&] { return busy.load(); }, kWait));
 
    // That cycles keep completing is the assertion; how fast is not.
    for(int cycle = 0; cycle < 100; ++cycle)

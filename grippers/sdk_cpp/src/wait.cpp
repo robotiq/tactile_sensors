@@ -11,6 +11,7 @@
 #include <Robotiq/gripper.hpp>
 #include <Robotiq/gripper/command.hpp>
 #include <Robotiq/gripper/stamped_exchange.hpp>
+#include <Robotiq/gripper/status.hpp>
 
 namespace Robotiq {
 
@@ -26,6 +27,28 @@ std::optional<StampedExchange> setCommandAndWaitForExchange(Gripper& gripper,
       gripper,
       before,
       [&](const StampedExchange& exchange) { return exchange.command == command; },
+      timeout);
+}
+
+std::optional<StampedExchange> waitForObjectDetection(const Gripper& gripper,
+                                                      ObjectDetection detection,
+                                                      std::chrono::milliseconds timeout)
+{
+   return waitFor(
+      gripper,
+      [detection](const StampedExchange& exchange) {
+         return exchange.status.gripperStatus.objectDetection() == detection;
+      },
+      timeout);
+}
+
+std::optional<StampedExchange> waitForMotionEnd(const Gripper& gripper, std::chrono::milliseconds timeout)
+{
+   return waitFor(
+      gripper,
+      [](const StampedExchange& exchange) {
+         return exchange.status.gripperStatus.objectDetection() != ObjectDetection::Moving;
+      },
       timeout);
 }
 

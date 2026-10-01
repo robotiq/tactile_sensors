@@ -41,28 +41,21 @@ int main(int argc, char* argv[])
    command.force = 255;
    //! [qs-create-command]
 
-   // 5- Set command
+   // 5- Send the command
    //! [qs-send-command]
    gripper.setCommand(command);
    //! [qs-send-command]
 
    //! [qs-wait]
-   // 6- Wait for the gripper to echo
-   Robotiq::waitFor([&] { return gripper.getStatus().positionRequestEcho == command.positionRequest; }, 1s);
+   // 6- Wait for the gripper to start moving
+   Robotiq::waitForObjectDetection(gripper, Robotiq::ObjectDetection::Moving, 200ms);
 
-   // 7- Wait for the gripper to start moving
-   Robotiq::waitFor(
-      [&] { return (gripper.getStatus().gripperStatus.objectDetection() == Robotiq::ObjectDetection::Moving); },
-      200ms);
-
-   // 8- Wait for the gripper to stop
-   Robotiq::waitFor(
-      [&] { return (gripper.getStatus().gripperStatus.objectDetection() != Robotiq::ObjectDetection::Moving); },
-      5s);
+   // 7- Wait for the gripper to stop
+   Robotiq::waitForMotionEnd(gripper, 5s);
    //! [qs-wait]
 
    //! [qs-status]
-   // 9- retrieve status
+   // 8- retrieve status
    uint8_t currentPosition = gripper.getStatus().position;
 
    // Print retrieved status

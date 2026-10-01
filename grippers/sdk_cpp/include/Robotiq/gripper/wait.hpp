@@ -48,28 +48,14 @@ std::optional<StampedExchange> waitForExchangeAfter(const Gripper& gripper,
       desired = exchange->metadata.exchangeCount + 1;
    }
 }
-//! \endcond
-} // namespace detail
 
-//! \ingroup wait
-//! \brief Poll \p predicate until it holds, or \p deadline passes.
-//!
-//! \p predicate is evaluated at least once, even past the deadline: an
-//! already-true condition never reports a timeout. A poll can miss a state
-//! the gripper only passes through; prefer waitFor(const Gripper&,
-//! Predicate, std::chrono::milliseconds), which sees each exchange as it
-//! completes.
-//! \tparam Predicate A callable taking no arguments, returning bool.
-//! \param predicate The condition to wait for.
-//! \param platform Supplies the sleep between polls.
-//! \param deadline The time point past which waiting gives up.
-//! \param pollPeriod How long to sleep between polls.
-//! \return true if \p predicate held before \p deadline; false on timeout.
+// The body of the deprecated polling forms, kept out of them so that they
+// do not warn about each other.
 template <typename Predicate>
-bool waitUntil(Predicate predicate,
+bool pollUntil(Predicate predicate,
                Platform& platform,
                std::chrono::steady_clock::time_point deadline,
-               std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(2))
+               std::chrono::milliseconds pollPeriod)
 {
    while(true)
    {
@@ -84,55 +70,15 @@ bool waitUntil(Predicate predicate,
       platform.sleepFor(pollPeriod);
    }
 }
-
-//! \ingroup wait
-//! \brief Poll \p predicate until it holds, or \p timeout elapses.
-//! \tparam Predicate A callable taking no arguments, returning bool.
-//! \param predicate The condition to wait for.
-//! \param platform Supplies the sleep between polls.
-//! \param timeout How long to wait, starting now.
-//! \param pollPeriod How long to sleep between polls.
-//! \return true if \p predicate held within \p timeout; false on timeout.
-template <typename Predicate>
-bool waitFor(Predicate predicate,
-             Platform& platform,
-             std::chrono::milliseconds timeout,
-             std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(2))
-{
-   return waitUntil(std::move(predicate), platform, std::chrono::steady_clock::now() + timeout, pollPeriod);
-}
-
-#if GRIPPERS_HOSTED
-//! \ingroup wait
-//! \overload
-//! Sleeps on the default (std::thread-backed) platform. Hosted-only.
-template <typename Predicate>
-bool waitUntil(Predicate predicate,
-               std::chrono::steady_clock::time_point deadline,
-               std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(2))
-{
-   return waitUntil(std::move(predicate), *makeDefaultPlatform(), deadline, pollPeriod);
-}
-
-//! \ingroup wait
-//! \overload
-//! Sleeps on the default (std::thread-backed) platform. Hosted-only.
-template <typename Predicate>
-bool waitFor(Predicate predicate,
-             std::chrono::milliseconds timeout,
-             std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(2))
-{
-   return waitUntil(std::move(predicate), std::chrono::steady_clock::now() + timeout, pollPeriod);
-}
-#endif // GRIPPERS_HOSTED
+//! \endcond
+} // namespace detail
 
 //! \ingroup wait
 //! \brief Wait, exchange by exchange, until \p predicate holds for one.
 //!
 //! \p predicate runs on each exchange completed after the call, in order,
 //! as long as the caller keeps up with the cycle; one that fell behind gets
-//! the newest and never sees the ones in between. The polling waitFor()
-//! sees only what a poll happens to catch. Prefer this form.
+//! the newest and never sees the ones in between.
 //! \tparam Predicate A callable taking a const StampedExchange&, returning bool.
 //! \param gripper The gripper whose exchanges to wait on.
 //! \param predicate The condition to wait for.
@@ -162,5 +108,105 @@ std::optional<StampedExchange> setCommandAndWaitForExchange(
    Gripper& gripper,
    const GripperCommand& command,
    std::chrono::milliseconds timeout = std::chrono::seconds(30));
+
+//! \ingroup wait
+//! \brief Wait for the exchange on which the gripper reports \p detection.
+//!
+//! \param gripper The gripper whose exchanges to wait on.
+//! \param detection The object-detection state to wait for; see ObjectDetection.
+//! \param timeout How long to wait, starting now.
+//! \return The first exchange whose status reports \p detection; empty when
+//!         none did before \p timeout.
+std::optional<StampedExchange> waitForObjectDetection(const Gripper& gripper,
+                                                      ObjectDetection detection,
+                                                      std::chrono::milliseconds timeout = std::chrono::seconds(30));
+
+//! \ingroup wait
+//! \brief Wait for the gripper motion to stop.
+//!
+//! \param gripper The gripper whose exchanges to wait on.
+//! \param timeout How long to wait, starting now.
+//! \return The first exchange whose status is no longer ObjectDetection::Moving;
+//!         empty when none was before \p timeout.
+std::optional<StampedExchange> waitForMotionEnd(const Gripper& gripper,
+                                                std::chrono::milliseconds timeout = std::chrono::seconds(30));
+
+//! \ingroup wait
+//! \brief Poll \p predicate until it holds, or \p deadline passes.
+//! \deprecated A poll can miss a state the gripper only passes through and
+//! wakes up to a poll period late. Use waitFor(const Gripper&, Predicate,
+//! std::chrono::milliseconds), which sees each exchange as it completes.
+//! Removed in the next major release.
+//!
+//! \p predicate is evaluated at least once, even past the deadline: an
+//! already-true condition never reports a timeout.
+//! \tparam Predicate A callable taking no arguments, returning bool.
+//! \param predicate The condition to wait for.
+//! \param platform Supplies the sleep between polls.
+//! \param deadline The time point past which waiting gives up.
+//! \param pollPeriod How long to sleep between polls.
+//! \return true if \p predicate held before \p deadline; false on timeout.
+template <typename Predicate>
+[[deprecated("use waitFor(gripper, predicate, timeout)")]] bool waitUntil(
+   Predicate predicate,
+   Platform& platform,
+   std::chrono::steady_clock::time_point deadline,
+   std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(2))
+{
+   return detail::pollUntil(std::move(predicate), platform, deadline, pollPeriod);
+}
+
+//! \ingroup wait
+//! \brief Poll \p predicate until it holds, or \p timeout elapses.
+//! \deprecated Use waitFor(const Gripper&, Predicate, std::chrono::milliseconds).
+//! Removed in the next major release.
+//! \tparam Predicate A callable taking no arguments, returning bool.
+//! \param predicate The condition to wait for.
+//! \param platform Supplies the sleep between polls.
+//! \param timeout How long to wait, starting now.
+//! \param pollPeriod How long to sleep between polls.
+//! \return true if \p predicate held within \p timeout; false on timeout.
+template <typename Predicate>
+[[deprecated("use waitFor(gripper, predicate, timeout)")]] bool waitFor(
+   Predicate predicate,
+   Platform& platform,
+   std::chrono::milliseconds timeout,
+   std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(2))
+{
+   return detail::pollUntil(std::move(predicate), platform, std::chrono::steady_clock::now() + timeout, pollPeriod);
+}
+
+#if GRIPPERS_HOSTED
+//! \ingroup wait
+//! \overload
+//! \deprecated Use waitFor(const Gripper&, Predicate, std::chrono::milliseconds).
+//! Removed in the next major release.
+//! Sleeps on the default (std::thread-backed) platform. Hosted-only.
+template <typename Predicate>
+[[deprecated("use waitFor(gripper, predicate, timeout)")]] bool waitUntil(
+   Predicate predicate,
+   std::chrono::steady_clock::time_point deadline,
+   std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(2))
+{
+   return detail::pollUntil(std::move(predicate), *makeDefaultPlatform(), deadline, pollPeriod);
+}
+
+//! \ingroup wait
+//! \overload
+//! \deprecated Use waitFor(const Gripper&, Predicate, std::chrono::milliseconds).
+//! Removed in the next major release.
+//! Sleeps on the default (std::thread-backed) platform. Hosted-only.
+template <typename Predicate>
+[[deprecated("use waitFor(gripper, predicate, timeout)")]] bool waitFor(
+   Predicate predicate,
+   std::chrono::milliseconds timeout,
+   std::chrono::milliseconds pollPeriod = std::chrono::milliseconds(2))
+{
+   return detail::pollUntil(std::move(predicate),
+                            *makeDefaultPlatform(),
+                            std::chrono::steady_clock::now() + timeout,
+                            pollPeriod);
+}
+#endif // GRIPPERS_HOSTED
 
 } // namespace Robotiq

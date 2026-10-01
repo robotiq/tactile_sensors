@@ -94,7 +94,7 @@ command.force = 255;
 ```
 
 ### Send the command
-Once the command is prepared we can send it to the gripper using the setCommand function.
+Once the command is prepared, `setCommand` hands it to the exchange cycle and returns at once; the cycle carries it to the gripper on its next exchange. A program that needs to know when that happened uses `setCommandAndWaitForExchange` instead, which returns the exchange that carried it; see [Waiting for a condition](03-how-it-works.md#waiting-for-a-condition).
 
 <!-- snippet: quick_start.cpp qs-send-command -->
 ```cpp
@@ -102,31 +102,17 @@ gripper.setCommand(command);
 ```
 
 ### Wait for the action to be completed
-The C++ driver comes with a convenient wait function that can be used to wait for a gripper action to complete before moving to the next step of the program.
+Two named waits follow the motion. `waitForObjectDetection` waits (briefly) for the gripper to report `Moving`. If the gripper was already at the requested position it never does; this wait then simply times out after 200 ms and the program moves on. `waitForMotionEnd` then waits for the fingers to stop, at the requested position or on an object.
 
-First we wait for the gripper to acknowledge the reception of the command.
-
-Then we wait (briefly) for it to actually start moving before waiting for
-it to settle. If the gripper was already at the requested position it
-never reports `Moving`; this wait then simply times out after 200 ms and
-the program moves on.
-
-Finally, we wait for the command to complete.
+Each wait wakes on the exchange that shows the condition and returns it. For a condition no named wait covers, `waitFor(gripper, predicate, timeout)` takes a predicate; see [Waiting for a condition](03-how-it-works.md#waiting-for-a-condition).
 
 <!-- snippet: quick_start.cpp qs-wait -->
 ```cpp
-// 6- Wait for the gripper to echo
-Robotiq::waitFor([&] { return gripper.getStatus().positionRequestEcho == command.positionRequest; }, 1s);
+// 6- Wait for the gripper to start moving
+Robotiq::waitForObjectDetection(gripper, Robotiq::ObjectDetection::Moving, 200ms);
 
-// 7- Wait for the gripper to start moving
-Robotiq::waitFor(
-   [&] { return (gripper.getStatus().gripperStatus.objectDetection() == Robotiq::ObjectDetection::Moving); },
-   200ms);
-
-// 8- Wait for the gripper to stop
-Robotiq::waitFor(
-   [&] { return (gripper.getStatus().gripperStatus.objectDetection() != Robotiq::ObjectDetection::Moving); },
-   5s);
+// 7- Wait for the gripper to stop
+Robotiq::waitForMotionEnd(gripper, 5s);
 ```
 
 ### Retrieve gripper status
@@ -135,7 +121,7 @@ The status of the gripper can be retrieved with the getStatus function. Here is 
 
 <!-- snippet: quick_start.cpp qs-status -->
 ```cpp
-// 9- retrieve status
+// 8- retrieve status
 uint8_t currentPosition = gripper.getStatus().position;
 
 // Print retrieved status

@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -33,6 +34,8 @@ namespace Robotiq::test {
 
 namespace {
 namespace mc = Robotiq::detail::modbus_constants;
+
+constexpr std::chrono::seconds kWait{2};
 
 GripperCommand activateCommand()
 {
@@ -74,12 +77,6 @@ protected:
                 makeDefaultPlatform(),
                 std::make_shared<NullLogger>())
    {
-   }
-
-   template <typename Predicate>
-   bool waitFor(Predicate predicate, std::chrono::seconds timeout = std::chrono::seconds(2))
-   {
-      return Robotiq::waitFor(predicate, timeout, std::chrono::milliseconds(1));
    }
 
    InstrumentedFakeGripperServer fakeServer;
@@ -159,11 +156,9 @@ TEST(TestGripperActivate, already_activated_gripper_is_left_undisturbed)
 
       EXPECT_EQ(activate(gripper, std::chrono::seconds(2)), ActivationResult::AlreadyActive);
 
-      // The cycle only echoes state the gripper already holds: after
-      // command writes land, it is still activated and was never reset.
-      ASSERT_TRUE(Robotiq::waitFor([&] { return fakeServer.model.commandWrites.load() > 0; },
-                                   std::chrono::seconds(2),
-                                   std::chrono::milliseconds(1)));
+      // The cycle only echoes state the gripper already holds: after a
+      // command write lands, it is still activated and was never reset.
+      ASSERT_TRUE(gripper.waitForExchange(kWait).has_value());
       EXPECT_EQ(fakeServer.model.resets.load(), 0);
       EXPECT_TRUE(gripper.getStatus().gripperStatus.activated());
    }
@@ -308,28 +303,29 @@ TEST(TestGripperPlatform, exchange_runs_entirely_on_the_injected_platform)
                       kFastPeriod,
                       platform,
                       std::make_shared<NullLogger>());
-      // The gripper runs on — and reports — the platform it was given.
-      EXPECT_EQ(&gripper.platform(), platform.get());
-      // One exchange thread, one image lock, one condition variable to
-      // announce the image with — and nothing else.
+      // The gripper runs on the platform it was given: one exchange thread,
+      // one image lock, one condition variable to announce the image with —
+      // and nothing else.
       EXPECT_EQ(platform->threadsSpawned.load(), 1);
       EXPECT_EQ(platform->mutexesCreated.load(), 1);
       EXPECT_EQ(platform->conditionVariablesCreated.load(), 1);
-      // The loop paces every cycle through the platform's sleep.
-      ASSERT_TRUE(Robotiq::waitFor([&] { return platform->sleepUntils.load() >= 3; },
-                                   std::chrono::seconds(2),
-                                   std::chrono::milliseconds(1)));
+      // The loop paces every cycle through the platform's sleep, after the
+      // exchange it completed.
+      const uint64_t seed = gripper.getMostRecentStampedExchange().metadata.exchangeCount;
+      ASSERT_TRUE(gripper.waitForExchangeCount(seed + 4, kWait).has_value());
+      EXPECT_GE(platform->sleepUntils.load(), 3);
       EXPECT_EQ(platform->threadsJoined.load(), 0);
    }
    // Destruction joined the exchange thread it spawned.
    EXPECT_EQ(platform->threadsJoined.load(), 1);
 }
 
-TEST(TestGripperPlatform, activate_sleeps_on_the_grippers_own_platform)
+TEST(TestGripperPlatform, activate_waits_on_the_grippers_own_platform)
 {
-   // A gripper stuck mid-activation forces activate() to poll: every sleep
-   // between those polls must come from the injected platform — on an RTOS a
-   // std sleep here would be the app-task starvation bug all over again.
+   // A gripper stuck mid-activation keeps activate() waiting: every wait
+   // must block on the injected platform's condition variable, and never
+   // sleep on its own — on an RTOS a std sleep here would be the app-task
+   // starvation bug all over again.
    InstrumentedFakeGripperServer fakeServer;
    GripperStatus stuck;
    fake::setActivated(stuck, true);
@@ -343,14 +339,18 @@ TEST(TestGripperPlatform, activate_sleeps_on_the_grippers_own_platform)
                    std::make_shared<NullLogger>());
 
    EXPECT_EQ(activate(gripper, std::chrono::milliseconds(30)), ActivationResult::Timeout);
-   EXPECT_GT(platform->sleepFors.load(), 0);
+   EXPECT_GT(platform->conditionWaits.load(), 0);
+   EXPECT_EQ(platform->sleepFors.load(), 0);
 }
 
 TEST_F(TestGripper, commands_reach_the_gripper_and_status_returns)
 {
    gripper.setCommand(activateCommand());
 
-   EXPECT_TRUE(waitFor([&] { return gripper.getStatus().gripperStatus.activated(); }));
+   EXPECT_TRUE(Robotiq::waitFor(
+      gripper,
+      [](const StampedExchange& exchange) { return exchange.status.gripperStatus.activated(); },
+      kWait));
    EXPECT_EQ(gripper.connectionState(), ConnectionState::Operational);
 }
 
@@ -379,11 +379,15 @@ TEST_F(TestGripper, typed_layers_compose_over_the_image)
    command.force = 0x11;
    gripper.setCommand(command);
 
-   EXPECT_TRUE(waitFor([&] { return gripper.getStatus().positionRequestEcho == 0x42; }));
-   EXPECT_TRUE(gripper.getStatus().gripperStatus.activated());
-   EXPECT_EQ(gripper.getStatus().position, 0x42);
-   EXPECT_EQ(gripper.getStatus().gripperStatus.objectDetection(), ObjectDetection::AtRequestedPosition);
-   EXPECT_EQ(gripper.getStatus().current, fake::RegisterModel::kReportedCurrent);
+   const std::optional<StampedExchange> echoed = Robotiq::waitFor(
+      gripper,
+      [](const StampedExchange& exchange) { return exchange.status.positionRequestEcho == 0x42; },
+      kWait);
+   ASSERT_TRUE(echoed.has_value());
+   EXPECT_TRUE(echoed->status.gripperStatus.activated());
+   EXPECT_EQ(echoed->status.position, 0x42);
+   EXPECT_EQ(echoed->status.gripperStatus.objectDetection(), ObjectDetection::AtRequestedPosition);
+   EXPECT_EQ(echoed->status.current, fake::RegisterModel::kReportedCurrent);
    EXPECT_EQ(gripper.getStatus().faultStatus.raw(), 0);
    EXPECT_EQ(gripper.getStatus().positionRequestEcho, 0x42);
    EXPECT_TRUE(gripper.getStatus().gripperStatus.goToEnabled());
@@ -437,9 +441,7 @@ TEST(TestGripperActivateFailure, recover_from_fault_times_out_while_the_link_is_
    const GripperCommand before = gripper.getCommand();
 
    link.failing.store(true);
-   ASSERT_TRUE(Robotiq::waitFor([&] { return gripper.connectionState() == ConnectionState::Faulted; },
-                                std::chrono::seconds(2),
-                                std::chrono::milliseconds(1)));
+   ASSERT_TRUE(pollFor([&] { return gripper.connectionState() == ConnectionState::Faulted; }, std::chrono::seconds(2)));
 
    // No status to judge and no way to send: the reset must not be attempted.
    EXPECT_EQ(recoverFromFault(gripper, std::chrono::milliseconds(30)), ActivationResult::Timeout);
@@ -457,9 +459,8 @@ TEST(TestGripperExchange, a_zero_period_free_runs_instead_of_stalling)
                       std::chrono::microseconds{0},
                       makeDefaultPlatform(),
                       std::make_shared<NullLogger>());
-      ASSERT_TRUE(Robotiq::waitFor([&] { return fakeServer.model.commandWrites.load() > 10; },
-                                   std::chrono::seconds(2),
-                                   std::chrono::milliseconds(1)));
+      const uint64_t seed = gripper.getMostRecentStampedExchange().metadata.exchangeCount;
+      ASSERT_TRUE(gripper.waitForExchangeCount(seed + 10, kWait).has_value());
       EXPECT_EQ(gripper.connectionState(), ConnectionState::Operational);
    }
    EXPECT_GT(fakeServer.model.statusReads.load(), 0);
@@ -479,9 +480,7 @@ TEST(TestGripperActivateFailure, times_out_while_the_link_is_down)
    // The link dies after construction: activate() must not judge the
    // gripper through a stale image.
    link.failing.store(true);
-   ASSERT_TRUE(Robotiq::waitFor([&] { return gripper.connectionState() == ConnectionState::Faulted; },
-                                std::chrono::seconds(2),
-                                std::chrono::milliseconds(1)));
+   ASSERT_TRUE(pollFor([&] { return gripper.connectionState() == ConnectionState::Faulted; }, std::chrono::seconds(2)));
    EXPECT_EQ(activate(gripper, std::chrono::milliseconds(30)), ActivationResult::Timeout);
 }
 
@@ -530,9 +529,7 @@ TEST(TestGripperHealth, repeated_exchange_failures_degrade_the_state_to_faulted)
 
    // The link dies: every exchange fails from here on.
    link.failing.store(true);
-   EXPECT_TRUE(Robotiq::waitFor([&] { return gripper.connectionState() == ConnectionState::Faulted; },
-                                std::chrono::seconds(2),
-                                std::chrono::milliseconds(1)));
+   EXPECT_TRUE(pollFor([&] { return gripper.connectionState() == ConnectionState::Faulted; }, std::chrono::seconds(2)));
 }
 
 TEST(TestGripperHealth, faulted_state_recovers_to_operational_on_the_next_success)
@@ -547,13 +544,11 @@ TEST(TestGripperHealth, faulted_state_recovers_to_operational_on_the_next_succes
                    std::make_shared<NullLogger>());
 
    link.failing.store(true);
-   ASSERT_TRUE(Robotiq::waitFor([&] { return gripper.connectionState() == ConnectionState::Faulted; },
-                                std::chrono::seconds(2),
-                                std::chrono::milliseconds(1)));
+   ASSERT_TRUE(pollFor([&] { return gripper.connectionState() == ConnectionState::Faulted; }, std::chrono::seconds(2)));
 
    link.failing.store(false);
-   EXPECT_TRUE(Robotiq::waitFor([&] { return gripper.connectionState() == ConnectionState::Operational; },
-                                std::chrono::seconds(2),
-                                std::chrono::milliseconds(1)));
+   // The next completed exchange is the recovery, and finds the state turned.
+   ASSERT_TRUE(gripper.waitForExchange(kWait).has_value());
+   EXPECT_EQ(gripper.connectionState(), ConnectionState::Operational);
 }
 } // namespace Robotiq::test

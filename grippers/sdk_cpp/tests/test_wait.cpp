@@ -11,6 +11,14 @@
 #include <Robotiq/gripper/platform.hpp>
 #include <Robotiq/gripper/wait.hpp>
 
+// The polling waits are deprecated but still shipped, so they stay tested
+// until their removal.
+#if defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#pragma warning(disable : 4996)
+#endif
+
 namespace Robotiq::test {
 using namespace std::chrono_literals;
 

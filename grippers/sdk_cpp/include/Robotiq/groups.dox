@@ -162,14 +162,17 @@
 
 //! \defgroup wait Wait
 //! \ingroup utilities
-//! \brief Polling helpers for waiting on a condition of the process image.
+//! \brief Wait for an exchange that shows a condition.
 //!
-//! The overloads taking a Platform sleep on it between polls; the ones
-//! without sleep on the default (std::thread-backed) platform and so
-//! exist only on hosted runtimes.
+//! The named waits cover the usual steps of a motion: a command reaching
+//! the gripper, the fingers moving, the fingers stopping. waitFor() takes a
+//! predicate for any other condition. Every wait wakes on the exchange
+//! itself, so it neither misses a state the gripper only passes through
+//! nor spends CPU between cycles. The polling forms that took a nullary
+//! predicate are deprecated.
 //!
 //! \par Example
-//! \snippet snippets.cpp wait-with-platform
+//! \snippet snippets.cpp named-waits
 
 //! \defgroup testing Testing & CI Utilities
 //! \brief Tools for exercising the SDK without a physical gripper attached.

@@ -99,25 +99,44 @@ Platform& Gripper::platform() const noexcept
 }
 
 namespace {
-// The blocking procedures sleep on the gripper's own Platform between polls
-// (hosted or RTOS alike, wherever that gripper runs), so the helpers all
-// take it alongside the gripper.
+// Each step of the blocking procedures completes on the exchange that
+// shows it, and judges the status of that exchange rather than a status
+// read afterwards.
 
-// The exchange cycle must be delivering fresh status before a procedure
-// can judge the gripper: Faulted here is link health, which no command
-// can fix. Gripper faults (gFLT) are the callers' business.
-bool waitOperational(const Gripper& gripper, Platform& platform, std::chrono::steady_clock::time_point deadline)
+std::chrono::milliseconds remaining(std::chrono::steady_clock::time_point deadline)
 {
-   return waitUntil([&] { return gripper.connectionState() == ConnectionState::Operational; }, platform, deadline);
+   const auto now = std::chrono::steady_clock::now();
+   return deadline > now ? std::chrono::ceil<std::chrono::milliseconds>(deadline - now) : std::chrono::milliseconds(0);
 }
 
-ActivationResult waitForActivationComplete(Gripper& gripper,
-                                           Platform& platform,
-                                           std::chrono::steady_clock::time_point deadline)
+template <typename Predicate>
+std::optional<StampedExchange> waitForStatus(const Gripper& gripper,
+                                             Predicate predicate,
+                                             std::chrono::steady_clock::time_point deadline)
 {
-   return waitUntil([&] { return gripper.getStatus().gripperStatus.activationState() == ActivationState::Complete; },
-                    platform,
-                    deadline)
+   return waitFor(
+      gripper,
+      [&](const StampedExchange& exchange) { return predicate(exchange.status); },
+      remaining(deadline));
+}
+
+// The exchange cycle must be delivering fresh status before a procedure
+// can judge the gripper: a completed exchange is that proof, while a link
+// that stays Faulted completes none, which no command can fix. Gripper
+// faults (gFLT) are the callers' business.
+std::optional<StampedExchange> waitOperational(const Gripper& gripper, std::chrono::steady_clock::time_point deadline)
+{
+   return waitForStatus(gripper, [](const GripperStatus&) { return true; }, deadline);
+}
+
+ActivationResult waitForActivationComplete(const Gripper& gripper, std::chrono::steady_clock::time_point deadline)
+{
+   return waitForStatus(
+             gripper,
+             [](const GripperStatus& status) {
+                return status.gripperStatus.activationState() == ActivationState::Complete;
+             },
+             deadline)
            ? ActivationResult::Activated
            : ActivationResult::Timeout;
 }
@@ -130,9 +149,7 @@ bool isActivationHandshakeAllowed(std::chrono::steady_clock::time_point deadline
 // The manual's reset handshake: an rACT falling edge resets the gripper
 // (clearing its fault status); the rising edge runs the calibration
 // sweep.
-ActivationResult runActivationHandshake(Gripper& gripper,
-                                        Platform& platform,
-                                        std::chrono::steady_clock::time_point deadline)
+ActivationResult runActivationHandshake(Gripper& gripper, std::chrono::steady_clock::time_point deadline)
 {
    const GripperCommand previousCommand = gripper.getCommand();
 
@@ -144,7 +161,7 @@ ActivationResult runActivationHandshake(Gripper& gripper,
    deactivateCommand.action.set(ActionRequestBit::Activate, false);
 
    gripper.setCommand(deactivateCommand);
-   if(!waitUntil([&] { return !gripper.getStatus().gripperStatus.activated(); }, platform, deadline))
+   if(!waitForStatus(gripper, [](const GripperStatus& status) { return !status.gripperStatus.activated(); }, deadline))
    {
       gripper.setCommand(previousCommand);
       return ActivationResult::Timeout;
@@ -152,20 +169,20 @@ ActivationResult runActivationHandshake(Gripper& gripper,
 
    gripper.setCommand(activateCommand);
 
-   return waitForActivationComplete(gripper, platform, deadline);
+   return waitForActivationComplete(gripper, deadline);
 }
 } // namespace
 
 ActivationResult activate(Gripper& gripper, std::chrono::milliseconds timeout)
 {
-   Platform& platform = gripper.platform();
    const auto deadline = std::chrono::steady_clock::now() + timeout;
-   if(!waitOperational(gripper, platform, deadline))
+   const std::optional<StampedExchange> fresh = waitOperational(gripper, deadline);
+   if(!fresh)
    {
       return ActivationResult::Timeout;
    }
 
-   const GripperStatus status = gripper.getStatus();
+   const GripperStatus& status = fresh->status;
    if(severity(status.faultStatus.gripperFault()) == FaultSeverity::Major)
    {
       return ActivationResult::FaultLatched;
@@ -177,24 +194,23 @@ ActivationResult activate(Gripper& gripper, std::chrono::milliseconds timeout)
    }
    if(status.gripperStatus.activationState() == ActivationState::InProgress)
    {
-      return waitForActivationComplete(gripper, platform, deadline);
+      return waitForActivationComplete(gripper, deadline);
    }
    if(!isActivationHandshakeAllowed(deadline, timeout))
    {
       return ActivationResult::Timeout;
    }
-   return runActivationHandshake(gripper, platform, deadline);
+   return runActivationHandshake(gripper, deadline);
 }
 
 ActivationResult recoverFromFault(Gripper& gripper, std::chrono::milliseconds timeout)
 {
-   Platform& platform = gripper.platform();
    const auto deadline = std::chrono::steady_clock::now() + timeout;
-   if(!waitOperational(gripper, platform, deadline) || !isActivationHandshakeAllowed(deadline, timeout))
+   if(!waitOperational(gripper, deadline) || !isActivationHandshakeAllowed(deadline, timeout))
    {
       return ActivationResult::Timeout;
    }
-   return runActivationHandshake(gripper, platform, deadline);
+   return runActivationHandshake(gripper, deadline);
 }
 
 } // namespace Robotiq

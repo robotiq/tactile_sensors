@@ -27,8 +27,6 @@ std::string withStatus(std::string message, Robotiq::Gripper& gripper);
 
 // Whether the fingers have stopped: on an object, or at the requested
 // position.
-bool motionSettled(Robotiq::Gripper& gripper);
-
 // Open the port \p config names and start exchanging; on failure, print
 // what to check on stderr and return null.
 std::unique_ptr<Robotiq::Gripper> connectGripper(const Robotiq::ConnectionConfig& config);

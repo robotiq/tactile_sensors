@@ -141,11 +141,10 @@ public:
    [[nodiscard]] ConnectionState connectionState() const;
 
    //! \brief Return the runtime Platform used by this gripper.
-   //!
-   //! For most applications the function below should never be used. In some
-   //! cases, such as embedded applications, it is needed for platform-specific
-   //! versions of free functions such as waitFor and waitUntil.
-   [[nodiscard]] Platform& platform() const noexcept;
+   //! \deprecated It served the polling waits, which took a Platform to
+   //! sleep on; the waits on the exchange cycle need none. Removed in the
+   //! next major release.
+   [[nodiscard, deprecated("the waits on the exchange cycle need no Platform")]] Platform& platform() const noexcept;
 
 private:
    // Hides the link, the exchange thread and the image; see
