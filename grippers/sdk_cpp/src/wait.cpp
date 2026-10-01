@@ -30,6 +30,16 @@ std::optional<StampedExchange> setCommandAndWaitForExchange(Gripper& gripper,
       timeout);
 }
 
+std::optional<StampedExchange> waitForPositionEcho(const Gripper& gripper,
+                                                   uint8_t position,
+                                                   std::chrono::milliseconds timeout)
+{
+   return waitFor(
+      gripper,
+      [position](const StampedExchange& exchange) { return exchange.status.positionRequestEcho == position; },
+      timeout);
+}
+
 std::optional<StampedExchange> waitForObjectDetection(const Gripper& gripper,
                                                       ObjectDetection detection,
                                                       std::chrono::milliseconds timeout)

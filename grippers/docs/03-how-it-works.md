@@ -351,7 +351,8 @@ The following section presents the wait function used in the code above.
 ### Waiting for a condition
 
 The named waits cover the steps of a motion: `setCommandAndWaitForExchange()`
-for the command reaching the gripper, `waitForObjectDetection()` for a
+for the command reaching the gripper, `waitForPositionEcho()` for the
+gripper taking its position request as the new setpoint, `waitForObjectDetection()` for a
 given object-detection state such as `Moving`, and `waitForMotionEnd()`
 for the fingers stopping, at the requested position or on an object. Each
 returns the exchange that ended the wait, with the status that showed the

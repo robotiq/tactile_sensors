@@ -110,6 +110,18 @@ std::optional<StampedExchange> setCommandAndWaitForExchange(
    std::chrono::milliseconds timeout = std::chrono::seconds(30));
 
 //! \ingroup wait
+//! \brief Wait for the gripper to echo the position request.
+//!
+//! \param gripper The gripper whose exchanges to wait on.
+//! \param position The position to wait for.
+//! \param timeout How long to wait, starting now.
+//! \return The first exchange whose status echoes \p position; empty when
+//!         none did before \p timeout.
+std::optional<StampedExchange> waitForPositionEcho(const Gripper& gripper,
+                                                   uint8_t position,
+                                                   std::chrono::milliseconds timeout = std::chrono::seconds(30));
+
+//! \ingroup wait
 //! \brief Wait for the exchange on which the gripper reports \p detection.
 //!
 //! \param gripper The gripper whose exchanges to wait on.
