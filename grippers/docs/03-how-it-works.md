@@ -121,7 +121,8 @@ encoded bits.
 It works with gripper profiles which gather gripper specifications and SI
 units conversion functions. The mappings are linear and approximate.
 
-Some gripper profiles are provided for convenience. You may have to create your
+Some gripper profiles are provided for convenience: `profiles::k2F85` and
+`profiles::kHandE`, each for the standard fingers. You may have to create your
 own profile if for example you are using custom fingers and the close and open
 position are different from the default profiles.
 

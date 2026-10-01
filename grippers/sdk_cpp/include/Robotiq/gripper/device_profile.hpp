@@ -53,6 +53,12 @@ namespace profiles {
 //! \warning Assumes that the gripper is in parallel-finger mode.
 inline constexpr DeviceProfile k2F85{0.020, 0.150, 0.0, 0.085, 3, 230};
 
+//! \ingroup units
+//! \brief The measured profile for the Hand-E
+//!
+//! \warning Assumes that the gripper is in parallel-finger mode.
+inline constexpr DeviceProfile kHandE{0.020, 0.150, 0.0, 0.050, 3, 250};
+
 } // namespace profiles
 
 } // namespace Robotiq
