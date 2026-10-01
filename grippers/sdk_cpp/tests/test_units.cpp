@@ -16,6 +16,7 @@ namespace {
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 constexpr double kInf = std::numeric_limits<double>::infinity();
 const DeviceProfile& k2F85 = profiles::k2F85;
+const DeviceProfile& kHandE = profiles::kHandE;
 using namespace Robotiq::units;
 } // namespace
 
@@ -28,6 +29,42 @@ TEST(TestDeviceProfile, the_2f85_carries_the_manual_ranges_and_the_measured_regi
    EXPECT_EQ(k2F85.openPosition, 3);
    EXPECT_EQ(k2F85.closedPosition, 230);
    EXPECT_DOUBLE_EQ(k2F85.registerPositionRange(), 227.0);
+}
+
+TEST(TestDeviceProfile, the_hand_e_carries_the_manual_ranges_and_the_measured_register_band)
+{
+   EXPECT_DOUBLE_EQ(kHandE.minSpeed, 0.020);
+   EXPECT_DOUBLE_EQ(kHandE.maxSpeed, 0.150);
+   EXPECT_DOUBLE_EQ(kHandE.minOpening, 0.0);
+   EXPECT_DOUBLE_EQ(kHandE.maxOpening, 0.050);
+   EXPECT_EQ(kHandE.openPosition, 3);
+   EXPECT_EQ(kHandE.closedPosition, 250);
+   EXPECT_DOUBLE_EQ(kHandE.registerPositionRange(), 247.0);
+}
+
+TEST(TestSpeedToRegister, the_hand_e_range_spans_the_whole_byte)
+{
+   EXPECT_EQ(speedToRegister(0.020, kHandE), 0);
+   EXPECT_EQ(speedToRegister(0.150, kHandE), 255);
+   EXPECT_EQ(speedToRegister(0.3, kHandE), 255);
+   EXPECT_FALSE(speedToRegister(-0.1, kHandE).has_value());
+}
+
+TEST(TestOpeningToRegister, the_hand_e_stroke_spans_its_register_band)
+{
+   EXPECT_EQ(openingToRegister(0.050, kHandE), 3);
+   EXPECT_EQ(openingToRegister(0.0, kHandE), 250);
+   EXPECT_EQ(openingToRegister(0.025, kHandE), 127); // 126.5 steps
+   EXPECT_EQ(openingToRegister(0.060, kHandE), 3);
+   EXPECT_EQ(openingToRegister(-1e-4, kHandE), 250);
+}
+
+TEST(TestOpeningFromRegister, the_hand_e_band_spans_its_stroke)
+{
+   EXPECT_DOUBLE_EQ(openingFromRegister(3, kHandE).value(), 0.050);
+   EXPECT_DOUBLE_EQ(openingFromRegister(250, kHandE).value(), 0.0);
+   EXPECT_DOUBLE_EQ(openingFromRegister(0, kHandE).value(), 0.050);
+   EXPECT_DOUBLE_EQ(openingFromRegister(255, kHandE).value(), 0.0);
 }
 
 TEST(TestRegisterFromSpan, maps_the_span_onto_the_whole_byte)
