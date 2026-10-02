@@ -96,6 +96,17 @@ echo "=========================================="
 echo "macOS: serial devices accessible without sudo — no permission setup needed."
 echo ""
 
+# --sim runs on synthetic data with nothing plugged in, so the device scan is
+# skipped: it would find nothing and stop on an interactive "continue anyway?".
+# Scanned out of all the arguments so --sim works wherever it sits on the line.
+SIM=0
+for arg in "$@"; do
+    if [ "$arg" = "--sim" ]; then SIM=1; fi
+done
+
+if [ "$SIM" = "1" ]; then
+    echo "Simulation mode: skipping device detection."
+else
 devices="$(find_sensor_devices_mac || true)"
 if [ -z "$devices" ]; then
     echo -e "${YELLOW}No Robotiq sensor detected on USB.${NC}"
@@ -118,6 +129,7 @@ else
         echo "  - $dev ($desc)"
     done
 fi
+fi  # end of device detection, skipped under --sim
 
 echo ""
 echo "=========================================="

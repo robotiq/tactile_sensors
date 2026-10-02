@@ -5,40 +5,80 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Robotiq Tactile Sensor Viewer</title>
     <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+    <!-- Resolves the bare 'three' specifier that vendor/OrbitControls.js imports.
+         An import map is only a resolution table, so this costs nothing until
+         gripper3d.js is actually imported — but it has to be in the document
+         before that happens, which is why it sits here unconditionally. -->
+    <script type="importmap">
+    { "imports": { "three": "./vendor/three.module.js" } }
+    </script>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <header>
         <h1>Robotiq Tactile Sensor Viewer</h1>
+        <!-- One control bar for the whole page: everything here sets state on
+             the server, which is shared by every tab. Controls that only mean
+             something on one tab carry data-tabs and are hidden elsewhere. -->
+        <div class="controls">
+            <button id="reset-baseline">Reset Baseline</button>
+            <button id="zero-wrench" data-tabs="overview">Zero Force</button>
+            <label><input type="checkbox" id="raw-values"> Raw</label>
+            <label><input type="checkbox" id="adaptive-range" checked> Adaptive scale</label>
+            <label data-tabs="overview"><input type="checkbox" id="gripper-3d"> 3D gripper</label>
+            <button id="reset-imu-axes" data-tabs="imu">Reset Y Axes</button>
+        </div>
         <div id="status-bar">
             <span id="connection-status" class="status-disconnected">Disconnected</span>
-            <span id="sample-count">Samples: 0</span>
+            <span id="sample-count">Frame: 0</span>
         </div>
     </header>
 
     <nav class="tabs">
-        <button class="tab active" data-tab="static">Static Sensors</button>
+        <button class="tab active" data-tab="overview">Overview</button>
         <button class="tab" data-tab="dynamic">Dynamic Sensors</button>
         <button class="tab" data-tab="imu">IMU</button>
     </nav>
 
     <main>
-        <!-- Static Sensors Tab -->
-        <section id="tab-static" class="tab-content active">
-            <div class="controls">
-                <button id="reset-baseline">Reset Baseline</button>
-                <label><input type="checkbox" id="raw-values"> Raw Values</label>
-                <label><input type="checkbox" id="adaptive-range" checked> Adaptive Scale</label>
+        <!-- Overview Tab -->
+        <!-- A column per finger — its pad, and that finger's dynamic trace
+             directly beneath it — then the gripper, spanning both rows.
+             Finger 1 is on the left: the columns are ordered to match the
+             hardware, not the index. The ids stay bound to the finger index,
+             so this is purely a matter of where each column sits and nothing
+             in app.js has to know about it. -->
+        <section id="tab-overview" class="tab-content overview-grid active">
+            <div class="col-head">Finger 1</div>
+            <div class="col-head">Finger 0</div>
+            <div class="col-head gripper-head">Gripper config and load <span class="unit">(2F-85)</span></div>
+
+            <div class="cell"><div id="overview-static-1" class="plot heatmap"></div></div>
+            <div class="cell"><div id="overview-static-0" class="plot heatmap"></div></div>
+
+            <div class="cell gripper-cell">
+                <div id="gripper-view"></div>
+                <div class="overlay-note">
+                    Finger tilt estimated from the fingertip IMUs<br>
+                    <span class="dim">force and moment measured from the force/torque sensor (FT-300)</span>
+                </div>
+                <div id="gripper-readout">
+                    <span id="tip-readout-0"></span>
+                    <span id="wrench-readout"></span>
+                    <span id="tip-readout-1"></span>
+                </div>
+                <!-- Only ever seen if the model fails to load; the column is
+                     not drawn at all when the option is simply off. -->
+                <div class="gripper-error" hidden></div>
             </div>
-            <div class="chart-row">
-                <div class="chart-container">
-                    <h3>Finger 0</h3>
-                    <div id="static-finger-0"></div>
-                </div>
-                <div class="chart-container">
-                    <h3>Finger 1</h3>
-                    <div id="static-finger-1"></div>
-                </div>
+
+            <div class="cell captioned">
+                <span class="caption">Dynamic <span class="unit">(mV)</span></span>
+                <div id="overview-dynamic-1" class="plot"></div>
+            </div>
+            <div class="cell captioned">
+                <span class="caption">Dynamic <span class="unit">(mV)</span></span>
+                <div id="overview-dynamic-0" class="plot"></div>
             </div>
         </section>
 
@@ -68,9 +108,6 @@
 
         <!-- IMU Tab -->
         <section id="tab-imu" class="tab-content">
-            <div class="controls">
-                <button id="reset-imu-axes">Reset Y Axes</button>
-            </div>
             <h2>Accelerometer</h2>
             <div class="chart-row">
                 <div class="chart-container">
@@ -96,6 +133,6 @@
         </section>
     </main>
 
-    <script src="app.js"></script>
+    <script type="module" src="app.js"></script>
 </body>
 </html>
