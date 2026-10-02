@@ -178,3 +178,7 @@ ActivationResult activate(Gripper& gripper, std::chrono::milliseconds timeout = 
 //! \return Activated on success; Timeout if completion never arrived in time.
 ActivationResult recoverFromFault(Gripper& gripper, std::chrono::milliseconds timeout = std::chrono::seconds(15));
 } // namespace Robotiq
+
+// Last, because wait.hpp's templates need the complete Gripper; included at
+// all so that this header alone brings the waits.
+#include <Robotiq/gripper/wait.hpp>
