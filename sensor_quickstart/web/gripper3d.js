@@ -75,28 +75,76 @@ function intersectCircles(centreA, radiusA, centreB, radiusB) {
     return [add(mid, offset), sub(mid, offset)];
 }
 
-// Solve the four-bar for a distal phalanx turned by `radians` from fully open.
-function solveLinkage(pivots, radians) {
-    const { outerFinger: p2, distal: p3, coupler: p4, innerKnuckle: p5 } = pivots;
+// Solve the linkage for the drive turned by `drive` and the distal phalanx
+// turned by `radians`, both from fully open.
+//
+// The drive turns the outer knuckle about P1, carrying the outer finger's
+// pivot P2 with it; from there it is the same four-bar as at fully open, just
+// grounded at the moved P2. P1-P3-P4-P5 is a parallelogram, so with the
+// fingertip unturned this closes the gripper the way the real one closes in
+// free air: the outer finger locked to the knuckle and the pads staying
+// parallel. A fingertip turn on top is the encompassing grip.
+function solveLinkage(pivots, radians, drive = 0) {
+    const { knuckle: p1, outerFinger: p2, distal: p3, coupler: p4, innerKnuckle: p5 } = pivots;
+    const driven = add(p1, rotate(sub(p2, p1), drive));
+    // Where the distal pivot sits in free closing, to choose the branch by.
+    const freeDistal = add(p1, rotate(sub(p3, p1), drive));
     const outerFingerLength = len(sub(p3, p2));
     const innerKnuckleLength = len(sub(p4, p5));
     const coupler = rotate(sub(p4, p3), radians);
 
     // P3 sits on a circle about P2, and — since P4 hangs off it by the now-known
     // coupler vector — on another about P5 shifted by that vector.
-    const solutions = intersectCircles(p2, outerFingerLength,
+    const solutions = intersectCircles(driven, outerFingerLength,
                                        sub(p5, coupler), innerKnuckleLength);
     if (!solutions) return null;
     // Two branches; keep the one continuous with the pose we started from.
-    const distal = len(sub(solutions[0], p3)) <= len(sub(solutions[1], p3))
+    const distal = len(sub(solutions[0], freeDistal)) <= len(sub(solutions[1], freeDistal))
         ? solutions[0] : solutions[1];
 
     return {
+        knuckleTurn: drive,
+        outerFingerShift: sub(driven, p2),
         distalShift: sub(distal, p3),
-        outerFingerTurn: angleOf(sub(distal, p2)) - angleOf(sub(p3, p2)),
+        outerFingerTurn: angleOf(sub(distal, driven)) - angleOf(sub(p3, p2)),
         innerKnuckleTurn: angleOf(sub(add(distal, coupler), p5))
                           - angleOf(sub(p4, p5)),
     };
+}
+
+// --- Opening from the gripper's position feedback ---
+//
+// gPO is a byte, 0 at fully open. The 2F-85's position is specified in
+// millimetres of opening (about 0.4 mm per count), so the count is taken as
+// linear in opening, and the opening converted to a drive angle through the
+// linkage itself rather than assumed linear in angle. The two ends are where
+// this gripper reads after activation: about 3 fully open, about 228 with the
+// fingers closed on nothing. Past the closed end the pads are touching, so the
+// pose stops there.
+const POS_OPEN = 3;
+const POS_CLOSED = 228;
+
+// Inner face of a pad at fully open, from the pad outline itself. Half the
+// opening; 42.4 mm for the 85 mm stroke.
+const PAD_OPEN_X = Math.min(...GRIPPER_GEOMETRY.tips[0].parts
+    .find(p => p.cls === 'pad').d.match(/-?\d+(\.\d+)?/g)
+    .filter((_, i) => i % 2 === 0).map(n => Math.abs(Number(n))));
+
+// Drive angle, in the drawing's sense for this side, that puts the pad faces
+// at the opening the position count stands for. Mirror-symmetric, so solved
+// on magnitudes: free closing swings the distal pivot P3 about P1 on a circle,
+// and the pad face moves across exactly as P3 does.
+function driveTurnFor(position, pivots, side) {
+    if (position == null) return 0;
+    const closed = Math.min(Math.max((position - POS_OPEN) / (POS_CLOSED - POS_OPEN), 0), 1);
+    const { knuckle: p1, distal: p3 } = pivots;
+    const arm = sub(p3, p1);
+    const radius = len(arm);
+    const start = Math.atan2(Math.abs(arm[1]), Math.abs(arm[0]));
+    const targetX = Math.abs(p3[0]) - PAD_OPEN_X * closed - Math.abs(p1[0]);
+    const turn = Math.acos(Math.min(Math.max(targetX / radius, -1), 1)) - start;
+    // Closing turns the left finger the same way as an inward fingertip does.
+    return GRIPPER_GEOMETRY.svgRotationSign * TIP_SCREEN_SIGN[side] * turn;
 }
 
 // The pivots are stored in the flat view's coordinates (x right, y down). The
@@ -283,7 +331,9 @@ function tintLink(name, invalid) {
         mesh.material.color.setHex(invalid ? INVALID_TINT : mesh.userData.baseColor);
 }
 
-function renderGripper(angles, valid) {
+// `position` is the gripper's position feedback (0-255), or null with no
+// gripper connected, which draws it fully open as before.
+function renderGripper(angles, valid, position = null) {
     if (!meshesReady || !angles) return;
 
     for (let f = 0; f < 2; f++) {
@@ -294,7 +344,7 @@ function renderGripper(angles, valid) {
         // into the flat view; the same factor takes it into the scene.
         const turn = GRIPPER_GEOMETRY.svgRotationSign * TIP_SCREEN_SIGN[side] * angle
                      * Math.PI / 180;
-        const pose = solveLinkage(pivots, turn);
+        const pose = solveLinkage(pivots, turn, driveTurnFor(position, pivots, side));
         // No solution means the angle is outside anything the linkage can do;
         // hold the last pose it could reach rather than tearing it open.
         const reachable = pose !== null;
@@ -303,8 +353,12 @@ function renderGripper(angles, valid) {
 
         if (lastPose[f]) {
             const { pose: solved, turn: shown } = lastPose[f];
+            setLinkTransform(`${side}_knuckle`, pivotToScene(pivots.knuckle),
+                             solved.knuckleTurn);
             setLinkTransform(`${side}_finger`, pivotToScene(pivots.outerFinger),
-                             solved.outerFingerTurn);
+                             solved.outerFingerTurn,
+                             new THREE.Vector3(solved.outerFingerShift[0] * MM, 0,
+                                               -solved.outerFingerShift[1] * MM));
             setLinkTransform(`${side}_inner_knuckle`, pivotToScene(pivots.innerKnuckle),
                              solved.innerKnuckleTurn);
             setLinkTransform(`${side}_finger_tip`, pivotToScene(pivots.distal), shown,

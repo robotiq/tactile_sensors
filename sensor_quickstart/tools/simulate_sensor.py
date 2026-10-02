@@ -4,7 +4,7 @@ Run the web viewer against synthetic sensor data, with no hardware attached.
 Useful for working on the dashboard itself: it feeds `run_web_viewer` the same
 callback a real sensor would, with a moving pressure blob, a dynamic tactile
 tone, and IMU data that mimics a fingertip on a 2F-85 held open and pointing up
-(gravity at +1 g on IMU y, as measured on hardware, turned in the y/z plane by a
+(the accelerometer at -1 g on IMU y, as measured on hardware, turned in the y/z plane by a
 swept fingertip angle).
 
     python3 tools/simulate_sensor.py --port 8099
@@ -116,8 +116,12 @@ class SimulatedFingertipForce(FTSource):
 class FakeMonitor:
     """Stands in for SensorMonitor: same baseline attribute and read loop."""
 
-    def __init__(self, tip_sweep_deg=25.0, hold_deg=None, tilt_deg=0.0):
+    def __init__(self, tip_sweep_deg=25.0, hold_deg=None, tilt_deg=0.0,
+                 upside_down=False):
         self.baseline = [[0] * 28 for _ in range(NUM)]
+        # Fingers pointing down: gravity reversed in the fingertip's frame.
+        # Fingers up reads -1 g on IMU y (measured); down reverses it.
+        self.gravity_sign = 1 if upside_down else -1
         self.tip_sweep_deg = tip_sweep_deg
         self.hold_deg = hold_deg
         self.tilt_deg = tilt_deg
@@ -174,7 +178,7 @@ class FakeMonitor:
                 ]
                 finger.dynamic_tactile = int(8000 * math.sin(n / 7.0 + f)
                                              + 3000 * math.sin(n / 1.3))
-                # Upright and still, gravity reads +1 g on IMU y on both
+                # Upright and still, the accelerometer reads -1 g on IMU y on both
                 # fingers (tools/imu_axes.py), and inward flex turns it in the
                 # y/z plane -- the axes web_viewer's TIP_IN_PLANE_AXES names.
                 #
@@ -194,7 +198,7 @@ class FakeMonitor:
                 # on the finger's rotation axis (IMU x): the angle then stops
                 # being observable and the viewer should say so.
                 tilt = math.radians(self.tilt_deg)
-                in_plane = ACCEL_LSB_PER_G * math.cos(tilt)
+                in_plane = ACCEL_LSB_PER_G * math.cos(tilt) * self.gravity_sign
                 finger.accelerometer = [int(ACCEL_LSB_PER_G * math.sin(tilt)),
                                         int(in_plane * math.cos(angle)),
                                         int(in_plane * math.sin(angle))]
@@ -203,6 +207,76 @@ class FakeMonitor:
             n += 1
             if n % 50 == 0:
                 time.sleep(0.005)
+
+
+class SimulatedGripper:
+    """Stands in for pyrobotiqgripper.RobotiqGripper: the calls the viewer makes.
+
+    Starts unactivated so the Activate button is exercised, moves at a rate set
+    by the speed byte, and stops on a pretend object part-way through the
+    closing stroke so the contact readout has something to show.
+    """
+
+    # The 2F-85 closes its full stroke in roughly 0.6 s at full speed, 4 s at the slowest.
+    MIN_RATE, MAX_RATE = 60.0, 420.0   # position counts per second
+    OBJECT_AT = 200                    # where the pretend object is met
+    ACTIVATION_S = 1.5
+
+    def __init__(self):
+        self.com_port = "simulated"
+        self._sta = 0
+        self._pos = 0.0
+        self._target = 0
+        self._speed = 255
+        self._force = 255
+        self._obj = 3
+        self._last = time.monotonic()
+
+    def activate(self):
+        time.sleep(self.ACTIVATION_S)
+        self._sta, self._pos, self._target, self._obj = 3, 0.0, 0, 3
+        self._last = time.monotonic()
+
+    def move(self, position, speed=255, force=255, wait=True, readStatus=True,
+             refreshStatus=False, start=False):
+        if self._sta != 3:
+            raise RuntimeError("gripper not activated")
+        self.readStatus()
+        self._target, self._speed, self._force = int(position), int(speed), int(force)
+
+    def readStatus(self):
+        now = time.monotonic()
+        dt, self._last = now - self._last, now
+        if self._sta != 3:
+            return
+        rate = self.MIN_RATE + (self.MAX_RATE - self.MIN_RATE) * self._speed / 255
+        step = rate * dt
+        goal = self._target
+        if goal > self.OBJECT_AT and self._pos <= self.OBJECT_AT:
+            goal = self.OBJECT_AT  # the object is in the way
+        if abs(goal - self._pos) <= step:
+            self._pos = float(goal)
+            self._obj = 2 if goal != self._target else 3
+        else:
+            self._pos += step if goal > self._pos else -step
+            self._obj = 0
+
+    def status(self, refreshStatus=True):
+        if refreshStatus:
+            self.readStatus()
+        moving_or_holding = self._obj in (0, 2)
+        return {"gSTA": self._sta, "gPO": round(self._pos), "gPR": self._target,
+                "gOBJ": self._obj, "gFLT": 0,
+                # A grip draws current in proportion to the force setting.
+                "gCU": (self._force // 4 if self._obj == 2 else 0)
+                       + (5 if moving_or_holding else 0)}
+
+
+def simulated_gripper():
+    """A GripperController driving a SimulatedGripper, for run_web_viewer."""
+    from gripper_control import GripperController
+    sim = SimulatedGripper()
+    return GripperController(sim, sim.com_port)
 
 
 def main():
@@ -215,12 +289,16 @@ def main():
     parser.add_argument("--tilt", type=float, default=0.0,
                         help="lean the gripper this many degrees off vertical, to "
                              "exercise the 'angle not observable' path")
+    parser.add_argument("--upside-down", action="store_true",
+                        help="the gripper with its fingers pointing down")
     parser.add_argument("--force-finger", type=int, choices=(0, 1), default=0,
                         help="which fingertip the simulated force presses on")
     parser.add_argument("--peak-force", type=float, default=25.0,
                         help="peak of the simulated press in N (default: 25)")
     parser.add_argument("--no-force", action="store_true",
                         help="no force/torque source, as if the sensor were absent")
+    parser.add_argument("--no-gripper", action="store_true",
+                        help="no gripper controls, as if no gripper were connected")
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
 
@@ -228,12 +306,13 @@ def main():
         webbrowser.open = lambda *a, **k: None
 
     monitor = FakeMonitor(tip_sweep_deg=args.tip_sweep, hold_deg=args.tip_hold,
-                          tilt_deg=args.tilt)
+                          tilt_deg=args.tilt, upside_down=args.upside_down)
     ft_source = None if args.no_force else SimulatedFingertipForce(
         monitor, finger=args.force_finger, peak_n=args.peak_force)
 
     web_viewer.run_web_viewer(monitor, port=args.port, ft_source=ft_source,
-                              open_browser=not args.no_browser)
+                              open_browser=not args.no_browser,
+                              gripper=None if args.no_gripper else simulated_gripper())
 
 
 if __name__ == "__main__":

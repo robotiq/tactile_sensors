@@ -9,6 +9,19 @@ echo ""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$SCRIPT_DIR/.venvSimpleCheck"
 
+# --help / -h: print the options and stop. Nothing below is needed for that,
+# and some of it is slow or asks for sudo, so it is all skipped. Uses the
+# virtual environment's Python when it exists; quick_connect.py prints its
+# help with nothing installed.
+for arg in "$@"; do
+    if [ "$arg" = "--help" ] || [ "$arg" = "-h" ]; then
+        PY=python3
+        if [ -x "$VENV_DIR/bin/python3" ]; then PY="$VENV_DIR/bin/python3"; fi
+        cd "$SCRIPT_DIR"
+        exec "$PY" quick_connect.py "$@"
+    fi
+done
+
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'

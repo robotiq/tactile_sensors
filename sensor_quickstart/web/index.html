@@ -25,6 +25,12 @@
             <button id="zero-wrench" data-tabs="overview">Zero Force</button>
             <label><input type="checkbox" id="raw-values"> Raw</label>
             <label><input type="checkbox" id="adaptive-range" checked> Adaptive scale</label>
+            <label data-tabs="overview">Pressure
+                <select id="heatmap-mode">
+                    <option value="raw">Raw</option>
+                    <option value="interpolated">Interpolated</option>
+                </select>
+            </label>
             <label data-tabs="overview"><input type="checkbox" id="gripper-3d"> 3D gripper</label>
             <button id="reset-imu-axes" data-tabs="imu">Reset Y Axes</button>
         </div>
@@ -53,13 +59,14 @@
             <div class="col-head">Finger 0</div>
             <div class="col-head gripper-head">Gripper config and load <span class="unit">(2F-85)</span></div>
 
-            <div class="cell"><div id="overview-static-1" class="plot heatmap"></div></div>
-            <div class="cell"><div id="overview-static-0" class="plot heatmap"></div></div>
+            <div class="cell pad-cell"><div id="overview-static-1" class="plot heatmap"></div></div>
+            <div class="cell pad-cell"><div id="overview-static-0" class="plot heatmap"></div></div>
 
             <div class="cell gripper-cell">
                 <div id="gripper-view"></div>
                 <div class="overlay-note">
                     Finger tilt estimated from the fingertip IMUs<br>
+                    <span class="gripper-ctl-only">opening from the gripper's position feedback<br></span>
                     <span class="dim">force and moment measured from the force/torque sensor (FT-300)</span>
                 </div>
                 <div id="gripper-readout">
@@ -67,16 +74,54 @@
                     <span id="wrench-readout"></span>
                     <span id="tip-readout-1"></span>
                 </div>
+                <!-- The finger tilt is gravity seen by the fingertip IMUs. The
+                     server detects which way the gripper points from the same
+                     reading; this bar reports it. -->
+                <div id="orientation-bar">
+                    <span id="orientation-note" class="orientation-note" hidden>
+                        The gripper must point up or down: finger tilt is
+                        measured against gravity and cannot be measured like this.
+                    </span>
+                    <span id="orientation-detected" class="orientation-detected"></span>
+                </div>
                 <!-- Only ever seen if the model fails to load; the column is
                      not drawn at all when the option is simply off. -->
                 <div class="gripper-error" hidden></div>
             </div>
 
-            <div class="cell captioned">
+            <!-- Only shown when the server has a gripper to drive (body class
+                 gripper-ctl-on, set from the data frames). The sliders send
+                 bytes 0-255 as pyrobotiqgripper takes them; the labels show
+                 them as percentages (position: 0% open, 100% closed). -->
+            <div class="cell gripper-control">
+                <div class="gc-head">
+                    <span class="gc-title">Gripper control</span>
+                    <span id="gc-object" class="gc-object" title="Object detection, from the gripper status (gOBJ)"><span class="gc-dot"></span><span id="gc-object-text"></span></span>
+                    <span id="gc-state" class="gc-state"></span>
+                    <button id="gc-activate" hidden>Activate</button>
+                </div>
+                <label class="gc-row" title="0% = fully open, 100% = fully closed">
+                    <span class="gc-name">Position</span>
+                    <input type="range" id="gc-position" min="0" max="255" step="1">
+                    <span id="gc-position-value" class="gc-value"></span>
+                </label>
+                <label class="gc-row">
+                    <span class="gc-name">Speed</span>
+                    <input type="range" id="gc-speed" min="0" max="255" step="1">
+                    <span id="gc-speed-value" class="gc-value"></span>
+                </label>
+                <label class="gc-row">
+                    <span class="gc-name">Force</span>
+                    <input type="range" id="gc-force" min="0" max="255" step="1">
+                    <span id="gc-force-value" class="gc-value"></span>
+                </label>
+            </div>
+
+            <div class="cell captioned trace-cell">
                 <span class="caption">Dynamic <span class="unit">(mV)</span></span>
                 <div id="overview-dynamic-1" class="plot"></div>
             </div>
-            <div class="cell captioned">
+            <div class="cell captioned trace-cell">
                 <span class="caption">Dynamic <span class="unit">(mV)</span></span>
                 <div id="overview-dynamic-0" class="plot"></div>
             </div>

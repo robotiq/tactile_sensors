@@ -40,7 +40,13 @@ The script sets up the environment, connects to the sensor, and opens your brows
 
 **Overview** (the default) — a column per finger: its tactile heatmap (7x4,
 baseline-subtracted) with that finger's dynamic trace directly beneath it.
-Finger 1 is on the left, to match the hardware rather than the index. This
+The **Pressure** list picks how the pads are drawn: **Raw** shows one cell
+per taxel, exactly as measured; **Interpolated** draws half-pitch squares: one
+on each taxel centre with its raw value, one between each two neighbouring
+taxels with their mean, and one between each four with the mean of the four.
+Nothing is extrapolated: the edge squares stretch to the border with the edge
+taxels' values. The taxel boundaries stay drawn on top. The choice is
+remembered by the browser. Finger 1 is on the left, to match the hardware rather than the index. This
 layout fills whatever window it is given and never scrolls, so you can size the
 window to part of the screen and keep another tool visible alongside it.
 
@@ -61,11 +67,46 @@ fetched until the box is ticked. The choice is remembered per browser.
 
 The panel says on its face which half is estimated and which is measured: the
 finger tilt is inferred from the IMUs, the wrench is read from the sensor.
+With a gripper connected (see below) the drawing also follows its opening,
+from the gripper's position feedback; without one it is held fully open.
+
+The finger tilt is measured against gravity, so keep the gripper's orientation
+fixed while the viewer runs. Which way the fingers point, up or down, is
+detected from the same IMU reading and shown under the readouts. With the
+gripper on its side the tilt cannot be measured: the angles are marked invalid
+and a red warning is shown, rather than drawing a wrong pose.
 
 **Zero Force** re-zeroes the force/torque sensor. It sits under the gripper and
 so carries its weight — around 9 N before anything touches the fingers — which
 is subtracted at startup. That zero holds only for the orientation it was taken
 in, so re-zero after turning the gripper over.
+
+### Gripper control
+
+When a 2F gripper is connected over its USB/RS485 adapter, the Overview gains a
+**Gripper control** panel with three sliders: **Position** (0% fully open,
+100% fully closed), **Speed** and **Force**. Moving a slider sends the move
+straight away. The panel also shows the gripper's actual position, and an
+object-detection lamp that lights green when the fingers stop on something. Control goes through
+[pyrobotiqgripper](https://pypi.org/project/pyrobotiqgripper/), installed by
+the launcher. It needs Python 3.10 or later; on an older Python it is not
+installed, and the viewer runs without the gripper controls.
+
+The gripper is found automatically: each USB serial adapter that the tactile
+and force/torque sensors are not already using is asked for the gripper's
+status. To skip the
+search, or if it picks the wrong port, name the port:
+
+```bash
+./run_web_viewer.sh --gripper-port /dev/ttyUSB1
+run_web_viewer.bat --gripper-port COM7
+```
+
+A gripper that is not yet activated, or has stopped on a fault, shows an
+**Activate** button; on a fault it resets the gripper first. Activation fully
+opens and closes the fingers, so keep the space between them clear. Like
+the force/torque sensor, a missing gripper is reported and stepped over: the
+panel is just not shown.
 
 ### Simulation
 
@@ -74,13 +115,15 @@ in, so re-zero after turning the gripper over.
 ```
 
 Synthetic data with no hardware attached: a moving pressure blob, a dynamic
-tone, and fingertips sweeping through their travel. Useful for working on the
+tone, fingertips sweeping through their travel, and a simulated gripper for
+the control panel. Useful for working on the
 viewer itself, or for showing it on a machine with no sensor. `--sim` may go
 anywhere on the command line, and the launcher skips its permission setup and
 device scan for it.
 
 `tools/simulate_sensor.py` has more knobs than the flag exposes — `--tip-sweep`,
-`--tip-hold`, `--tilt`, `--force-finger`, `--peak-force`, `--no-force` — and can
+`--tip-hold`, `--tilt`, `--force-finger`, `--peak-force`, `--no-force`,
+`--no-gripper`, `--upside-down` — and can
 be run directly.
 
 ### Options
@@ -89,8 +132,10 @@ be run directly.
 |---|---|
 | `--port N` | HTTP port (default 8080; the WebSocket uses N+1) |
 | `--sim` | synthetic data, no hardware |
-| `--ft-port DEV` | force/torque serial port (default: autodetect) |
+| `--ft-port DEV` | force/torque serial port (default: autodetect among USB serial adapters) |
 | `--no-ft` | skip the force/torque sensor entirely |
+| `--gripper-port DEV` | gripper serial port (default: autodetect among USB serial adapters; with `--sim`, drives that real gripper) |
+| `--no-gripper` | do not look for a gripper; no control panel |
 | `--static-floor N` | suppress static deflections below N counts (default 25; `0` shows every count) |
 
 A missing or unplugged force/torque sensor is reported and stepped over, never
@@ -174,6 +219,7 @@ the readout flags rather than hides.
 ## Requirements
 
 - **Python 3.7+**: [Download Python](https://www.python.org/downloads/)
+  (3.10+ for the gripper controls)
   - ✅ Check "Add Python to PATH" during installation
   - ✅ After installing, restart your terminal/command prompt
 - **pyserial**: Installed automatically by the script
@@ -282,7 +328,9 @@ sensor_quickstart/
 ├── protocol.py              # USB protocol implementation
 ├── ft_source.py             # Force/torque source interface
 ├── ft_modbus.py             # Force/torque reader (Modbus RTU)
-├── requirements.txt         # Dependencies (pyserial, websockets)
+├── gripper_control.py       # Gripper control (pyrobotiqgripper)
+├── serial_ports.py          # USB serial port search shared by the devices
+├── requirements.txt         # Dependencies (pyserial, websockets, pyrobotiqgripper)
 ├── run_quick_connect.sh     # Linux launcher (terminal)
 ├── run_quick_connect.bat    # Windows launcher (terminal)
 ├── run_web_viewer.sh        # Linux launcher (web UI)
