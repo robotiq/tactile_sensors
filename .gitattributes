@@ -1,0 +1,13 @@
+# Keep binaries byte-exact. Without this, a Windows clone with core.autocrlf=true
+# rewrites CRLF inside them and the mesh blob arrives corrupt.
+*.bin binary
+*.stl binary
+*.dae binary
+*.usd binary
+*.png binary
+*.pdf binary
+
+# Batch files are only reliable with CRLF, whatever the checkout platform.
+*.bat text eol=crlf
+# Shell scripts must stay LF even when checked out on Windows.
+*.sh text eol=lf
