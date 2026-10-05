@@ -45,6 +45,7 @@ const TIP_MATERIALS = {
 const INVALID_TINT = 0x5b6480;
 
 let scene, camera, renderer, controls;
+let resizeObserver = null;
 const linkObjects = {};        // mesh name -> THREE.Object3D
 const lastPose = [null, null]; // per finger, to hold when unreachable
 let meshesReady = false;
@@ -151,7 +152,8 @@ export async function initGripperView(host) {
     resizeGripperView();
     // The panel is the element whose size actually matters, and this fires on
     // fullscreen and on layout changes that leave the grid's own box alone.
-    new ResizeObserver(() => resizeGripperView()).observe(host);
+    resizeObserver = new ResizeObserver(() => resizeGripperView());
+    resizeObserver.observe(host);
     setRunning(true);
 }
 
@@ -224,6 +226,9 @@ export function disposeGripperView() {
         renderer.domElement.remove();
     }
     if (controls) controls.dispose();
+    // Otherwise every rebuild leaves another observer on the same host.
+    if (resizeObserver) resizeObserver.disconnect();
+    resizeObserver = null;
     for (const name of Object.keys(linkObjects)) delete linkObjects[name];
     renderer = scene = camera = controls = null;
     wrenchGroup = forceArrow = twistArc = anchorDot = actionLine = null;
@@ -234,7 +239,18 @@ export function disposeGripperView() {
 
 async function loadMeshes() {
     const response = await fetch(GRIPPER_GEOMETRY.meshFile);
+    if (!response.ok) {
+        throw new Error(`${GRIPPER_GEOMETRY.meshFile}: HTTP ${response.status}`);
+    }
     const blob = await response.arrayBuffer();
+    // A truncated file would otherwise surface as a RangeError from deep in
+    // the first Float32Array that runs off the end.
+    const needed = Math.max(...GRIPPER_GEOMETRY.meshes.map(
+        part => part.byteOffset + part.vertexCount * 3 * 4));
+    if (blob.byteLength < needed) {
+        throw new Error(`${GRIPPER_GEOMETRY.meshFile} is truncated ` +
+                        `(${blob.byteLength} of ${needed} bytes)`);
+    }
 
     for (const part of GRIPPER_GEOMETRY.meshes) {
         const positions = new Float32Array(blob, part.byteOffset, part.vertexCount * 3);

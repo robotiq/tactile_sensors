@@ -89,6 +89,10 @@ function send(msg) {
 // --- Data Handling (just render server snapshots directly) ---
 
 function handleData(msg) {
+    // The server hears about a tab switch a round trip late, so a frame for the
+    // tab just left is usually still in flight, and its plots are already
+    // purged: restyling them would throw out of onmessage.
+    if (msg.tab !== activeTab || !tabsReady.has(msg.tab)) return;
     frameCount++;
     document.getElementById('sample-count').textContent = `Frame: ${frameCount}`;
     switch (msg.tab) {
@@ -172,7 +176,8 @@ function renderDynamic(dynData) {
 }
 
 function renderFFT(fftData) {
-    if (!fftData) return;
+    // Same race as handleData: the spectrum can arrive after leaving the tab.
+    if (!fftData || !tabsReady.has('dynamic')) return;
     for (let f = 0; f < 2; f++) {
         if (fftData[f]) {
             Plotly.restyle(`dynamic-fft-${f}`, { y: [fftData[f]] });
@@ -354,13 +359,21 @@ function switchTab(tab) {
 const GRIPPER_KEY = 'viewer.gripper3d';
 let gripper = null;          // the module namespace, once resolved
 let gripperLoading = null;   // in-flight import, so a double-click loads once
+let gripperRebuildPending = false;  // context lost before the load finished
 
 async function enableGripper() {
     document.body.classList.add('gripper-on');
     if (!gripperLoading) {
         gripperLoading = (async () => {
             const m = await import('./gripper3d.js');
-            await m.initGripperView(document.getElementById('gripper-view'));
+            try {
+                await m.initGripperView(document.getElementById('gripper-view'));
+            } catch (err) {
+                // Leave nothing half-built for the retry: link groups still
+                // attached to this scene, or a renderer and its WebGL context.
+                m.disposeGripperView();
+                throw err;
+            }
             return m;
         })();
     }
@@ -371,13 +384,23 @@ async function enableGripper() {
         // failed silently. Keep the column so the failure has somewhere to be
         // said, and let unticking and re-ticking retry.
         gripperLoading = null;
+        gripperRebuildPending = false;
         const note = document.querySelector('.gripper-error');
         note.textContent = `3D gripper failed to load: ${err.message}`;
         note.hidden = false;
         return;
     }
+    if (gripperRebuildPending) {
+        gripperRebuildPending = false;
+        await rebuildGripper();
+        return;
+    }
+    // The box may have been unticked while the module was loading, and
+    // initGripperView starts the render loop regardless.
+    const on = document.getElementById('gripper-3d').checked;
+    gripper.setRunning(on && activeTab === 'overview');
+    if (!on) return;
     document.querySelector('.gripper-error').hidden = true;
-    gripper.setRunning(activeTab === 'overview');
     gripper.resizeGripperView();
 }
 
@@ -388,7 +411,12 @@ const GRIPPER_MAX_REBUILDS = 2;
 let gripperRebuilds = 0;
 
 async function rebuildGripper() {
-    if (!gripper) return;
+    if (!gripper) {
+        // Lost while still loading: let the load finish, then rebuild from
+        // there (see enableGripper), rather than drop the event.
+        if (gripperLoading) gripperRebuildPending = true;
+        return;
+    }
     gripper.disposeGripperView();
     gripper = null;
     gripperLoading = null;
