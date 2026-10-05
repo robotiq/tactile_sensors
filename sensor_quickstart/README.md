@@ -65,7 +65,13 @@ finger tilt is inferred from the IMUs, the wrench is read from the sensor.
 **Zero Force** re-zeroes the force/torque sensor. It sits under the gripper and
 so carries its weight — around 9 N before anything touches the fingers — which
 is subtracted at startup. That zero holds only for the orientation it was taken
-in, so re-zero after turning the gripper over.
+in, so re-zero after turning the gripper over. The readout says "zeroing" while
+the new zero is being taken.
+
+**Refresh** sets how often the page redraws: 5 Hz by default, up to 30 Hz.
+Higher looks smoother but a typical office laptop stops keeping up above about
+5 Hz. It is per browser and remembered, so two machines on one viewer can run
+at different rates.
 
 ### Simulation
 
@@ -96,6 +102,12 @@ be run directly.
 A missing or unplugged force/torque sensor is reported and stepped over, never
 fatal: the pads and the gripper keep working and the readout says there is no
 sensor.
+
+The autodetect only reads from the ports it tries until one identifies itself as
+a force/torque sensor. The 2F gripper answers on the same Modbus id, so nothing
+is written to a device that has not said what it is. A sensor that is streaming
+but not answering can therefore only be found by naming its port with
+`--ft-port`, which also allows a sensor model the reader does not recognise.
 
 ---
 
