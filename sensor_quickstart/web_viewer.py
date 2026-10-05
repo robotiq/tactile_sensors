@@ -263,7 +263,10 @@ class SensorDataBuffer:
 
     def push(self, sensor_data):
         with self._lock:
-            now = time.monotonic()
+            # perf_counter, not monotonic: on Windows before Python 3.13
+            # monotonic ticks every ~15.6 ms, so at the sensor's frame rate
+            # most frames would see dt == 0 and skip the gyro filter entirely.
+            now = time.perf_counter()
             if sensor_data.fingers[0].timestamp != 0 and self.default_range != 1200.0:
                 self.default_range = 1200.0
             for f in range(NUM_FINGERS):
@@ -331,15 +334,25 @@ class SensorDataBuffer:
             self.wrench_zeroed = False
 
     def get_wrench_snapshot(self):
-        """Latest force/torque, or None when there is nothing trustworthy."""
+        """(latest force/torque, status).
+
+        The wrench is None when there is nothing trustworthy to draw, and the
+        status then says why, so a sensor that is zeroing or has gone quiet is
+        not shown as one that is not there. The status is None when the wrench
+        is good, or when there was never a sensor at all.
+        """
         with self._lock:
-            # Nothing worth drawing until the gripper's own weight is measured.
-            if self.wrench is None or not self.wrench_zeroed:
-                return None
+            if self.wrench_error:
+                return None, self.wrench_error
+            if self.wrench is None:
+                return None, None
             if time.monotonic() - self.wrench_time > FT_STALE_AFTER_S:
-                return None
+                return None, "no data"
+            # Nothing worth drawing until the gripper's own weight is measured.
+            if not self.wrench_zeroed:
+                return None, "zeroing\u2026"
             wrench = self.wrench
-        return ft_to_scene(wrench[:3]) + ft_to_scene(wrench[3:])
+        return ft_to_scene(wrench[:3]) + ft_to_scene(wrench[3:]), None
 
     def get_tip_snapshot(self):
         """Return (angles in degrees, per-finger validity)."""
@@ -529,9 +542,8 @@ class WebViewer:
             msg["dynamic"] = self.buffer.get_dynamic_snapshot()
             msg["tipAngle"] = tip_angles
             msg["tipAngleValid"] = tip_valid
-            msg["wrench"] = self.buffer.get_wrench_snapshot()
+            msg["wrench"], msg["wrenchError"] = self.buffer.get_wrench_snapshot()
             msg["ftOrigin"] = FT_ORIGIN_MM
-            msg["wrenchError"] = self.buffer.wrench_error
         elif tab == "dynamic":
             msg["dynamic"] = self.buffer.get_dynamic_snapshot()
         elif tab == "imu":
