@@ -14,6 +14,8 @@ frames, and confirm something is answering — not the full register map.
 
 The sensor's own configuration is never written to beyond starting and stopping
 the stream: the port is probed at both baud rates and whichever answers is used.
+Autodetection only reads until a reply identifies a force/torque sensor, since
+other devices on the bus answer on the same slave id.
 """
 
 import time
@@ -89,6 +91,8 @@ class ModbusRTUStreamSource(FTSource):
 
     def __init__(self, port=None, baudrate=None, timeout=0.5, skip_ports=()):
         self.port = port
+        # A port the user named is allowed more than one we merely found.
+        self.explicit_port = port is not None
         self.baudrate = baudrate
         self.timeout = timeout
         # Ports already in use by something else — the tactile sensor holds one,
@@ -131,16 +135,28 @@ class ModbusRTUStreamSource(FTSource):
                     self.already_streaming = True
                     return port, baud, "force/torque sensor (already streaming)"
 
-                # Otherwise take it out of stream mode and ask what it is.
-                for attempt in range(2):
+                # Otherwise ask what it is, with a read and nothing else. The
+                # gripper shares this bus and answers on the same slave id, so
+                # nothing is written until the reply names a force/torque
+                # sensor.
+                try:
+                    model = self.read_sensor_type()
+                    self.port, self.baudrate = port, baud
+                    return port, baud, model
+                except ModbusError as exc:
+                    reason = exc
+                # A sensor can be streaming without us hearing it, and then it
+                # answers nothing. Stopping it is a write, so only on a port the
+                # user named.
+                if self.explicit_port:
                     try:
                         self.stop_stream()
                         model = self.read_sensor_type()
                         self.port, self.baudrate = port, baud
                         return port, baud, model
                     except ModbusError as exc:
-                        if attempt:
-                            attempts.append(f"{port}@{baud}: {exc}")
+                        reason = exc
+                attempts.append(f"{port}@{baud}: {reason}")
                 handle.close()
                 self._serial = None
 
@@ -215,9 +231,19 @@ class ModbusRTUStreamSource(FTSource):
         return [(payload[2 * i] << 8) | payload[2 * i + 1] for i in range(count)]
 
     def read_sensor_type(self):
-        """Which model is answering, for the startup line."""
+        """Which model is answering, for the startup line.
+
+        Anything else on slave 9 also replies with a valid frame -- the 2F
+        gripper does -- so a reply alone proves nothing. An unknown type is
+        only accepted on a port the user named.
+        """
         raw = self.read_registers(REG_SENSOR_TYPE, 1)[0]
-        return SENSOR_TYPES.get(raw & 0xFF, "unrecognised force/torque sensor")
+        model = SENSOR_TYPES.get(raw & 0xFF)
+        if model is not None:
+            return model
+        if self.explicit_port:
+            return f"unrecognised force/torque sensor (type {raw & 0xFF})"
+        raise ModbusError(f"not a force/torque sensor (type register reads {raw})")
 
     def read_force_torque(self):
         """One polled read of the compensated force/torque, in N and Nm."""

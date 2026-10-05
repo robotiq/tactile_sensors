@@ -917,7 +917,9 @@ def connect_ft_sensor(args, skip_ports=()):
     source = ModbusRTUStreamSource(port=args.ft_port, skip_ports=skip_ports)
     try:
         device, baud, kind = source.connect()
-    except ModbusError as exc:
+    except (ModbusError, OSError) as exc:
+        # OSError covers serial.SerialException: a port that opens and then
+        # fails on read, or an adapter pulled out mid-scan.
         print(f"Force/torque: not connected ({exc})")
         return None
     print(f"Force/torque: {kind} on {device} @ {baud} baud")
