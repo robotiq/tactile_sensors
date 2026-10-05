@@ -99,13 +99,16 @@ echo ""
 # --sim runs on synthetic data with nothing plugged in, so the device scan is
 # skipped: it would find nothing and stop on an interactive "continue anyway?".
 # Scanned out of all the arguments so --sim works wherever it sits on the line.
+# -h/--help skips it too: printing the options needs no device.
 SIM=0
 for arg in "$@"; do
-    if [ "$arg" = "--sim" ]; then SIM=1; fi
+    case "$arg" in
+        --sim|-h|--help) SIM=1 ;;
+    esac
 done
 
 if [ "$SIM" = "1" ]; then
-    echo "Simulation mode: skipping device detection."
+    echo "Simulation or help: skipping device detection."
 else
 devices="$(find_sensor_devices_mac || true)"
 if [ -z "$devices" ]; then

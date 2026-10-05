@@ -16,9 +16,13 @@ VENV_DIR="$SCRIPT_DIR/.venvSimpleCheck"
 # device scan ends in an interactive "continue anyway?" prompt when it finds
 # nothing -- which it always would. Scanned out of all the arguments rather
 # than just $1 so it works wherever it is written on the line.
+# -h/--help skips it too: it only needs Python to print the options, and
+# should not ask for sudo or scan for devices first.
 SIM=0
 for arg in "$@"; do
-    if [ "$arg" = "--sim" ]; then SIM=1; fi
+    case "$arg" in
+        --sim|-h|--help) SIM=1 ;;
+    esac
 done
 
 # Colors for output
@@ -121,7 +125,7 @@ install_requirements
 
 if [ "$SIM" = "1" ]; then
 echo ""
-echo "Simulation mode: skipping sensor permissions and device detection."
+echo "Simulation or help: skipping sensor permissions and device detection."
 else
 
 echo ""
@@ -168,7 +172,7 @@ else
     done
 fi
 
-fi  # end of hardware setup, skipped under --sim
+fi  # end of hardware setup, skipped under --sim and --help
 
 echo ""
 echo "=========================================="
