@@ -22,7 +22,8 @@ import websockets
 
 from protocol import NUM_FINGERS
 DISPLAY_POINTS = 500  # max points sent to browser for time-series
-BROADCAST_HZ = 5      # display refresh rate
+BROADCAST_HZ = 5      # display refresh rate until a client picks its own
+MAX_BROADCAST_HZ = 30  # the fastest a client may ask for
 # The tab a client is assumed to be on until it says otherwise. Matches the tab
 # the page opens on (see app.js), so the first frames are not wasted on a view
 # nobody is looking at.
@@ -489,6 +490,9 @@ class WebViewer:
         # tab the page opens on, so the first frames are not wasted on a view
         # nobody is looking at.
         self.client_tabs = {}
+        # And how often each one wants a frame. Per client for the same reason:
+        # a slow laptop and a booth PC can share one viewer.
+        self.client_rates = {}
 
     def serial_callback(self, sensor_data):
         try:
@@ -499,12 +503,20 @@ class WebViewer:
     async def websocket_handler(self, websocket):
         self.clients.add(websocket)
         self.client_tabs[websocket] = DEFAULT_TAB
+        self.client_rates[websocket] = BROADCAST_HZ
         self._had_client = True
         try:
             async for message in websocket:
                 msg = json.loads(message)
                 if msg.get("type") == "tab_change":
                     self.client_tabs[websocket] = msg["tab"]
+                elif msg.get("type") == "set_rate":
+                    try:
+                        hz = float(msg.get("hz"))
+                    except (TypeError, ValueError):
+                        continue
+                    if hz > 0:
+                        self.client_rates[websocket] = min(hz, MAX_BROADCAST_HZ)
                 elif msg.get("type") == "reset_baseline":
                     self.buffer.reset_baseline()
                 elif msg.get("type") == "zero_wrench":
@@ -523,6 +535,7 @@ class WebViewer:
         finally:
             self.clients.discard(websocket)
             self.client_tabs.pop(websocket, None)
+            self.client_rates.pop(websocket, None)
             if self._had_client and not self.clients:
                 # Last client disconnected — give a brief grace period for
                 # page refreshes, then shut down.
@@ -553,8 +566,8 @@ class WebViewer:
         return msg
 
     async def broadcast_loop(self):
-        interval = 1.0 / BROADCAST_HZ
         busy = set()  # clients still sending the previous frame
+        next_due = {}  # client -> when its next frame is owed
         last_diag = 0.0
 
         async def _send(client, payload):
@@ -566,6 +579,9 @@ class WebViewer:
                 busy.discard(client)
 
         while True:
+            # Tick as fast as the fastest client wants; each client is then
+            # sent a frame only when its own interval has passed.
+            interval = 1.0 / max(self.client_rates.values(), default=BROADCAST_HZ)
             try:
                 now = time.monotonic()
                 if now - last_diag >= 5.0:
@@ -599,11 +615,20 @@ class WebViewer:
                     for client in self.clients.copy():
                         if client in busy:
                             continue  # still sending the previous frame; drop this one
+                        # Half a tick of slack, so a client at the loop's own
+                        # rate is not skipped for arriving a hair early.
+                        if now < next_due.get(client, 0.0) - interval / 2:
+                            continue
+                        next_due[client] = now + 1.0 / self.client_rates.get(
+                            client, BROADCAST_HZ)
                         tab = self.client_tabs.get(client, DEFAULT_TAB)
                         if tab not in payloads:
                             payloads[tab] = json.dumps(self.tab_message(tab))
                         busy.add(client)
                         asyncio.ensure_future(_send(client, payloads[tab]))
+                for client in list(next_due):
+                    if client not in self.clients:
+                        del next_due[client]
             except Exception:
                 traceback.print_exc(file=sys.stderr)
             await asyncio.sleep(interval)

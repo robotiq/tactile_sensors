@@ -92,6 +92,15 @@ header h1 {
 /* `[hidden]` is only a UA rule, so the `display: flex` above outranks it and
    the tab-specific labels stayed on screen everywhere. Say it in the author
    stylesheet, where it beats both rules above on specificity. */
+.controls select {
+    background: var(--line);
+    color: #e0e0e0;
+    border: 1px solid #1a4a8a;
+    border-radius: 4px;
+    font-size: 12px;
+    padding: 1px 4px;
+}
+
 .controls [hidden] { display: none; }
 
 /* Tabs -------------------------------------------------------------------- */

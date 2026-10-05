@@ -26,6 +26,16 @@
             <label><input type="checkbox" id="raw-values"> Raw</label>
             <label><input type="checkbox" id="adaptive-range" checked> Adaptive scale</label>
             <label data-tabs="overview"><input type="checkbox" id="gripper-3d"> 3D gripper</label>
+            <!-- Low by default: on a typical office laptop the page stops
+                 keeping up above about 5 Hz. -->
+            <label>Refresh
+                <select id="refresh-rate">
+                    <option value="5">5 Hz</option>
+                    <option value="10">10 Hz</option>
+                    <option value="15">15 Hz</option>
+                    <option value="30">30 Hz</option>
+                </select>
+            </label>
             <button id="reset-imu-axes" data-tabs="imu">Reset Y Axes</button>
         </div>
         <div id="status-bar">

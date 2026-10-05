@@ -64,6 +64,7 @@ function connect() {
         document.getElementById('connection-status').className = 'status-connected';
         // Re-announce the tab: it may have been switched before we connected.
         ws.send(JSON.stringify({ type: 'tab_change', tab: activeTab }));
+        sendRefreshRate();
     };
     ws.onclose = () => {
         // Server stopped — try to close the tab, otherwise show overlay
@@ -506,6 +507,21 @@ document.getElementById('reset-imu-axes')?.addEventListener('click', resetIMUAxe
 document.getElementById('gripper-3d').addEventListener('change',
     (e) => setGripper(e.target.checked));
 
+// --- Refresh rate ---
+
+// Per browser, like the tab: a booth PC can run at 30 Hz while a sales
+// laptop on the same viewer stays at 5.
+const REFRESH_KEY = 'viewer.refreshHz';
+
+function sendRefreshRate() {
+    send({ type: 'set_rate', hz: Number(document.getElementById('refresh-rate').value) });
+}
+
+document.getElementById('refresh-rate').addEventListener('change', (e) => {
+    try { localStorage.setItem(REFRESH_KEY, e.target.value); } catch (err) { /* private mode */ }
+    sendRefreshRate();
+});
+
 // --- Init ---
 
 // Pre-compute FFT x-axis
@@ -523,6 +539,11 @@ function init() {
     try { saved = localStorage.getItem(GRIPPER_KEY); } catch (e) { /* private mode */ }
     box.checked = saved === '1';
     if (box.checked) enableGripper();
+
+    const rate = document.getElementById('refresh-rate');
+    let savedHz = null;
+    try { savedHz = localStorage.getItem(REFRESH_KEY); } catch (e) { /* private mode */ }
+    if ([...rate.options].some(o => o.value === savedHz)) rate.value = savedHz;
 
     connect();
 }
