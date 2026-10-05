@@ -209,7 +209,7 @@ TEST_F(TestWaitForExchange, wait_for_motion_end_returns_the_exchange_on_which_th
 
 TEST_F(TestWaitForExchange, named_waits_report_a_timeout_as_no_exchange)
 {
-   EXPECT_FALSE(waitForPositionEcho(gripper, 0, std::chrono::milliseconds(0)));
+   EXPECT_FALSE(waitForPositionEcho(gripper, 255, std::chrono::milliseconds(0)));
    EXPECT_FALSE(waitForObjectDetection(gripper, ObjectDetection::Moving, std::chrono::milliseconds(0)));
    EXPECT_FALSE(waitForMotionEnd(gripper, std::chrono::milliseconds(0)));
 }
