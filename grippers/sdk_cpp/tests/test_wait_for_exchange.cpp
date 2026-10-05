@@ -164,6 +164,18 @@ TEST_F(TestWaitForExchange, wait_for_returns_the_first_exchange_the_predicate_ho
    EXPECT_LE(static_cast<uint64_t>(evaluated), echoed->metadata.exchangeCount - before);
 }
 
+TEST_F(TestWaitForExchange, wait_for_position_echo_returns_the_exchange_that_echoes_the_request)
+{
+   ASSERT_EQ(activate(gripper, kWait), ActivationResult::Activated);
+   GripperCommand command = gripper.getCommand();
+   command.positionRequest = 42;
+   gripper.setCommand(command);
+
+   const std::optional<StampedExchange> echoed = waitForPositionEcho(gripper, 42, kWait);
+   ASSERT_TRUE(echoed.has_value());
+   EXPECT_EQ(echoed->status.positionRequestEcho, 42);
+}
+
 TEST_F(TestWaitForExchange, wait_for_object_detection_returns_the_exchange_that_reports_it)
 {
    // The fake reports Moving until a GoTo lands, then AtRequestedPosition
@@ -197,6 +209,7 @@ TEST_F(TestWaitForExchange, wait_for_motion_end_returns_the_exchange_on_which_th
 
 TEST_F(TestWaitForExchange, named_waits_report_a_timeout_as_no_exchange)
 {
+   EXPECT_FALSE(waitForPositionEcho(gripper, 255, std::chrono::milliseconds(0)));
    EXPECT_FALSE(waitForObjectDetection(gripper, ObjectDetection::Moving, std::chrono::milliseconds(0)));
    EXPECT_FALSE(waitForMotionEnd(gripper, std::chrono::milliseconds(0)));
 }
