@@ -48,14 +48,13 @@ an implementation out of tree — an RTOS `Platform`, a UART `Serial` — pin th
 minor version; moving up gives a compile error naming the new member, and the
 in-tree implementations show what to return.
 
-Two paths this section named at 1.0.0 have moved: the register map to
-`Robotiq/detail/register_map.hpp`, and the Modbus client from
-`detail/gripper_modbus_client.hpp` to `gripper/modbus_client.hpp`. Both old
-paths still exist as shims that include the new header and warn; they go away
-in the next major release. Headers this section never named —
-`gripper/named_bit_array.hpp` and `gripper/throttle.hpp` — moved into
-`Robotiq/detail/` without a shim, as did `makeDefaultLogger()`; pass a null
-`Logger` to get the build's default one.
+Some 1.0.0 paths have moved: the register map to
+`Robotiq/detail/register_map.hpp`, the Modbus client from
+`detail/gripper_modbus_client.hpp` to `gripper/modbus_client.hpp`, and
+`gripper/named_bit_array.hpp`, `gripper/throttle.hpp` and
+`makeDefaultLogger()` into `Robotiq/detail/`. The old spellings still work
+and warn; they go away in the next major release. To get the default
+`Logger`, pass a null one.
 
 ## License
 

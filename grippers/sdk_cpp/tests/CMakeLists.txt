@@ -27,6 +27,7 @@ add_executable(grippers_tests
   test_exchange_period.cpp
   test_std_platform.cpp
   test_threadx_ticks.cpp
+  test_v1_0_compat.cpp
   test_utils.hpp
 )
 

@@ -4,7 +4,10 @@
 
 #pragma once
 
+#include <memory>
 #include <string_view>
+
+#include <Robotiq/detail/default_logger.hpp>
 
 namespace Robotiq {
 
@@ -72,5 +75,13 @@ public:
    //! Discards \p message.
    void log(Level, std::string_view) override;
 };
+
+//! \cond DOXYGEN_EXCLUDE
+// Removed in the next major release.
+[[deprecated("pass a null Logger to get the default one")]] inline std::shared_ptr<Logger> makeDefaultLogger()
+{
+   return detail::makeDefaultLogger();
+}
+//! \endcond
 
 } // namespace Robotiq
