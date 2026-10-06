@@ -20,9 +20,9 @@ try:
     import serial
     import serial.tools.list_ports
 except ImportError:
-    print("Error: pyserial not installed")
-    print("Please install with: pip install pyserial")
-    sys.exit(1)
+    # Reported in main(), after argument parsing: --help needs nothing but
+    # Python, and the launchers run it before setting up the environment.
+    serial = None
 
 from protocol import UsbPacketParser, SensorData, FingerData
 from protocol import (
@@ -926,6 +926,35 @@ def connect_ft_sensor(args, skip_ports=()):
     return source
 
 
+def connect_gripper(args, skip_ports=()):
+    """Connect the gripper for the viewer's controls, or return None.
+
+    Like the FT sensor, it is extra: without a gripper the viewer still shows
+    the pads, just without the position/speed/force sliders. With no
+    --gripper-port, open_gripper() asks each free USB serial adapter for the
+    gripper's status (see gripper_control.py).
+    """
+    if args.no_gripper:
+        return None
+    try:
+        from gripper_control import GripperController, open_gripper
+    except ImportError as exc:
+        print(f"Gripper: control unavailable ({exc}); running without it")
+        return None
+
+    print("Gripper: " + (f"connecting on {args.gripper_port}" if args.gripper_port
+                         else "looking for it (use --gripper-port to skip the search)"))
+    try:
+        gripper, device = open_gripper(args.gripper_port, skip_ports)
+    except Exception as exc:
+        # pyrobotiqgripper raises its own errors and lets pymodbus and pyserial
+        # ones through; none of them should stop the viewer.
+        print(f"Gripper: not connected ({type(exc).__name__}: {exc})")
+        return None
+    print(f"Gripper: connected on {device}")
+    return GripperController(gripper, device)
+
+
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description="Robotiq Tactile Sensor Monitor")
@@ -939,6 +968,11 @@ def main():
                         help='force/torque sensor serial port (default: autodetect)')
     parser.add_argument('--no-ft', action='store_true',
                         help='skip the force/torque sensor entirely')
+    parser.add_argument('--gripper-port', metavar='DEV',
+                        help='gripper serial port, e.g. COM7 or /dev/ttyUSB1 '
+                             '(default: autodetect)')
+    parser.add_argument('--no-gripper', action='store_true',
+                        help='do not look for a gripper; no gripper controls')
     parser.add_argument('--sim', action='store_true',
                         help='synthetic data, no hardware attached (implies --web)')
     parser.add_argument('--static-floor', type=int, default=None, metavar='COUNTS',
@@ -946,19 +980,31 @@ def main():
                              'counts (default: 25; 0 shows every count)')
     args = parser.parse_args()
 
+    if serial is None:
+        print("Error: pyserial not installed")
+        print("Please install with: pip install pyserial")
+        return 1
+
     print("=" * 80)
     print("Simple Tactile Sensor Check Tool".center(80))
     print("=" * 80)
     print()
 
     if args.sim:
-        from tools.simulate_sensor import FakeMonitor, SimulatedFingertipForce
+        from tools.simulate_sensor import (FakeMonitor, SimulatedFingertipForce,
+                                           simulated_gripper)
         from web_viewer import run_web_viewer
         print("Simulation: synthetic sensor data, no hardware\n")
         monitor = FakeMonitor()
+        # A real gripper can still be driven in simulation by naming its port:
+        # handy for working on the controls without the tactile sensor.
+        if args.gripper_port:
+            gripper = connect_gripper(args)
+        else:
+            gripper = None if args.no_gripper else simulated_gripper()
         run_web_viewer(monitor, port=args.port,
                        ft_source=None if args.no_ft else SimulatedFingertipForce(monitor),
-                       static_floor=args.static_floor)
+                       static_floor=args.static_floor, gripper=gripper)
         return 0
 
     if args.debug:
@@ -1026,6 +1072,22 @@ def main():
 
         print()
 
+        # The other devices for the viewer, before the sensor starts streaming:
+        # the searches can take seconds, and meanwhile 1 kHz of frames would
+        # pile up unread in the tactile port.
+        #
+        # The gripper first: the FT search accepts any device that answers its
+        # sensor-type read, and a 2F gripper does, so FT first would claim the
+        # gripper's port. The gripper's probe reads its own status register, a
+        # far more specific test. Each search then skips the ports already
+        # claimed.
+        gripper = ft_source = None
+        if args.web:
+            gripper = connect_gripper(args, [port, args.ft_port])
+            ft_source = connect_ft_sensor(
+                args, [port, gripper.port if gripper else args.gripper_port])
+            print()
+
         # Start streaming
         if not monitor.start_autosend(period_ms=1):
             monitor.cleanup()
@@ -1061,9 +1123,8 @@ def main():
         try:
             if args.web:
                 from web_viewer import run_web_viewer
-                run_web_viewer(monitor, port=args.port,
-                               ft_source=connect_ft_sensor(args, [port]),
-                               static_floor=args.static_floor)
+                run_web_viewer(monitor, port=args.port, ft_source=ft_source,
+                               static_floor=args.static_floor, gripper=gripper)
             else:
                 monitor.run()
         finally:

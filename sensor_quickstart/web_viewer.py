@@ -31,12 +31,12 @@ DEFAULT_TAB = "overview"
 
 # --- Fingertip angle estimation -------------------------------------------
 #
-# The gripper view draws a 2F-85 held fully open with the fingers pointing up.
 # In an encompassing grip the distal phalanx is a free DOF, so its angle cannot
 # be derived from the gripper's opening — but the fingertip IMU can see it: the
 # accelerometer measures the direction of gravity in the fingertip's own frame,
-# and with the palm pointing up (+z vertical) a rotation of the fingertip about
-# the finger axis shows up directly as a rotation of that gravity vector.
+# and with the gripper vertical (fingers up or down, see TIP_UP_Y_SIGN) a
+# rotation of the fingertip about the finger axis shows up directly as a
+# rotation of that gravity vector.
 #
 # Only the direction of the accelerometer vector is used, never its magnitude,
 # so the accelerometer's scale factor does not enter the angle at all.
@@ -110,6 +110,24 @@ TIP_ANGLE_SIGN = (-1.0, -1.0)
 TIP_ANGLE_MIN_DEG = 0.0
 TIP_ANGLE_MAX_DEG = 33.0
 
+# Which way the gripper points: "up" (fingers up, palm facing the sky) or
+# "down". The angle is a rotation of gravity relative to a reference, and
+# turning the gripper over turns that reference by 180 degrees in the IMU, so
+# the estimate has to know which one to measure against.
+#
+# Gravity also says which way round the gripper is, so it is detected rather
+# than set: with the fingers up the accelerometer reads -1 g on IMU y, with
+# them down +1 g (measured on both fingers, 2026-10-01). The distal phalanx
+# turns at most TIP_ANGLE_MAX_DEG relative to the gripper, nowhere near enough
+# to flip that sign. Below TIP_ORIENTATION_MIN_Y the gripper is lying on its
+# side, where neither reference holds and the angle cannot be measured.
+#
+# Detection only updates while the finger is still: moving the gripper adds
+# acceleration that can swing the reading anywhere for a moment, so the last
+# orientation seen at rest is kept through the motion.
+TIP_ORIENTATION_MIN_Y = 0.5   # |g . y| / |g| needed to call it up or down
+TIP_UP_Y_SIGN = -1.0          # sign of the IMU y reading with the fingers up
+
 # Sensor scales. The IMU is an ICM-20948, configured for +-2 g and +-250 dps,
 # and what reaches the viewer is its raw int16 counts: unscaled, unbiased, in
 # the chip's own axes, with no mounting matrix applied. Sensitivity is therefore
@@ -180,7 +198,12 @@ class SensorDataBuffer:
         self.tip_valid = [False] * NUM_FINGERS
         self._tip_cal_sum = [[0.0, 0.0, 0.0] for _ in range(NUM_FINGERS)]
         self._tip_cal_count = [0] * NUM_FINGERS
-        self._tip_zero_angle = [None] * NUM_FINGERS  # radians, set by calibration
+        # radians, set by calibration: the reference for fingers pointing up,
+        # whichever way the gripper pointed while it was taken
+        self._tip_zero_angle = [None] * NUM_FINGERS
+        # Detected orientation per finger: "up", "down", "side", or None
+        # before there is anything to go on. See TIP_ORIENTATION_MIN_Y.
+        self.orientation_seen = [None] * NUM_FINGERS
         self._tip_ref_norm = [None] * NUM_FINGERS    # 1 g in raw counts
         self._tip_last_time = [None] * NUM_FINGERS
         self._tip_raw_angle = [0.0] * NUM_FINGERS    # radians, in the IMU's own frame
@@ -201,17 +224,16 @@ class SensorDataBuffer:
             self.tip_valid[f] = False
             return
 
-        # Startup calibration: assumptions 3 and 4 (fully open, pointing up)
-        # say the true angle is zero right now, so whatever the IMU reports is
-        # the mounting offset. Averaging also gives us 1 g in raw counts.
+        # Startup calibration: assumptions 3 and 4 (fully open, vertical) say
+        # the true angle is zero right now, so whatever the IMU reports is the
+        # mounting offset, turned by 180 degrees if the gripper points down.
+        # Averaging also gives us 1 g in raw counts.
         if self._tip_zero_angle[f] is None:
             for i in range(3):
                 self._tip_cal_sum[f][i] += accel[i]
             self._tip_cal_count[f] += 1
             if self._tip_cal_count[f] >= TIP_CAL_SAMPLES:
                 mean = [v / self._tip_cal_count[f] for v in self._tip_cal_sum[f]]
-                self._tip_zero_angle[f] = math.atan2(mean[TIP_IN_PLANE_AXES[1]],
-                                                     mean[TIP_IN_PLANE_AXES[0]])
                 ref_norm = math.sqrt(sum(v * v for v in mean))
                 if ref_norm == 0.0:
                     # Nothing usable to reference against; start over rather
@@ -219,6 +241,19 @@ class SensorDataBuffer:
                     self._tip_cal_sum[f] = [0.0, 0.0, 0.0]
                     self._tip_cal_count[f] = 0
                     return
+                seen = _orientation_of(mean, ref_norm)
+                self.orientation_seen[f] = seen
+                if seen == "side":
+                    # Neither reference holds on its side, and the zero taken
+                    # now would be noise kept until restart. Calibrate again
+                    # once the gripper is stood up or down.
+                    self._tip_cal_sum[f] = [0.0, 0.0, 0.0]
+                    self._tip_cal_count[f] = 0
+                    return
+                zero = math.atan2(mean[TIP_IN_PLANE_AXES[1]], mean[TIP_IN_PLANE_AXES[0]])
+                if seen == "down":
+                    zero -= math.pi  # store the reference for fingers up
+                self._tip_zero_angle[f] = zero
                 self._tip_ref_norm[f] = ref_norm
                 self._tip_last_time[f] = now
             return
@@ -229,7 +264,21 @@ class SensorDataBuffer:
         off_plane = abs(accel[TIP_ROTATION_AXIS]) / norm
         quiescent = abs(norm / self._tip_ref_norm[f] - 1.0) <= TIP_ACCEL_TOLERANCE
 
-        angle = math.atan2(az, ax) - self._tip_zero_angle[f]
+        # Measure against the reference for the way the gripper points. On its
+        # side there is none: hold the last good angle and say it is not
+        # trustworthy rather than report one pinned at a joint limit.
+        if quiescent:
+            self.orientation_seen[f] = _orientation_of(accel, norm)
+        orientation = self.orientation_seen[f]
+        if orientation == "side":
+            self._tip_last_time[f] = now
+            self.tip_valid[f] = False
+            return
+
+        reference = self._tip_zero_angle[f]
+        if orientation == "down":
+            reference += math.pi
+        angle = math.atan2(az, ax) - reference
         angle = (angle + math.pi) % (2 * math.pi) - math.pi
 
         last = self._tip_last_time[f]
@@ -359,13 +408,22 @@ class SensorDataBuffer:
         """Return (angles in degrees, per-finger validity)."""
         with self._lock:
             return list(self.tip_angle), list(self.tip_valid)
-    def get_dynamic_snapshot(self):
-        """Return subsampled dynamic time-domain data."""
+
+    def get_dynamic_snapshot(self, envelope=False):
+        """Return dynamic time-domain data, decimated to DISPLAY_POINTS.
+
+        envelope=True keeps each bucket's extremes, so short taps survive, for
+        the Overview's at-a-glance traces. The Dynamic tab plots against a
+        uniform sample axis, where the envelope's unevenly spaced points would
+        warp the time base, so it gets an evenly spaced subsample.
+        """
+        if not envelope:
+            with self._lock:
+                return [_subsample_deque(self.dynamic_tactile[f], DISPLAY_POINTS)
+                        for f in range(NUM_FINGERS)]
         with self._lock:
-            dyn = []
-            for f in range(NUM_FINGERS):
-                dyn.append(_subsample_deque(self.dynamic_tactile[f], DISPLAY_POINTS))
-            return dyn
+            snapshots = [list(self.dynamic_tactile[f]) for f in range(NUM_FINGERS)]
+        return [_envelope(s, DISPLAY_POINTS) for s in snapshots]
 
     def get_imu_snapshot(self):
         """Return subsampled IMU data."""
@@ -406,6 +464,40 @@ class SensorDataBuffer:
                 if self.static_tactile[f]:
                     self.baseline[f] = list(self.static_tactile[f])
                 self.max_range[f] = reset_val
+
+
+def _orientation_of(accel, norm):
+    """"up", "down" or "side", from where gravity sits on IMU y."""
+    y = TIP_UP_Y_SIGN * accel[TIP_IN_PLANE_AXES[0]] / norm
+    if y >= TIP_ORIENTATION_MIN_Y:
+        return "up"
+    if y <= -TIP_ORIENTATION_MIN_Y:
+        return "down"
+    return "side"
+
+
+def _envelope(samples, max_points):
+    """Decimate to at most max_points, keeping each bucket's min and max.
+
+    Picking every n-th sample drops anything shorter than the stride: with
+    4096 samples shown as 500 points that is 8 ms, and a light tap on the
+    dynamic sensor is a transient of a few milliseconds. Sending each bucket's
+    extremes instead, in the order they occurred, keeps every peak on screen
+    for the same number of points.
+    """
+    n = len(samples)
+    if n <= max_points:
+        return samples
+    buckets = max_points // 2
+    out = []
+    for b in range(buckets):
+        chunk = samples[b * n // buckets:(b + 1) * n // buckets]
+        lo = min(range(len(chunk)), key=chunk.__getitem__)
+        hi = max(range(len(chunk)), key=chunk.__getitem__)
+        first, second = (lo, hi) if lo <= hi else (hi, lo)
+        out.append(chunk[first])
+        out.append(chunk[second])
+    return out
 
 
 def _subsample_deque(d, max_points):
@@ -477,10 +569,11 @@ def _fft_magnitudes(real_data):
 
 
 class WebViewer:
-    def __init__(self, monitor, port=8080, ft_source=None):
+    def __init__(self, monitor, port=8080, ft_source=None, gripper=None):
         self.monitor = monitor
         self.port = port
         self.ft_source = ft_source
+        self.gripper = gripper  # a GripperController, or None for no controls
         self.buffer = SensorDataBuffer()
         self.clients = set()
         self._had_client = False
@@ -521,6 +614,11 @@ class WebViewer:
                     self.buffer.reset_baseline()
                 elif msg.get("type") == "zero_wrench":
                     self.buffer.zero_wrench()
+                elif msg.get("type") == "gripper_move" and self.gripper:
+                    self.gripper.request_move(msg.get("position"), msg.get("speed"),
+                                              msg.get("force"))
+                elif msg.get("type") == "gripper_activate" and self.gripper:
+                    self.gripper.request_activate()
                 elif msg.get("type") == "set_raw_mode":
                     self.buffer.use_baseline = not msg.get("raw", False)
                 elif msg.get("type") == "set_adaptive_range":
@@ -552,11 +650,13 @@ class WebViewer:
             tip_angles, tip_valid = self.buffer.get_tip_snapshot()
             msg["static"] = values
             msg["maxRange"] = max_ranges
-            msg["dynamic"] = self.buffer.get_dynamic_snapshot()
+            msg["dynamic"] = self.buffer.get_dynamic_snapshot(envelope=True)
             msg["tipAngle"] = tip_angles
             msg["tipAngleValid"] = tip_valid
+            msg["orientationSeen"] = list(self.buffer.orientation_seen)
             msg["wrench"], msg["wrenchError"] = self.buffer.get_wrench_snapshot()
             msg["ftOrigin"] = FT_ORIGIN_MM
+            msg["gripper"] = self.gripper.snapshot() if self.gripper else None
         elif tab == "dynamic":
             msg["dynamic"] = self.buffer.get_dynamic_snapshot()
         elif tab == "imu":
@@ -651,7 +751,7 @@ class WebViewer:
                 traceback.print_exc(file=sys.stderr)
             await asyncio.sleep(1.0)
 
-    async def run_server(self):
+    async def run_server(self, open_browser=False):
         web_dir = Path(__file__).parent / "web"
         handler = partial(QuietHTTPHandler, directory=str(web_dir))
         httpd = HTTPServer(("0.0.0.0", self.port), handler)
@@ -662,6 +762,10 @@ class WebViewer:
         ws_port = self.port + 1
         async with websockets.serve(self.websocket_handler, "0.0.0.0", ws_port):
             print(f"  WebSocket server: ws://localhost:{ws_port}")
+            # Only now: a browser opened before both servers are listening
+            # gets "connection refused" and never retries.
+            if open_browser:
+                webbrowser.open(f"http://localhost:{self.port}")
             await asyncio.gather(self.broadcast_loop(), self.fft_loop())
 
 
@@ -678,8 +782,8 @@ class QuietHTTPHandler(SimpleHTTPRequestHandler):
 
 
 def run_web_viewer(monitor, port=8080, ft_source=None, open_browser=True,
-                   static_floor=None):
-    viewer = WebViewer(monitor, port, ft_source)
+                   static_floor=None, gripper=None):
+    viewer = WebViewer(monitor, port, ft_source, gripper)
     if static_floor is not None:
         viewer.buffer.static_floor = static_floor
 
@@ -707,13 +811,16 @@ def run_web_viewer(monitor, port=8080, ft_source=None, open_browser=True,
 
         threading.Thread(target=read_ft, daemon=True).start()
 
+    if gripper is not None:
+        # GripperController.run catches its own errors and keeps polling, so a
+        # gripper that drops out comes back once it is reconnected.
+        threading.Thread(target=gripper.run, daemon=True).start()
+
     url = f"http://localhost:{port}"
     print(f"Web viewer starting...")
     print(f"  URL: {url}")
     print("  Press Ctrl+C to stop.\n")
-    if open_browser:
-        webbrowser.open(url)
 
     # All threads are daemon — hard exit on Ctrl+C is safe and responsive
     signal.signal(signal.SIGINT, lambda *_: os._exit(0))
-    asyncio.run(viewer.run_server())
+    asyncio.run(viewer.run_server(open_browser=open_browser))

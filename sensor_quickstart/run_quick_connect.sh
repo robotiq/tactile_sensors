@@ -11,18 +11,27 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PARENT_DIR="$(dirname "$SCRIPT_DIR")"
 VENV_DIR="$SCRIPT_DIR/.venvSimpleCheck"
 
+# --help / -h: print the options and stop. Nothing below is needed for that,
+# and some of it is slow or asks for sudo, so it is all skipped. Uses the
+# virtual environment's Python when it exists; quick_connect.py prints its
+# help with nothing installed.
+for arg in "$@"; do
+    if [ "$arg" = "--help" ] || [ "$arg" = "-h" ]; then
+        PY=python3
+        if [ -x "$VENV_DIR/bin/python3" ]; then PY="$VENV_DIR/bin/python3"; fi
+        cd "$SCRIPT_DIR"
+        exec "$PY" quick_connect.py "$@"
+    fi
+done
+
 # --sim runs on synthetic data with nothing plugged in, so the whole hardware
 # setup below is skipped for it: applying udev rules asks for sudo, and the
 # device scan ends in an interactive "continue anyway?" prompt when it finds
 # nothing -- which it always would. Scanned out of all the arguments rather
 # than just $1 so it works wherever it is written on the line.
-# -h/--help skips it too: it only needs Python to print the options, and
-# should not ask for sudo or scan for devices first.
 SIM=0
 for arg in "$@"; do
-    case "$arg" in
-        --sim|-h|--help) SIM=1 ;;
-    esac
+    if [ "$arg" = "--sim" ]; then SIM=1; fi
 done
 
 # Colors for output
@@ -125,7 +134,7 @@ install_requirements
 
 if [ "$SIM" = "1" ]; then
 echo ""
-echo "Simulation or help: skipping sensor permissions and device detection."
+echo "Simulation mode: skipping sensor permissions and device detection."
 else
 
 echo ""
@@ -172,7 +181,7 @@ else
     done
 fi
 
-fi  # end of hardware setup, skipped under --sim and --help
+fi  # end of hardware setup, skipped under --sim
 
 echo ""
 echo "=========================================="

@@ -52,7 +52,6 @@ function overviewBaseLayout(extra) {
 
 let ws = null;
 let activeTab = 'overview';   // must match WebViewer.active_tab on the server
-let frameCount = 0;
 
 // --- WebSocket ---
 
@@ -94,14 +93,21 @@ function handleData(msg) {
     // tab just left is usually still in flight, and its plots are already
     // purged: restyling them would throw out of onmessage.
     if (msg.tab !== activeTab || !tabsReady.has(msg.tab)) return;
-    frameCount++;
-    document.getElementById('sample-count').textContent = `Frame: ${frameCount}`;
     switch (msg.tab) {
         case 'overview':
             renderHeatmaps(msg.static, msg.maxRange);
             renderOverviewDynamic(msg.dynamic);
+            renderGripperControl(msg.gripper);
+            renderOrientation(msg.orientationSeen);
+            // A status with no wrench still means a sensor was found (zeroing,
+            // gone quiet, failed); neither at all means there is none.
+            document.getElementById('ft-note').hidden = !(msg.wrench || msg.wrenchError);
+            // Shown while the sensor reads, or is taking its zero; hidden when
+            // there is no sensor, or it failed or went quiet.
+            document.getElementById('zero-wrench').hidden =
+                !(msg.wrench || msg.wrenchError?.startsWith('zeroing'));
             if (gripper) {
-                gripper.renderGripper(msg.tipAngle, msg.tipAngleValid);
+                gripper.renderGripper(msg.tipAngle, msg.tipAngleValid, msg.gripper?.position ?? null);
                 gripper.renderWrench(msg.wrench, msg.wrenchError, msg.ftOrigin);
             }
             break;
@@ -112,34 +118,120 @@ function handleData(msg) {
 
 // --- Static Heatmaps ---
 
+// Taxel centres, in the axes' units: one per cell of the 4x7 grid.
+const TAXEL_X = [0.5, 1.5, 2.5, 3.5];
+const TAXEL_Y = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5];
+
+// Two ways to show the pads, picked from the toolbar:
+//   - raw: one flat cell per taxel, exactly as measured;
+//   - interpolated: squares half a taxel pitch wide, alternating along each
+//     axis between a taxel and the gap to its neighbour. So there is one
+//     square on each taxel centre holding its raw value, one between each two
+//     neighbouring taxels holding their mean, and one between each four
+//     holding the mean of those four. Nothing is extrapolated: the outermost
+//     squares just stretch out to the border with the edge taxels' values.
+//     The taxel boundaries are drawn on top, so it stays clear where each
+//     measurement came from; the squares themselves have no outline.
+const HEATMAP_MODE_KEY = 'viewer.heatmapMode';
+let heatmapMode = 'raw';
+
+// Square edges in axis units, so 4 x 7 taxels give 7 x 13 squares. Taxel
+// centres sit at half-integers and the midpoints between them at integers, so
+// the squares are half a pitch wide, centred on those -- except the outermost,
+// which reach the border: 0, 0.75, 1.25, ..., n - 0.75, n.
+const interpEdges = (n) => [0, ...Array.from({ length: 2 * n - 2 }, (_, i) => 0.75 + i / 2), n];
+const INTERP_X = interpEdges(4);
+const INTERP_Y = interpEdges(7);
+
+// The raw taxel boundaries, drawn over the interpolated squares.
+const TAXEL_GRID_SHAPES = [
+    ...[1, 2, 3].map(x => ({ x0: x, x1: x, y0: 0, y1: 7 })),
+    ...[1, 2, 3, 4, 5, 6].map(y => ({ x0: 0, x1: 4, y0: y, y1: y })),
+].map(s => Object.assign({ type: 'line', xref: 'x', yref: 'y', layer: 'above',
+                           line: { color: 'rgba(255,255,255,0.6)', width: 1.5 } }, s));
+
+// Even index i is taxel i/2; odd is the mean of the taxels either side.
+function interpLine(values) {
+    const out = [];
+    for (let i = 0; i < values.length; i++) {
+        if (i) out.push((values[i - 1] + values[i]) / 2);
+        out.push(values[i]);
+    }
+    return out;
+}
+
+// Along rows, then along columns: a square between four taxels comes out as
+// the mean of all four.
+function interpolateTaxels(rows) {
+    const wide = rows.map(interpLine);
+    const columns = wide[0].map((_, c) => interpLine(wide.map(row => row[c])));
+    return columns[0].map((_, r) => columns.map(col => col[r]));
+}
+
 function renderHeatmaps(data, maxRanges) {
     if (!data) return;
     for (let f = 0; f < 2; f++) {
         const z = [];
         for (let row = 0; row < 7; row++)
             z.push(data[f].slice(row * 4, (row + 1) * 4));
-        Plotly.restyle(`overview-static-${f}`, { z: [z], zmax: Math.max(maxRanges[f], 1) });
+        const zmax = Math.max(maxRanges[f], 1);
+        // Traces: 0 raw, 1 interpolated. Only the visible one is updated.
+        if (heatmapMode === 'interpolated')
+            Plotly.restyle(`overview-static-${f}`, { z: [interpolateTaxels(z)], zmax }, [1]);
+        else
+            Plotly.restyle(`overview-static-${f}`, { z: [z], zmax }, [0]);
     }
 }
 
+const HEATMAP_COLORBAR = { thickness: 6, outlinewidth: 0, tickfont: { size: 8 }, len: 1, x: 1.02 };
+
 function initOverviewStaticChart(divId) {
+    const interpolated = heatmapMode === 'interpolated';
     Plotly.newPlot(divId, [{
-        x: [0.5, 1.5, 2.5, 3.5],
-        y: [0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5],
+        x: TAXEL_X,
+        y: TAXEL_Y,
         z: Array(7).fill(null).map(() => Array(4).fill(0)),
         type: 'heatmap',
         colorscale: TACTILE_COLORSCALE,
-        zsmooth: 'best',
+        // One flat cell per taxel, as measured. The gaps show the grid.
+        zsmooth: false,
+        xgap: 2,
+        ygap: 2,
         zmin: 0, zmax: 3000,
-        colorbar: { thickness: 6, outlinewidth: 0, tickfont: { size: 8 }, len: 1, x: 1.02 }
+        visible: !interpolated,
+        colorbar: HEATMAP_COLORBAR
+    }, {
+        x: INTERP_X,
+        y: INTERP_Y,
+        // One more edge than squares on each axis.
+        z: INTERP_Y.slice(1).map(() => INTERP_X.slice(1).map(() => 0)),
+        type: 'heatmap',
+        colorscale: TACTILE_COLORSCALE,
+        zsmooth: false,
+        zmin: 0, zmax: 3000,
+        visible: interpolated,
+        colorbar: HEATMAP_COLORBAR
     }], overviewBaseLayout({
         xaxis: Object.assign({}, OVERVIEW_AXIS_STYLE,
                              { dtick: 1, range: [0, 4], constrain: 'domain' }),
         yaxis: Object.assign({}, OVERVIEW_AXIS_STYLE, {
             dtick: 1, range: [7, 0], scaleanchor: 'x', scaleratio: 1, constrain: 'domain'
         }),
+        shapes: interpolated ? TAXEL_GRID_SHAPES : [],
         margin: { t: 6, b: 18, l: 18, r: 0 }
     }), PLOTLY_CONFIG);
+}
+
+function setHeatmapMode(mode) {
+    heatmapMode = mode;
+    try { localStorage.setItem(HEATMAP_MODE_KEY, mode); } catch (e) { /* private mode */ }
+    if (!tabsReady.has('overview')) return;
+    const interpolated = mode === 'interpolated';
+    for (let f = 0; f < 2; f++) {
+        const id = `overview-static-${f}`;
+        Plotly.restyle(id, { visible: [!interpolated, interpolated] }, [0, 1]);
+        Plotly.relayout(id, { shapes: interpolated ? TAXEL_GRID_SHAPES : [] });
+    }
 }
 
 // --- Dynamic Time-Domain + FFT (signal tabs) ---
@@ -195,18 +287,22 @@ const FINGER_COLORS = ['#4fa3e3', '#f2a541'];
 // The dynamic signal spans four orders of magnitude between a brush of a
 // fingertip and a knock, so a fixed axis either flattens the quiet end or
 // clips the loud one. The axis follows the window's own peak instead, but
-// never closes tighter than +-DYN_MIN_HALF_RANGE: below that the trace is
-// noise, and zooming into noise makes a still finger look busy.
+// never closes tighter than +-DYN_MIN_HALF_RANGE. The floor trades hiding the
+// noise against sensitivity: a finger at rest measures about +-0.007 mV, which
+// at +-0.1 mV is a thin band, so a still finger looks still while a light touch
+// still clearly rises out of it. 0.1 was the best compromise on the bench.
 const DYN_FULL_SCALE_MV = 1.024;    // what a full-scale sample is worth
-const DYN_MIN_HALF_RANGE = 0.5;     // mV, the floor
+const DYN_MIN_HALF_RANGE = 0.1;     // mV, the floor
 const DYN_HEADROOM = 1.15;          // keep the peak off the frame edge
 const dynRange = [0, 0];            // what each chart is currently showing
 
-// Snapping to a step keeps the axis from creeping a little on every frame,
-// which reads as the trace breathing rather than as the scale changing. The
-// step is 0.1 mV rather than a 1/2/5 ladder because the whole span from the
-// floor to full scale is only 0.5 mV wide — a ladder would have two rungs in it.
-const DYN_RANGE_STEP = 0.1;
+// Snapping to a 1-2-5 ladder keeps the axis from creeping a little on every
+// frame, which reads as the trace breathing rather than as the scale
+// changing. From the floor to full scale is a decade, so even steps would be
+// either too coarse at the quiet end or too many at the loud one. The ladder
+// starts at the floor: a smaller step would zoom in past it.
+const DYN_RANGE_LADDER = [0.02, 0.05, 0.1, 0.2, 0.5, DYN_FULL_SCALE_MV]
+    .filter(step => step >= DYN_MIN_HALF_RANGE);
 
 function initOverviewDynamicChart(divId, finger) {
     Plotly.newPlot(divId, [{
@@ -233,10 +329,10 @@ function renderOverviewDynamic(dynData) {
         }
         Plotly.restyle(`overview-dynamic-${f}`, { y: [mV] });
 
-        // Clamped at full scale: no reading can land outside it, so a wider
-        // axis would only add empty space.
-        const wanted = Math.ceil(peak * DYN_HEADROOM / DYN_RANGE_STEP) * DYN_RANGE_STEP;
-        const half = Math.min(Math.max(wanted, DYN_MIN_HALF_RANGE), DYN_FULL_SCALE_MV);
+        // The ladder ends at full scale: no reading can land outside it, so a
+        // wider axis would only add empty space.
+        const wanted = peak * DYN_HEADROOM;
+        const half = DYN_RANGE_LADDER.find(step => step >= wanted) ?? DYN_FULL_SCALE_MV;
         if (half !== dynRange[f]) {
             dynRange[f] = half;
             Plotly.relayout(`overview-dynamic-${f}`, { 'yaxis.range': [-half, half] });
@@ -354,9 +450,9 @@ function switchTab(tab) {
 
 // --- 3D gripper (opt-in) ---
 
-// Roughly 3 MB of three.js and baked meshes, which the default page must not
-// pay for: the module is imported the first time the box is ticked, and the
-// import is what pulls in three, OrbitControls and the geometry.
+// Roughly 3 MB of three.js and baked meshes, loaded lazily: the module is
+// imported when the box is ticked (on by default), and the import is what
+// pulls in three, OrbitControls and the geometry.
 const GRIPPER_KEY = 'viewer.gripper3d';
 let gripper = null;          // the module namespace, once resolved
 let gripperLoading = null;   // in-flight import, so a double-click loads once
@@ -453,6 +549,136 @@ function setGripper(on) {
     scheduleResize();
 }
 
+// --- Gripper control ---
+
+// The server owns the command, so two browsers on one viewer show the same
+// sliders. A slider being dragged is left alone, though: the frame echoing the
+// previous value can arrive mid-drag and would yank it back.
+const GC_KEYS = ['position', 'speed', 'force'];
+const GC_ECHO_GRACE_MS = 500;
+const gcTouched = {};   // key -> time of the last local change
+
+// gOBJ, the gripper's own account of how the last move ended, as the object
+// indicator shows it: [label, state class].
+const GC_OBJECT = [
+    ['moving', 'moving'],
+    ['object detected (opening)', 'detected'],
+    ['object detected', 'detected'],
+    ['no object', 'none'],
+];
+
+// Every slider is a 0-255 byte on the wire. Position reads as how closed the
+// gripper is: 0% fully open, 100% fully closed.
+function gcPercent(v) {
+    return v == null ? '–' : `${Math.round(v * 100 / 255)}%`;
+}
+
+function renderObjectIndicator(g) {
+    const el = document.getElementById('gc-object');
+    const [label, cls] = (g.activated && !g.activating && GC_OBJECT[g.object])
+        || ['object: –', 'unknown'];
+    el.className = `gc-object ${cls}`;
+    document.getElementById('gc-object-text').textContent = label;
+}
+
+function renderGripperControl(g) {
+    // Every overview frame carries the key; null means no gripper to drive.
+    const on = !!g;
+    if (document.body.classList.contains('gripper-ctl-on') !== on) {
+        document.body.classList.toggle('gripper-ctl-on', on);
+        scheduleResize();
+    }
+    if (!on) return;
+
+    const ready = g.activated && !g.activating;
+    const now = performance.now();
+    for (const key of GC_KEYS) {
+        const slider = document.getElementById(`gc-${key}`);
+        slider.disabled = !ready;
+        const v = g.command[key];
+        if (v != null && !(now - (gcTouched[key] || -Infinity) < GC_ECHO_GRACE_MS)) {
+            slider.value = v;
+            document.getElementById(`gc-${key}-value`).textContent = gcPercent(v);
+        }
+    }
+
+    document.getElementById('gc-open').disabled = !ready;
+    document.getElementById('gc-close').disabled = !ready;
+
+    const button = document.getElementById('gc-activate');
+    button.hidden = g.activated && !g.activating;
+    button.disabled = g.activating;
+    button.textContent = g.activating ? 'Activating…' : 'Activate';
+
+    const state = document.getElementById('gc-state');
+    let text, bad = false;
+    if (g.error) { text = g.error; bad = true; }
+    else if (g.fault) { text = `fault 0x${g.fault.toString(16).toUpperCase()}`; bad = true; }
+    else if (g.activating) text = 'activating: the fingers open and close fully';
+    else if (!g.activated) text = 'not activated';
+    else {
+        text = `at ${gcPercent(g.position)} closed`;
+    }
+    state.textContent = `${g.port} · ${text}`;
+    state.classList.toggle('bad', bad);
+    renderObjectIndicator(g);
+}
+
+for (const key of GC_KEYS) {
+    const slider = document.getElementById(`gc-${key}`);
+    slider.addEventListener('input', () => {
+        gcTouched[key] = performance.now();
+        const v = parseInt(slider.value);
+        document.getElementById(`gc-${key}-value`).textContent = gcPercent(v);
+        // The server sends only the latest request, so a fast drag cannot
+        // queue up a backlog of moves on the gripper.
+        send({ type: 'gripper_move', [key]: v });
+    });
+}
+
+// Open and Close move the position slider to its end and send it, just as
+// dragging it there would.
+function gcMoveTo(position) {
+    gcTouched.position = performance.now();
+    document.getElementById('gc-position').value = position;
+    document.getElementById('gc-position-value').textContent = gcPercent(position);
+    send({ type: 'gripper_move', position });
+}
+
+document.getElementById('gc-open').addEventListener('click', () => gcMoveTo(0));
+document.getElementById('gc-close').addEventListener('click', () => gcMoveTo(255));
+
+document.getElementById('gc-activate').addEventListener('click', () => {
+    if (confirm('Activation fully opens and closes the gripper.\n' +
+                'Make sure nothing is between the fingers.'))
+        send({ type: 'gripper_activate' });
+});
+
+// --- Gripper orientation ---
+
+// Detected on the server from gravity at the fingertip IMUs (see
+// TIP_ORIENTATION_MIN_Y in web_viewer.py); the page only reports it.
+const ORIENTATION_TEXT = { up: 'fingers pointing up', down: 'fingers pointing down' };
+
+function renderOrientation(seen) {
+    // Per finger: 'up', 'down', 'side', or null while a finger has nothing to
+    // go on yet (no IMU data, or its startup calibration still running).
+    // Usually both agree; a finger with no reading defers to the other.
+    const views = seen || [];
+    const known = [...new Set(views.filter(v => v === 'up' || v === 'down'))];
+    let text = '', bad = false;
+    if (known.length > 1) { text = 'Detected: fingers disagree'; bad = true; }
+    else if (views.includes('side')) { text = 'Detected: on its side'; bad = true; }
+    else if (known.length === 1) text = `Detected: ${ORIENTATION_TEXT[known[0]]}`;
+
+    const detected = document.getElementById('orientation-detected');
+    detected.textContent = text;
+    detected.classList.toggle('bad', bad);
+    // The warning is only shown when the tilt cannot be measured; the angle
+    // readouts then show "no ref".
+    document.getElementById('orientation-note').hidden = !bad;
+}
+
 // --- Resizing ---
 
 // Plotly's built-in `responsive` config relies on its own ResizeObserver, which
@@ -504,6 +730,9 @@ document.getElementById('adaptive-range').addEventListener('change',
 
 document.getElementById('reset-imu-axes')?.addEventListener('click', resetIMUAxes);
 
+document.getElementById('heatmap-mode').addEventListener('change',
+    (e) => setHeatmapMode(e.target.value));
+
 document.getElementById('gripper-3d').addEventListener('change',
     (e) => setGripper(e.target.checked));
 
@@ -517,8 +746,16 @@ function sendRefreshRate() {
     send({ type: 'set_rate', hz: Number(document.getElementById('refresh-rate').value) });
 }
 
+// The lowest rate is the default and the safe one; anything above it gets a
+// warning, since slower machines freeze rather than just drop frames.
+function showRefreshWarning() {
+    const rate = document.getElementById('refresh-rate');
+    document.getElementById('refresh-warning').hidden = rate.selectedIndex === 0;
+}
+
 document.getElementById('refresh-rate').addEventListener('change', (e) => {
     try { localStorage.setItem(REFRESH_KEY, e.target.value); } catch (err) { /* private mode */ }
+    showRefreshWarning();
     sendRefreshRate();
 });
 
@@ -529,6 +766,14 @@ const FFT_FREQS = new Float64Array(2048);
 for (let i = 0; i < 2048; i++) FFT_FREQS[i] = i * 500 / 2048;
 
 function init() {
+    // Before the first switchTab, so the heatmaps are built in the saved mode.
+    const modeSelect = document.getElementById('heatmap-mode');
+    try {
+        if (localStorage.getItem(HEATMAP_MODE_KEY) === 'interpolated')
+            heatmapMode = 'interpolated';
+    } catch (e) { /* private mode */ }
+    modeSelect.value = heatmapMode;
+
     // The demo tab is always the one that comes up, deliberately: this is the
     // view a booth machine should be showing after a reboot, so the last tab
     // someone poked at is not remembered.
@@ -537,13 +782,16 @@ function init() {
     const box = document.getElementById('gripper-3d');
     let saved = null;
     try { saved = localStorage.getItem(GRIPPER_KEY); } catch (e) { /* private mode */ }
-    box.checked = saved === '1';
+    // On unless someone has switched it off: the 3D view is what people expect
+    // to see, and an unticked box was easy to miss.
+    box.checked = saved !== '0';
     if (box.checked) enableGripper();
 
     const rate = document.getElementById('refresh-rate');
     let savedHz = null;
     try { savedHz = localStorage.getItem(REFRESH_KEY); } catch (e) { /* private mode */ }
     if ([...rate.options].some(o => o.value === savedHz)) rate.value = savedHz;
+    showRefreshWarning();
 
     connect();
 }

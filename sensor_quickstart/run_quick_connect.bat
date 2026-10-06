@@ -1,6 +1,22 @@
 @echo off
 setlocal EnableDelayedExpansion
 
+rem --help / -h: print the options and stop. Nothing below is needed for that,
+rem and some of it is slow or asks for admin rights (releasing USB devices from
+rem WSL), so it is all skipped. Uses the virtual environment's Python when it
+rem exists; quick_connect.py prints its help with nothing installed.
+set "_HELP="
+for %%A in (%*) do (
+    if /i "%%~A"=="--help" set "_HELP=1"
+    if /i "%%~A"=="-h" set "_HELP=1"
+)
+if defined _HELP (
+    set "_PY=python"
+    if exist "%~dp0.venvSimpleCheck\Scripts\python.exe" set "_PY=%~dp0.venvSimpleCheck\Scripts\python.exe"
+    "!_PY!" "%~dp0quick_connect.py" %*
+    exit /b !errorlevel!
+)
+
 echo ==========================================
 echo Simple Tactile Sensor Checker - Windows
 echo ==========================================

@@ -21,6 +21,7 @@ other devices on the bus answer on the same slave id.
 import time
 
 from ft_source import FTSource
+from serial_ports import port_key, skip_set, usb_serial_ports
 
 SLAVE_ID = 9
 
@@ -97,7 +98,7 @@ class ModbusRTUStreamSource(FTSource):
         self.timeout = timeout
         # Ports already in use by something else — the tactile sensor holds one,
         # and probing it just yields a permission error on Windows.
-        self.skip_ports = {str(p).upper() for p in skip_ports if p}
+        self.skip_ports = skip_set(skip_ports)
         self.already_streaming = False
         self._serial = None
 
@@ -107,8 +108,8 @@ class ModbusRTUStreamSource(FTSource):
         """Open the sensor and return (port, baudrate, description)."""
         import serial  # pyserial
 
-        ports = [self.port] if self.port else self._candidate_ports()
-        ports = [p for p in ports if p.upper() not in self.skip_ports]
+        ports = [self.port] if self.port else usb_serial_ports()
+        ports = [p for p in ports if port_key(p) not in self.skip_ports]
         if not ports:
             raise ModbusError("no serial ports left to try")
         bauds = [self.baudrate] if self.baudrate else list(BAUD_RATES)
@@ -178,14 +179,6 @@ class ModbusRTUStreamSource(FTSource):
             if crc16(frame[:-2]) == frame[-2:]:
                 good += 1
         return good >= 3
-
-    @staticmethod
-    def _candidate_ports():
-        from serial.tools import list_ports
-        # USB serial adapters first: that is how the sensor is cabled.
-        ports = sorted(list_ports.comports(),
-                       key=lambda p: (p.device.find("USB") < 0, p.device))
-        return [p.device for p in ports]
 
     def close(self):
         if self._serial is not None:
