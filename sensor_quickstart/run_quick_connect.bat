@@ -172,20 +172,32 @@ rem Step 4: Install Requirements
 rem ==========================================
 echo [4/6] Installing requirements...
 
-if exist "%SCRIPT_DIR%\requirements.txt" (
-    echo Upgrading pip...
-    python -m pip install --upgrade pip --quiet
-
-    echo Installing dependencies...
-    pip install -r "%SCRIPT_DIR%\requirements.txt" --quiet
-    if errorlevel 1 (
-        echo [WARNING] Some packages failed to install
-    ) else (
-        echo [OK] Requirements installed
-    )
-) else (
+rem A copy of the requirements.txt last installed from is kept in the virtual
+rem environment. While it matches, pip is not run at all: it needs the internet,
+rem and only the first run may need that. A changed requirements.txt, or a new
+rem virtual environment, installs again.
+set "REQ_STAMP=%VENV_DIR%\requirements.installed"
+if not exist "%SCRIPT_DIR%\requirements.txt" (
     echo [WARNING] requirements.txt not found, skipping...
+    goto :requirements_done
 )
+fc /b "%SCRIPT_DIR%\requirements.txt" "%REQ_STAMP%" >nul 2>&1
+if not errorlevel 1 (
+    echo [OK] Requirements already installed
+    goto :requirements_done
+)
+echo Upgrading pip...
+python -m pip install --upgrade pip --quiet
+
+echo Installing dependencies...
+python -m pip install -r "%SCRIPT_DIR%\requirements.txt" --quiet
+if errorlevel 1 (
+    echo [WARNING] Some packages failed to install. The first run needs an internet connection.
+) else (
+    copy /y "%SCRIPT_DIR%\requirements.txt" "%REQ_STAMP%" >nul
+    echo [OK] Requirements installed
+)
+:requirements_done
 echo.
 
 rem ==========================================

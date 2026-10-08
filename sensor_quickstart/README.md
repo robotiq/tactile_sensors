@@ -249,8 +249,10 @@ the first time they run.
 - **Python packages** (pyserial, websockets, pyrobotiqgripper): installed into
   a private virtual environment, `.venvSimpleCheck`, so nothing else on the
   computer is affected
-- **Internet access** on the first run, to download the above. The web viewer
-  also loads its plotting library from the internet.
+- **Internet access** on the first run only, to download the above. After
+  that everything runs offline: the web viewer's libraries are part of this
+  repository, and the scripts only reinstall packages when `requirements.txt`
+  changes.
 
 ---
 

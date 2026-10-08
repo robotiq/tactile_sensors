@@ -109,21 +109,30 @@ setup_venv() {
     echo "  Python version: $(python3 --version)"
 }
 
-# Function to install requirements
+# A copy of the requirements.txt last installed from is kept in the virtual
+# environment. While it matches, pip is not run at all: it needs the internet,
+# and only the first run may need that. A changed requirements.txt, or a new
+# virtual environment, installs again.
 install_requirements() {
     echo ""
     echo "Installing requirements..."
-
-    # Upgrade pip first
-    pip install --upgrade pip --quiet
-
-    # Install requirements
-    if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
-        pip install -r "$SCRIPT_DIR/requirements.txt" --quiet
-        echo -e "${GREEN}✓ Requirements installed${NC}"
-    else
+    local req="$SCRIPT_DIR/requirements.txt"
+    local stamp="$VENV_DIR/requirements.installed"
+    if [ ! -f "$req" ]; then
         echo -e "${YELLOW}Warning: requirements.txt not found${NC}"
+        return
     fi
+    if cmp -s "$req" "$stamp"; then
+        echo -e "${GREEN}✓ Requirements already installed${NC}"
+        return
+    fi
+    pip install --upgrade pip --quiet || true
+    if ! pip install -r "$req" --quiet; then
+        echo -e "${RED}Could not install the requirements. The first run needs an internet connection.${NC}"
+        exit 1
+    fi
+    cp "$req" "$stamp"
+    echo -e "${GREEN}✓ Requirements installed${NC}"
 }
 
 # Load helper scripts from parent directory
