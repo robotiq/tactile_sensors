@@ -11,3 +11,6 @@
 *.bat text eol=crlf
 # Shell scripts must stay LF even when checked out on Windows.
 *.sh text eol=lf
+
+# Third-party minified bundles: kept byte-identical to the upstream release.
+*.min.js -text
