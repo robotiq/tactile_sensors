@@ -27,22 +27,47 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-check_python() {
-    echo "Checking for Python 3.7+..."
-    if ! command -v python3 >/dev/null 2>&1; then
-        echo -e "${RED}python3 not found on PATH.${NC}"
-        echo ""
-        echo "Install Python 3 with either:"
-        echo "  • Homebrew:  brew install python"
-        echo "  • python.org installer: https://www.python.org/downloads/"
-        echo ""
-        echo "Then re-open your terminal and run this script again."
-        exit 1
+# The Python installed when none is found. Pinned so every machine gets one
+# that is known to work; 3.12.10 is the last 3.12 with macOS installers.
+PY_VERSION=3.12.10
+PY_SERIES=3.12
+
+python_ok() {
+    local py
+    py="$(command -v python3 2>/dev/null)" || return 1
+    # Without the Command Line Tools, Apple's /usr/bin/python3 is only a stub
+    # that pops up an install dialog, so it is not run at all.
+    if [ "$py" = /usr/bin/python3 ] && ! xcode-select -p >/dev/null 2>&1; then
+        return 1
     fi
-    if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3,7) else 1)'; then
-        echo -e "${RED}python3 is older than 3.7 ($(python3 --version)).${NC}"
-        echo "Upgrade via Homebrew (brew upgrade python) or python.org."
-        exit 1
+    python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' 2>/dev/null
+}
+
+# Installs Python from python.org if it is missing, so the viewer runs on a Mac
+# nobody has set up for Python. The package is universal (Intel and Apple
+# silicon) and asks for the administrator password.
+install_python() {
+    local pkg="/tmp/python-$PY_VERSION-macos11.pkg"
+    echo -e "${YELLOW}Python 3.8 or newer not found. Installing Python $PY_VERSION from python.org...${NC}"
+    curl -fL --progress-bar -o "$pkg" \
+        "https://www.python.org/ftp/python/$PY_VERSION/python-$PY_VERSION-macos11.pkg"
+    echo "Running the installer (your password is needed)..."
+    sudo installer -pkg "$pkg" -target /
+    rm -f "$pkg"
+    # The installer adds this to PATH only for shells opened after it.
+    export PATH="/Library/Frameworks/Python.framework/Versions/$PY_SERIES/bin:$PATH"
+    hash -r
+}
+
+check_python() {
+    echo "Checking for Python 3.8+..."
+    if ! python_ok; then
+        install_python
+        if ! python_ok; then
+            echo -e "${RED}Could not install Python 3.8 or newer automatically.${NC}"
+            echo "Install it from https://www.python.org/downloads/ and run this script again."
+            exit 1
+        fi
     fi
     echo -e "${GREEN}✓ $(python3 --version) at $(command -v python3)${NC}"
 }
@@ -71,16 +96,30 @@ setup_venv() {
     echo "  Python version:  $(python3 --version)"
 }
 
+# A copy of the requirements.txt last installed from is kept in the virtual
+# environment. While it matches, pip is not run at all: it needs the internet,
+# and only the first run may need that. A changed requirements.txt, or a new
+# virtual environment, installs again.
 install_requirements() {
     echo ""
     echo "Installing requirements..."
-    pip install --upgrade pip --quiet
-    if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
-        pip install -r "$SCRIPT_DIR/requirements.txt" --quiet
-        echo -e "${GREEN}✓ Requirements installed${NC}"
-    else
+    local req="$SCRIPT_DIR/requirements.txt"
+    local stamp="$VENV_DIR/requirements.installed"
+    if [ ! -f "$req" ]; then
         echo -e "${YELLOW}Warning: requirements.txt not found${NC}"
+        return
     fi
+    if cmp -s "$req" "$stamp"; then
+        echo -e "${GREEN}✓ Requirements already installed${NC}"
+        return
+    fi
+    pip install --upgrade pip --quiet || true
+    if ! pip install -r "$req" --quiet; then
+        echo -e "${RED}Could not install the requirements. The first run needs an internet connection.${NC}"
+        exit 1
+    fi
+    cp "$req" "$stamp"
+    echo -e "${GREEN}✓ Requirements installed${NC}"
 }
 
 find_sensor_devices_mac() {

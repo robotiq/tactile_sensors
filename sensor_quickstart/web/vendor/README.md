@@ -7,5 +7,15 @@ which is the normal state of a show floor.
 |---|---|---|
 | `three.module.js` | three.js r160, `build/three.module.js` | MIT |
 | `OrbitControls.js` | three.js r160, `examples/jsm/controls/OrbitControls.js` | MIT |
+| `plotly-2.35.0.min.js` | plotly.js 2.35.0, `dist/plotly.min.js` (the full bundle: the page needs `heatmap` and `scattergl`, which no partial bundle has together) | MIT |
 
-Both carry their SPDX headers inline. Upstream: https://github.com/mrdoob/three.js
+All carry their licence headers inline, and the full licence texts are here
+too, as MIT and BSD require copies to keep them:
+
+- `three.LICENSE`: three.js
+- `plotly.LICENSE`: plotly.js
+- `plotly.min.js.LICENSE.txt`: the libraries bundled inside plotly.js, which its
+  header points to under that name (MIT, and BSD-3-Clause for ieee754 and
+  MapLibre GL JS)
+
+Upstream: https://github.com/mrdoob/three.js, https://github.com/plotly/plotly.js

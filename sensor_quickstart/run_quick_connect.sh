@@ -37,7 +37,41 @@ done
 # Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m' # No Color
+
+python_ok() {
+    command -v python3 >/dev/null 2>&1 \
+        && python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' 2>/dev/null
+}
+
+# Function to install Python 3 with the distribution's package manager if it is
+# missing, so the viewer runs on a machine nobody has set up for Python.
+check_python() {
+    echo "Checking for Python 3.8+..."
+    if python_ok; then
+        echo -e "${GREEN}✓ $(python3 --version) at $(command -v python3)${NC}"
+        return
+    fi
+    echo -e "${YELLOW}Python 3.8 or newer not found. Installing it (needs sudo)...${NC}"
+    if command -v apt-get >/dev/null 2>&1; then
+        sudo apt-get update
+        sudo apt-get install -y python3 python3-venv python3-pip
+    elif command -v dnf >/dev/null 2>&1; then
+        sudo dnf install -y python3 python3-pip
+    elif command -v pacman >/dev/null 2>&1; then
+        sudo pacman -S --needed --noconfirm python python-pip
+    elif command -v zypper >/dev/null 2>&1; then
+        sudo zypper install -y python3 python3-pip
+    fi
+    hash -r
+    if ! python_ok; then
+        echo -e "${RED}Could not install Python 3.8 or newer automatically.${NC}"
+        echo "Install it with your package manager, then run this script again."
+        exit 1
+    fi
+    echo -e "${GREEN}✓ $(python3 --version) installed${NC}"
+}
 
 # Function to check if python3-venv is installed
 check_venv_package() {
@@ -75,21 +109,30 @@ setup_venv() {
     echo "  Python version: $(python3 --version)"
 }
 
-# Function to install requirements
+# A copy of the requirements.txt last installed from is kept in the virtual
+# environment. While it matches, pip is not run at all: it needs the internet,
+# and only the first run may need that. A changed requirements.txt, or a new
+# virtual environment, installs again.
 install_requirements() {
     echo ""
     echo "Installing requirements..."
-
-    # Upgrade pip first
-    pip install --upgrade pip --quiet
-
-    # Install requirements
-    if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
-        pip install -r "$SCRIPT_DIR/requirements.txt" --quiet
-        echo -e "${GREEN}✓ Requirements installed${NC}"
-    else
+    local req="$SCRIPT_DIR/requirements.txt"
+    local stamp="$VENV_DIR/requirements.installed"
+    if [ ! -f "$req" ]; then
         echo -e "${YELLOW}Warning: requirements.txt not found${NC}"
+        return
     fi
+    if cmp -s "$req" "$stamp"; then
+        echo -e "${GREEN}✓ Requirements already installed${NC}"
+        return
+    fi
+    pip install --upgrade pip --quiet || true
+    if ! pip install -r "$req" --quiet; then
+        echo -e "${RED}Could not install the requirements. The first run needs an internet connection.${NC}"
+        exit 1
+    fi
+    cp "$req" "$stamp"
+    echo -e "${GREEN}✓ Requirements installed${NC}"
 }
 
 # Load helper scripts from parent directory
@@ -123,7 +166,8 @@ echo "=========================================="
 echo "Setting Up Environment"
 echo "=========================================="
 
-# Step 1: Check for venv package
+# Step 1: Check for Python and the venv package
+check_python
 check_venv_package
 
 # Step 2: Setup virtual environment
