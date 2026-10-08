@@ -37,7 +37,41 @@ done
 # Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m' # No Color
+
+python_ok() {
+    command -v python3 >/dev/null 2>&1 \
+        && python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' 2>/dev/null
+}
+
+# Function to install Python 3 with the distribution's package manager if it is
+# missing, so the viewer runs on a machine nobody has set up for Python.
+check_python() {
+    echo "Checking for Python 3.8+..."
+    if python_ok; then
+        echo -e "${GREEN}✓ $(python3 --version) at $(command -v python3)${NC}"
+        return
+    fi
+    echo -e "${YELLOW}Python 3.8 or newer not found. Installing it (needs sudo)...${NC}"
+    if command -v apt-get >/dev/null 2>&1; then
+        sudo apt-get update
+        sudo apt-get install -y python3 python3-venv python3-pip
+    elif command -v dnf >/dev/null 2>&1; then
+        sudo dnf install -y python3 python3-pip
+    elif command -v pacman >/dev/null 2>&1; then
+        sudo pacman -S --needed --noconfirm python python-pip
+    elif command -v zypper >/dev/null 2>&1; then
+        sudo zypper install -y python3 python3-pip
+    fi
+    hash -r
+    if ! python_ok; then
+        echo -e "${RED}Could not install Python 3.8 or newer automatically.${NC}"
+        echo "Install it with your package manager, then run this script again."
+        exit 1
+    fi
+    echo -e "${GREEN}✓ $(python3 --version) installed${NC}"
+}
 
 # Function to check if python3-venv is installed
 check_venv_package() {
@@ -123,7 +157,8 @@ echo "=========================================="
 echo "Setting Up Environment"
 echo "=========================================="
 
-# Step 1: Check for venv package
+# Step 1: Check for Python and the venv package
+check_python
 check_venv_package
 
 # Step 2: Setup virtual environment

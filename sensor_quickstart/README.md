@@ -236,17 +236,27 @@ the readout flags rather than hides.
 
 ## Requirements
 
-- **Python 3.7+**: [Download Python](https://www.python.org/downloads/)
-  (3.10+ for the gripper controls)
-  - ✅ Check "Add Python to PATH" during installation
-  - ✅ After installing, restart your terminal/command prompt
-- **pyserial**: Installed automatically by the script
+Nothing needs to be installed by hand: the launch scripts set up everything
+the first time they run.
+
+- **Python 3.8+** (3.10+ for the gripper controls). If it is missing, the
+  script installs Python 3.12:
+  - **Windows**: for the current user only, no admin rights needed, through
+    `winget`, or the python.org installer when `winget` is not available
+  - **macOS**: the python.org installer, which asks for your password
+  - **Linux**: the distribution's package manager (`apt`, `dnf`, `pacman` or
+    `zypper`), which asks for your password
+- **Python packages** (pyserial, websockets, pyrobotiqgripper): installed into
+  a private virtual environment, `.venvSimpleCheck`, so nothing else on the
+  computer is affected
+- **Internet access** on the first run, to download the above. The web viewer
+  also loads its plotting library from the internet.
 
 ---
 
 ## What It Does
 
-1. Checks for Python installation
+1. Checks for Python, and installs it if missing
 2. Creates virtual environment (`.venvSimpleCheck`)
 3. Installs dependencies
 4. Detects sensor
