@@ -608,7 +608,10 @@ function renderGripperControl(g) {
     const button = document.getElementById('gc-activate');
     button.hidden = g.activated && !g.activating;
     button.disabled = g.activating;
-    button.textContent = g.activating ? 'Activating…' : 'Activate';
+    // Written only when it changes: this runs every frame, and replacing the
+    // text node under the pointer makes Safari drop the click on the label.
+    const label = g.activating ? 'Activating…' : 'Activate';
+    if (button.textContent !== label) button.textContent = label;
 
     const state = document.getElementById('gc-state');
     let text, bad = false;

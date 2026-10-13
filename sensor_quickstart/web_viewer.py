@@ -7,6 +7,7 @@ import asyncio
 import json
 import math
 import os
+import re
 import signal
 import sys
 import threading
@@ -14,7 +15,7 @@ import time
 import traceback
 import webbrowser
 from collections import deque
-from http.server import SimpleHTTPRequestHandler, HTTPServer
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from functools import partial
 from pathlib import Path
 
@@ -754,7 +755,9 @@ class WebViewer:
     async def run_server(self, open_browser=False):
         web_dir = Path(__file__).parent / "web"
         handler = partial(QuietHTTPHandler, directory=str(web_dir))
-        httpd = HTTPServer(("0.0.0.0", self.port), handler)
+        # One thread per request, so a browser loading the large vendored
+        # Plotly does not hold up the other files, or other viewers.
+        httpd = ThreadingHTTPServer(("0.0.0.0", self.port), handler)
         http_thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         http_thread.start()
         print(f"  HTTP server:      http://localhost:{self.port}")
@@ -769,15 +772,26 @@ class WebViewer:
             await asyncio.gather(self.broadcast_loop(), self.fft_loop())
 
 
+# Such as /vendor/plotly-2.35.0.min.js.
+VERSIONED_VENDOR_FILE = re.compile(r"/vendor/[^/?]*-\d+\.\d+\.\d+[^/]*$")
+
+
 class QuietHTTPHandler(SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
     def end_headers(self):
-        # The page and its assets change while the viewer is being worked on,
-        # and a browser that reuses a cached app.js just looks like the change
-        # did not happen. Nothing here is worth caching.
-        self.send_header("Cache-Control", "no-store, must-revalidate")
+        # A vendored library with its version in the file name never changes,
+        # so the browser keeps it: without that the ~4.5 MB Plotly would be
+        # downloaded again on every page load.
+        if VERSIONED_VENDOR_FILE.match(self.path):
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        else:
+            # The page and its assets change while the viewer is being worked
+            # on, and a browser that reuses a cached app.js just looks like the
+            # change did not happen. The browser asks again every time; an
+            # unchanged file is answered with a short 304 Not Modified.
+            self.send_header("Cache-Control", "no-cache")
         super().end_headers()
 
 

@@ -24,7 +24,7 @@ That's it! The script handles everything automatically.
 
 A browser-based dashboard: tactile heatmaps, dynamic time-series with FFT, IMU plots, and an optional 3D view of the gripper posed from the fingertip IMUs.
 
-### Linux
+### Linux and macOS
 ```bash
 cd sensor_quickstart
 ./run_web_viewer.sh
@@ -101,8 +101,8 @@ straight away; **Open** and **Close**, beside the sliders, send the position
 to either end. The panel also shows the gripper's actual position, and an
 object-detection lamp that lights green when the fingers stop on something. Control goes through
 [pyrobotiqgripper](https://pypi.org/project/pyrobotiqgripper/), installed by
-the launcher. It needs Python 3.10 or later; on an older Python it is not
-installed, and the viewer runs without the gripper controls.
+the launcher. It needs Python 3.10 or later, which the launchers install
+when the computer has an older one.
 
 The gripper is found automatically: each USB serial adapter that the tactile
 and force/torque sensors are not already using is asked for the gripper's
@@ -236,17 +236,29 @@ the readout flags rather than hides.
 
 ## Requirements
 
-- **Python 3.7+**: [Download Python](https://www.python.org/downloads/)
-  (3.10+ for the gripper controls)
-  - ✅ Check "Add Python to PATH" during installation
-  - ✅ After installing, restart your terminal/command prompt
-- **pyserial**: Installed automatically by the script
+Nothing needs to be installed by hand: the launch scripts set up everything
+the first time they run.
+
+- **Python 3.10+** (the gripper controls need it). If it is missing or
+  older, the script installs Python 3.12:
+  - **Windows**: for the current user only, no admin rights needed, through
+    `winget`, or the python.org installer when `winget` is not available
+  - **macOS**: the python.org installer, which asks for your password
+  - **Linux**: the distribution's package manager (`apt`, `dnf`, `pacman` or
+    `zypper`), which asks for your password
+- **Python packages** (pyserial, websockets, pyrobotiqgripper): installed into
+  a private virtual environment, `.venvSimpleCheck`, so nothing else on the
+  computer is affected
+- **Internet access** on the first run only, to download the above. After
+  that everything runs offline: the web viewer's libraries are part of this
+  repository, and the scripts only reinstall packages when `requirements.txt`
+  changes.
 
 ---
 
 ## What It Does
 
-1. Checks for Python installation
+1. Checks for Python, and installs it if missing
 2. Creates virtual environment (`.venvSimpleCheck`)
 3. Installs dependencies
 4. Detects sensor
@@ -349,9 +361,11 @@ sensor_quickstart/
 ├── gripper_control.py       # Gripper control (pyrobotiqgripper)
 ├── serial_ports.py          # USB serial port search shared by the devices
 ├── requirements.txt         # Dependencies (pyserial, websockets, pyrobotiqgripper)
-├── run_quick_connect.sh     # Linux launcher (terminal)
+├── run_quick_connect.sh     # Linux and macOS launcher (terminal)
+├── run_quick_connect_mac.sh # macOS launcher (terminal)
 ├── run_quick_connect.bat    # Windows launcher (terminal)
-├── run_web_viewer.sh        # Linux launcher (web UI)
+├── run_web_viewer.sh        # Linux and macOS launcher (web UI)
+├── run_web_viewer_mac.sh    # macOS launcher (web UI)
 ├── run_web_viewer.bat       # Windows launcher (web UI)
 ├── tools/                   # Simulator, sensor probes, geometry generator
 │   ├── simulate_sensor.py   #   --sim runs the viewer on synthetic data
