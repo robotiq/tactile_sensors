@@ -36,35 +36,50 @@ set "SCRIPT_DIR=%~dp0"
 if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 set "PARENT_DIR=%SCRIPT_DIR%\.."
 set "VENV_DIR=%SCRIPT_DIR%\.venvSimpleCheck"
+rem The Python installed when none is found. Pinned so every machine gets one
+rem that is known to work; 3.12.10 is the last 3.12 with Windows installers.
+set "PY_VERSION=3.12.10"
 
 rem ==========================================
-rem Step 1: Check for Python
+rem Step 1: Check for Python, install it if missing
 rem ==========================================
 echo [1/6] Checking for Python installation...
 echo.
 
-python --version
-if errorlevel 1 (
+rem SYSPY is the full path of the Python used to build the virtual environment.
+call :find_python
+if not defined SYSPY (
+    echo Python 3.10 or newer was not found on this computer.
+    echo Installing Python %PY_VERSION% for the current user ^(no admin rights needed^)...
     echo.
-    echo [ERROR] Python not found!
+    call :install_python
+)
+if not defined SYSPY (
     echo.
-    echo Please install Python 3.7 or higher from:
+    echo [ERROR] Python could not be installed automatically.
+    echo.
+    echo Please install Python 3.10 or higher from:
     echo   https://www.python.org/downloads/
     echo.
     echo Make sure to check "Add Python to PATH" during installation.
-    echo After installing, close this window and open a new command prompt.
+    echo After installing, close this window and run this script again.
     echo.
     pause
     exit /b 1
 )
 
-echo [OK] Python found
+rem Delayed expansion, on for the whole script, strips a ! from the path (for
+rem a user named Hey!You, say), which then points nowhere.
+if not exist "%SYSPY%" goto :python_path_unusable
+
+"%SYSPY%" --version
+echo [OK] Python found at %SYSPY%
 
 echo Checking for venv module...
-python -m venv --help >nul 2>&1
+"%SYSPY%" -m venv --help >nul 2>&1
 if errorlevel 1 (
     echo [WARNING] Python venv module not found, installing virtualenv via pip...
-    pip install virtualenv --quiet
+    "%SYSPY%" -m pip install virtualenv --quiet
     if errorlevel 1 (
         echo [ERROR] Failed to install virtualenv
         echo Please reinstall Python from: https://www.python.org/downloads/
@@ -116,12 +131,23 @@ rem Step 3: Create/Activate Virtual Environment
 rem ==========================================
 echo [3/6] Setting up virtual environment...
 
+rem A virtual environment built by an older version of this script may use a
+rem Python older than 3.10, which leaves the gripper controls out, so it is
+rem built again from the Python found above.
+if exist "%VENV_DIR%" (
+    "%VENV_DIR%\Scripts\python.exe" -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
+    if errorlevel 1 (
+        echo The virtual environment uses an older Python, rebuilding it...
+        rmdir /s /q "%VENV_DIR%"
+    )
+)
+
 if not exist "%VENV_DIR%" (
     echo Creating virtual environment...
     if "%USE_VIRTUALENV%"=="1" (
-        python -m virtualenv "%VENV_DIR%"
+        "%SYSPY%" -m virtualenv "%VENV_DIR%"
     ) else (
-        python -m venv "%VENV_DIR%"
+        "%SYSPY%" -m venv "%VENV_DIR%"
     )
     if errorlevel 1 (
         echo [ERROR] Failed to create virtual environment
@@ -140,9 +166,9 @@ if errorlevel 1 (
     echo [WARNING] Failed to activate virtual environment, recreating...
     rmdir /s /q "%VENV_DIR%"
     if "%USE_VIRTUALENV%"=="1" (
-        python -m virtualenv "%VENV_DIR%"
+        "%SYSPY%" -m virtualenv "%VENV_DIR%"
     ) else (
-        python -m venv "%VENV_DIR%"
+        "%SYSPY%" -m venv "%VENV_DIR%"
     )
     call "%VENV_DIR%\Scripts\activate.bat"
     if errorlevel 1 (
@@ -160,20 +186,38 @@ rem Step 4: Install Requirements
 rem ==========================================
 echo [4/6] Installing requirements...
 
-if exist "%SCRIPT_DIR%\requirements.txt" (
-    echo Upgrading pip...
-    python -m pip install --upgrade pip --quiet
-
-    echo Installing dependencies...
-    pip install -r "%SCRIPT_DIR%\requirements.txt" --quiet
-    if errorlevel 1 (
-        echo [WARNING] Some packages failed to install
-    ) else (
-        echo [OK] Requirements installed
-    )
-) else (
+rem A copy of the requirements.txt last installed from is kept in the virtual
+rem environment. While it matches, and the packages are still there, pip is not
+rem run at all: it needs the internet, and only the first run may need that. A
+rem changed requirements.txt, a new virtual environment, or a package that has
+rem gone missing since, installs again. The packages are looked up without
+rem being imported, which would be slow.
+set "REQ_STAMP=%VENV_DIR%\requirements.installed"
+if not exist "%SCRIPT_DIR%\requirements.txt" (
     echo [WARNING] requirements.txt not found, skipping...
+    goto :requirements_done
 )
+fc /b "%SCRIPT_DIR%\requirements.txt" "%REQ_STAMP%" >nul 2>&1
+if not errorlevel 1 (
+    "%VENV_DIR%\Scripts\python.exe" -c "import importlib.util as u, sys; sys.exit(any(u.find_spec(m) is None for m in ('serial', 'websockets', 'pyrobotiqgripper')))" >nul 2>&1
+    if not errorlevel 1 (
+        echo [OK] Requirements already installed
+        goto :requirements_done
+    )
+)
+echo Upgrading pip...
+python -m pip install --upgrade pip --quiet
+
+echo Installing dependencies...
+python -m pip install -r "%SCRIPT_DIR%\requirements.txt" --quiet
+if errorlevel 1 (
+    echo [ERROR] Could not install the requirements. The first run needs an internet connection.
+    pause
+    exit /b 1
+)
+copy /y "%SCRIPT_DIR%\requirements.txt" "%REQ_STAMP%" >nul
+echo [OK] Requirements installed
+:requirements_done
 echo.
 
 rem ==========================================
@@ -225,3 +269,84 @@ echo.
 pause
 endlocal
 exit /b 0
+
+rem ==========================================
+rem Subroutines
+rem ==========================================
+
+rem Sets SYSPY to the full path of a Python 3.10+, or leaves it empty. Tries the
+rem one on PATH, then the py launcher, then where :install_python puts it -- the
+rem PATH change an install makes only reaches windows opened after it. On
+rem Windows on ARM both installers use a folder named Python312-arm64, and on
+rem 32-bit Windows Python312-32.
+:find_python
+set "SYSPY="
+call :try_python python
+if not defined SYSPY call :try_python py -3
+for %%D in (Python312 Python312-arm64 Python312-32) do (
+    if not defined SYSPY if exist "%LOCALAPPDATA%\Programs\Python\%%D\python.exe" call :try_python "%LOCALAPPDATA%\Programs\Python\%%D\python.exe"
+)
+exit /b 0
+
+rem Sets SYSPY if the command given runs a Python 3.10+. The "python" that
+rem Windows ships when none is installed only opens the Microsoft Store and
+rem fails here, so it is not mistaken for a real one.
+:try_python
+%* -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1 || exit /b 0
+rem Read straight into SYSPY: a temp file would be shared by two launches
+rem running at once. The code is passed through !_PYCODE! because the for
+rem parses the command before running it, and would drop the ; and stop at
+rem the ) were they written out here. The outer quotes are stripped by the
+rem cmd /c that runs the command, which keeps a quoted path intact.
+set "_PYCODE=import sys; print(sys.executable)"
+for /f "usebackq delims=" %%P in (`"%* -c "!_PYCODE!" 2>nul"`) do set "SYSPY=%%P"
+exit /b 0
+
+rem Installs Python for the current user only, so no admin rights are needed.
+rem winget first, as it ships with Windows 10 and 11; the python.org installer
+rem when winget is missing or fails. Sets SYSPY through :find_python when the
+rem install worked.
+:install_python
+where winget >nul 2>&1
+if not errorlevel 1 (
+    echo Installing Python with winget...
+    winget install --id Python.Python.3.12 --version %PY_VERSION% --exact --source winget --scope user --silent --accept-package-agreements --accept-source-agreements
+    call :find_python
+    if defined SYSPY exit /b 0
+    echo [WARNING] winget could not install Python, downloading it from python.org instead...
+)
+rem The installer for this Windows: -amd64, -arm64, or no suffix for 32-bit.
+rem PROCESSOR_ARCHITEW6432 is the real one when this runs in a 32-bit cmd.
+set "_ARCH=%PROCESSOR_ARCHITECTURE%"
+if defined PROCESSOR_ARCHITEW6432 set "_ARCH=%PROCESSOR_ARCHITEW6432%"
+set "_PYARCH=-amd64"
+if /i "%_ARCH%"=="ARM64" set "_PYARCH=-arm64"
+if /i "%_ARCH%"=="x86" set "_PYARCH="
+set "_PYURL=https://www.python.org/ftp/python/%PY_VERSION%/python-%PY_VERSION%%_PYARCH%.exe"
+set "_PYEXE=%TEMP%\python-%PY_VERSION%%_PYARCH%.exe"
+echo Downloading %_PYURL%...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -UseBasicParsing -Uri '%_PYURL%' -OutFile '%_PYEXE%'"
+if errorlevel 1 (
+    echo [ERROR] Download failed. Check the internet connection.
+    exit /b 1
+)
+echo Running the Python installer, this takes a minute...
+"%_PYEXE%" /quiet InstallAllUsers=0 InstallLauncherAllUsers=0 PrependPath=1 Include_test=0
+set "_PYERR=%errorlevel%"
+del "%_PYEXE%" >nul 2>&1
+if not "%_PYERR%"=="0" (
+    echo [ERROR] The Python installer failed with code %_PYERR%.
+    exit /b 1
+)
+echo [OK] Python %PY_VERSION% installed
+call :find_python
+exit /b 0
+
+:python_path_unusable
+echo.
+echo [ERROR] Python was found, but its path has a character this script cannot
+echo handle, such as an exclamation mark. Install Python 3.10 or higher in a
+echo folder without one, for example C:\Python312, then run this script again.
+echo.
+pause
+exit /b 1

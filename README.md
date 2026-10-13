@@ -33,7 +33,7 @@ Python scripts for quick connection testing and a browser-based sensor viewer. N
 
 **Terminal monitor:**
 
-Linux:
+Linux and macOS:
 ```bash
 cd sensor_quickstart
 ./run_quick_connect.sh
@@ -47,7 +47,7 @@ run_quick_connect.bat
 
 **Web viewer** (real-time heatmaps, dynamic FFT, IMU plots — opens in browser at `http://localhost:8080`):
 
-Linux:
+Linux and macOS:
 ```bash
 cd sensor_quickstart
 ./run_web_viewer.sh
@@ -70,7 +70,7 @@ Platform utilities for device setup:
 | Component | Dependencies |
 |-----------|-------------|
 | sdk_cpp | C++11 compiler, CMake 3.10+, libserialport |
-| sensor_quickstart | Python 3.7+, pyserial |
+| sensor_quickstart | Python 3.10+ (installed by the launch scripts if missing) |
 | tactile_sensor_ui | Qt, CMake (or Docker) |
 
 ## License
