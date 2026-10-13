@@ -6,8 +6,10 @@
 // builds leave this TU out and pass a Platform explicitly — Gripper's
 // platform default argument is bound at hosted call sites, never here.
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -111,11 +113,21 @@ class StdConditionVariable final : public ConditionVariable
 public:
    void waitUntil(Mutex& mutex, std::chrono::steady_clock::time_point timePoint) override
    {
+      // std waits may wake spuriously, and MSVC's also time out before the
+      // deadline, so only a notifyAll() or the deadline itself ends the wait.
+      const uint64_t generation = _generation.load();
       LockableMutex lockable{mutex};
-      _condition.wait_until(lockable, timePoint);
+      while(_generation.load() == generation && std::chrono::steady_clock::now() < timePoint)
+      {
+         _condition.wait_until(lockable, timePoint);
+      }
    }
 
-   void notifyAll() noexcept override { _condition.notify_all(); }
+   void notifyAll() noexcept override
+   {
+      ++_generation;
+      _condition.notify_all();
+   }
 
 private:
    struct LockableMutex
@@ -127,6 +139,7 @@ private:
    };
 
    std::condition_variable_any _condition;
+   std::atomic<uint64_t> _generation{0};
 };
 
 class StdThread final : public Thread
