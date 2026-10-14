@@ -38,7 +38,15 @@ set "PARENT_DIR=%SCRIPT_DIR%\.."
 set "VENV_DIR=%SCRIPT_DIR%\.venvSimpleCheck"
 rem The Python installed when none is found. Pinned so every machine gets one
 rem that is known to work; 3.12.10 is the last 3.12 with Windows installers.
+rem On a bump, update the licence link in README.md, and check that the new
+rem installer still passes the signature check in :install_python.
 set "PY_VERSION=3.12.10"
+rem PY_SERIES (3.12) names the licence page and the winget package, PY_TAG
+rem (312) the folder the installers put Python in, so neither goes stale.
+for /f "tokens=1,2 delims=." %%a in ("%PY_VERSION%") do (
+    set "PY_SERIES=%%a.%%b"
+    set "PY_TAG=%%a%%b"
+)
 
 rem ==========================================
 rem Step 1: Check for Python, install it if missing
@@ -50,13 +58,23 @@ rem SYSPY is the full path of the Python used to build the virtual environment.
 call :find_python
 if not defined SYSPY (
     echo Python 3.10 or newer was not found on this computer.
-    echo Installing Python %PY_VERSION% for the current user ^(no admin rights needed^)...
+    echo Python %PY_VERSION% can be installed for the current user ^(no admin rights needed^),
+    echo with winget or from python.org. Python is distributed under the PSF License:
+    echo   https://docs.python.org/%PY_SERIES%/license.html
+    echo Installing it accepts that licence, and winget's source agreements when
+    echo winget is used.
     echo.
-    call :install_python
+    rem Asked rather than accepted silently: the licence is the user's to accept.
+    rem Exactly 1 is Y. choice returns 0 when interrupted, which is not a Y.
+    choice /c YN /m "Install Python %PY_VERSION% now"
+    if errorlevel 1 if not errorlevel 2 (
+        echo.
+        call :install_python
+    )
 )
 if not defined SYSPY (
     echo.
-    echo [ERROR] Python could not be installed automatically.
+    echo [ERROR] Python 3.10 or newer is needed and was not installed.
     echo.
     echo Please install Python 3.10 or higher from:
     echo   https://www.python.org/downloads/
@@ -278,12 +296,12 @@ rem Sets SYSPY to the full path of a Python 3.10+, or leaves it empty. Tries the
 rem one on PATH, then the py launcher, then where :install_python puts it -- the
 rem PATH change an install makes only reaches windows opened after it. On
 rem Windows on ARM both installers use a folder named Python312-arm64, and on
-rem 32-bit Windows Python312-32.
+rem 32-bit Windows Python312-32 (for 3.12; PY_TAG gives the series).
 :find_python
 set "SYSPY="
 call :try_python python
 if not defined SYSPY call :try_python py -3
-for %%D in (Python312 Python312-arm64 Python312-32) do (
+for %%D in (Python%PY_TAG% Python%PY_TAG%-arm64 Python%PY_TAG%-32) do (
     if not defined SYSPY if exist "%LOCALAPPDATA%\Programs\Python\%%D\python.exe" call :try_python "%LOCALAPPDATA%\Programs\Python\%%D\python.exe"
 )
 exit /b 0
@@ -310,7 +328,7 @@ rem install worked.
 where winget >nul 2>&1
 if not errorlevel 1 (
     echo Installing Python with winget...
-    winget install --id Python.Python.3.12 --version %PY_VERSION% --exact --source winget --scope user --silent --accept-package-agreements --accept-source-agreements
+    winget install --id Python.Python.%PY_SERIES% --version %PY_VERSION% --exact --source winget --scope user --silent --accept-package-agreements --accept-source-agreements
     call :find_python
     if defined SYSPY exit /b 0
     echo [WARNING] winget could not install Python, downloading it from python.org instead...
@@ -323,17 +341,49 @@ set "_PYARCH=-amd64"
 if /i "%_ARCH%"=="ARM64" set "_PYARCH=-arm64"
 if /i "%_ARCH%"=="x86" set "_PYARCH="
 set "_PYURL=https://www.python.org/ftp/python/%PY_VERSION%/python-%PY_VERSION%%_PYARCH%.exe"
-set "_PYEXE=%TEMP%\python-%PY_VERSION%%_PYARCH%.exe"
+rem Downloaded into a new folder of its own rather than a fixed path in TEMP,
+rem so nothing can put a file there, or swap it, between the signature check
+rem and the run.
+set "_PYDIR=%TEMP%\rq-python-%RANDOM%%RANDOM%%RANDOM%"
+rem || rather than errorlevel: a mkdir that works may leave an earlier
+rem winget failure's errorlevel in place. A folder already there fails too.
+mkdir "%_PYDIR%" 2>nul || (
+    echo [ERROR] Could not create a download folder in %TEMP%.
+    exit /b 1
+)
+set "_PYEXE=%_PYDIR%\python-%PY_VERSION%%_PYARCH%.exe"
+rem The URL and path reach PowerShell through the environment, not inside its
+rem quotes, so a TEMP with an apostrophe in it (a user named O'Brien) works.
 echo Downloading %_PYURL%...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -UseBasicParsing -Uri '%_PYURL%' -OutFile '%_PYEXE%'"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -UseBasicParsing -Uri $env:_PYURL -OutFile $env:_PYEXE"
 if errorlevel 1 (
+    rmdir /s /q "%_PYDIR%" >nul 2>&1
     echo [ERROR] Download failed. Check the internet connection.
     exit /b 1
 )
+rem Run only an installer signed by the Python Software Foundation, as the
+rem macOS launcher does with pkgutil. The whole signer subject must match, and
+rem the issuer must be Microsoft's identity-verified code signing CA, which
+rem python.org signs through: its certificates last days, so no thumbprint can
+rem be pinned. Exit code 2 is a bad signature; anything else non-zero means the
+rem check itself could not run, which is not reported as tampering.
+echo Checking the installer's signature...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; $s = Get-AuthenticodeSignature -LiteralPath $env:_PYEXE; $c = $s.SignerCertificate; if ($s.Status -ne 'Valid' -or $c.Subject -cne 'CN=Python Software Foundation, O=Python Software Foundation, L=Beaverton, S=Oregon, C=US' -or $c.Issuer -cnotlike 'CN=Microsoft ID Verified CS *, O=Microsoft Corporation, C=US') { exit 2 }; exit 0"
+set "_SIGERR=%errorlevel%"
+if not "%_SIGERR%"=="0" (
+    rmdir /s /q "%_PYDIR%" >nul 2>&1
+    if "%_SIGERR%"=="2" (
+        echo [ERROR] The downloaded installer is not signed by the Python Software Foundation, so it was not run.
+    ) else (
+        echo [ERROR] The installer's signature could not be checked ^(PowerShell exit code %_SIGERR%^), so it was not run.
+    )
+    exit /b 1
+)
+echo [OK] Signed by the Python Software Foundation
 echo Running the Python installer, this takes a minute...
 "%_PYEXE%" /quiet InstallAllUsers=0 InstallLauncherAllUsers=0 PrependPath=1 Include_test=0
 set "_PYERR=%errorlevel%"
-del "%_PYEXE%" >nul 2>&1
+rmdir /s /q "%_PYDIR%" >nul 2>&1
 if not "%_PYERR%"=="0" (
     echo [ERROR] The Python installer failed with code %_PYERR%.
     exit /b 1

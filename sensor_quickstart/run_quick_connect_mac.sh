@@ -30,7 +30,7 @@ NC='\033[0m'
 # The Python installed when none is found. Pinned so every machine gets one
 # that is known to work; 3.12.10 is the last 3.12 with macOS installers.
 PY_VERSION=3.12.10
-PY_SERIES=3.12
+PY_SERIES="${PY_VERSION%.*}"
 
 python_ok() {
     local py
@@ -43,6 +43,19 @@ python_ok() {
     python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null
 }
 
+# Asks before installing Python: installing it accepts its licence, which is
+# the user's to accept, and the command-line installer shows no licence
+# screen. Anything but y or Y is a no, and so is no answer at all (no
+# terminal, or Ctrl+D).
+confirm_python_install() {
+    local answer
+    echo "Python $PY_VERSION can be installed from python.org. Python is distributed under the PSF License:"
+    echo "  https://docs.python.org/$PY_SERIES/license.html"
+    echo "Installing it accepts that licence."
+    read -r -p "Install Python $PY_VERSION now? (y/N): " answer || return 1
+    [[ "$answer" == [yY] ]]
+}
+
 # Installs Python from python.org if it is missing, so the viewer runs on a Mac
 # nobody has set up for Python. The package is universal (Intel and Apple
 # silicon) and asks for the administrator password. It is downloaded into a
@@ -52,7 +65,7 @@ python_ok() {
 # the script with no message.
 install_python() {
     local dir pkg sig
-    echo -e "${YELLOW}Python 3.10 or newer not found. Installing Python $PY_VERSION from python.org...${NC}"
+    echo "Installing Python $PY_VERSION from python.org..."
     # The macos11 package is all python.org has for 3.12, and the installer
     # refuses it on anything older.
     local macos
@@ -94,9 +107,12 @@ check_python() {
     local fw="/Library/Frameworks/Python.framework/Versions/$PY_SERIES/bin"
     if [ -x "$fw/python3" ]; then export PATH="$fw:$PATH"; hash -r; fi
     if ! python_ok; then
-        install_python || true
+        echo -e "${YELLOW}Python 3.10 or newer not found.${NC}"
+        if confirm_python_install; then
+            install_python || true
+        fi
         if ! python_ok; then
-            echo -e "${RED}Could not install Python 3.10 or newer automatically.${NC}"
+            echo -e "${RED}Python 3.10 or newer is needed and was not installed.${NC}"
             echo "Install it from https://www.python.org/downloads/ and run this script again."
             exit 1
         fi
