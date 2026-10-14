@@ -240,12 +240,21 @@ Nothing needs to be installed by hand: the launch scripts set up everything
 the first time they run.
 
 - **Python 3.10+** (the gripper controls need it). If it is missing or
-  older, the script installs Python 3.12:
-  - **Windows**: for the current user only, no admin rights needed, through
-    `winget`, or the python.org installer when `winget` is not available
-  - **macOS**: the python.org installer, which asks for your password
-  - **Linux**: the distribution's package manager (`apt`, `dnf`, `pacman` or
-    `zypper`), which asks for your password
+  older, the script can install it. It asks first, on every platform: Python
+  is distributed under the
+  [PSF License](https://docs.python.org/3.12/license.html), and installing it
+  accepts that licence. It installs only on a **y**; anything else stops with
+  instructions for installing it by hand.
+  - **Windows**: Python 3.12 for the current user only, no admin rights
+    needed, through `winget` (installing that way also accepts `winget`'s
+    source agreements), or the python.org installer when `winget` is not
+    available. The python.org installer is run only if it is signed by the
+    Python Software Foundation.
+  - **macOS**: Python 3.12 from the python.org installer, which asks for your
+    password. It is run only if it is signed by the Python Software
+    Foundation.
+  - **Linux**: the distribution's Python, through its package manager (`apt`,
+    `dnf`, `pacman` or `zypper`), which asks for your password
 - **Python packages** (pyserial, websockets, pyrobotiqgripper): installed into
   a private virtual environment, `.venvSimpleCheck`, so nothing else on the
   computer is affected

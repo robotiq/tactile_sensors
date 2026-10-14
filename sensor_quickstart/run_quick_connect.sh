@@ -83,6 +83,19 @@ pkg_install() {
     hash -r
 }
 
+# Asks before installing Python: installing it accepts its licence, which is
+# the user's to accept. Anything but y or Y is a no, and so is no answer at
+# all (no terminal, or Ctrl+D).
+confirm_python_install() {
+    local answer
+    echo "Python can be installed with the distribution's package manager. Python is"
+    echo "distributed under the PSF License:"
+    echo "  https://docs.python.org/3/license.html"
+    echo "Installing it accepts that licence."
+    read -r -p "Install Python now? (y/N): " answer || return 1
+    [[ "$answer" == [yY] ]]
+}
+
 # Installs Python 3 with the distribution's package manager if it is missing,
 # so the viewer runs on a machine nobody has set up for Python. Where the
 # distribution's python3 is too old, Python 3.11 is installed beside it, from
@@ -93,7 +106,13 @@ check_python() {
         echo -e "${GREEN}✓ $("$PY" --version) at $(command -v "$PY")${NC}"
         return
     fi
-    echo -e "${YELLOW}Python 3.10 or newer not found. Installing it (needs sudo)...${NC}"
+    echo -e "${YELLOW}Python 3.10 or newer not found.${NC}"
+    if ! confirm_python_install; then
+        echo -e "${RED}Python 3.10 or newer is needed and was not installed.${NC}"
+        echo "Install it with your package manager, then run this script again."
+        exit 1
+    fi
+    echo "Installing Python (needs sudo)..."
     pkg_install "python3 python3-venv python3-pip" "python3 python3-pip" \
         "python python-pip" "python3 python3-pip"
     if ! find_python; then
