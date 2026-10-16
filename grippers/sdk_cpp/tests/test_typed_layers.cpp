@@ -188,6 +188,8 @@ TEST(TestFaultStatus, severity_matches_the_documented_tiers)
 {
    EXPECT_EQ(severity(GripperFault::None), FaultSeverity::None);
    EXPECT_EQ(severity(GripperFault::ActionDelayed), FaultSeverity::Warning);
+   EXPECT_EQ(severity(GripperFault::BlockedAtStart), FaultSeverity::Warning);
+   EXPECT_EQ(severity(GripperFault::BrakeProblem), FaultSeverity::Major);
    EXPECT_EQ(severity(GripperFault::OverTemperature), FaultSeverity::Minor);
    EXPECT_EQ(severity(GripperFault::UnderVoltage), FaultSeverity::Major);
    EXPECT_EQ(severity(ControllerFault::NoDeviceDetected), FaultSeverity::Warning);
