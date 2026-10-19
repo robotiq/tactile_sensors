@@ -20,6 +20,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <system_error>
 
@@ -42,7 +43,7 @@ using std::chrono::milliseconds;
 // rather than as a malformed device path.
 std::string devicePath(const std::string& port)
 {
-   const bool isBareComName = port.size() > 3 && (port.compare(0, 3, "COM") == 0 || port.compare(0, 3, "com") == 0)
+   const bool isBareComName = port.size() > 3 && ::_strnicmp(port.c_str(), "COM", 3) == 0
                            && port.find_first_not_of("0123456789", 3) == std::string::npos;
    return isBareComName ? "\\\\.\\" + port : port;
 }
