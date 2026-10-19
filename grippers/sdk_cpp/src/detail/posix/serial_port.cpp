@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <string>
 #include <system_error>
+#include <thread>
 
 #include <Robotiq/gripper/serial_io_exception.hpp>
 
@@ -27,6 +28,9 @@ namespace Robotiq::detail {
 namespace {
 using std::chrono::milliseconds;
 using std::chrono::steady_clock;
+
+// 8N1: a start bit, 8 data bits and a stop bit.
+constexpr uint32_t kWireBitsPerByte = 10;
 
 // The OS message for \p error, as std::system_error would render it.
 // strerror() is not thread-safe and its _r variants disagree across
@@ -103,19 +107,21 @@ void configure(int fd, uint32_t baudrate)
       fail("reading the serial port attributes", errno);
    }
 
+   // No line editing, echo, signal characters, software flow control or
+   // byte translation: any of them would alter a binary Modbus frame.
+   // glibc's cfmakeraw() leaves the input flags below set.
+   ::cfmakeraw(&tty);
+   tty.c_iflag &= ~static_cast<tcflag_t>(IXOFF | IXANY | INPCK);
+#ifdef IUCLC
+   tty.c_iflag &= ~static_cast<tcflag_t>(IUCLC);
+#endif
    // 8N1 without hardware flow control; CLOCAL keeps the port from
    // waiting on modem lines an RS-485 adapter does not drive.
-   tty.c_cflag &= ~static_cast<tcflag_t>(PARENB | CSTOPB | CSIZE);
+   tty.c_cflag &= ~static_cast<tcflag_t>(CSTOPB);
 #ifdef CRTSCTS
    tty.c_cflag &= ~static_cast<tcflag_t>(CRTSCTS);
 #endif
-   tty.c_cflag |= static_cast<tcflag_t>(CS8 | CREAD | CLOCAL);
-   // No line editing, echo, signal characters, software flow control or
-   // byte translation: any of them would alter a binary Modbus frame.
-   tty.c_lflag &= ~static_cast<tcflag_t>(ICANON | ECHO | ECHOE | ECHONL | ISIG | IEXTEN);
-   tty.c_iflag &=
-      ~static_cast<tcflag_t>(IXON | IXOFF | IXANY | IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL);
-   tty.c_oflag &= ~static_cast<tcflag_t>(OPOST | ONLCR);
+   tty.c_cflag |= static_cast<tcflag_t>(CREAD | CLOCAL);
    // read() returns at once with whatever is buffered. The non-blocking
    // descriptor plus poll() in read() do the waiting, the only way to
    // express the zero-timeout drain the Serial contract requires.
@@ -147,9 +153,21 @@ void applyLineDefaults(int fd)
 #endif
 }
 
+[[noreturn]] void failHungUp(const std::string& context)
+{
+   throw SerialIOException(context + ": the other end hung up");
+}
+
+enum class WaitResult
+{
+   Ready,
+   Interrupted,
+   TimedOut,
+};
+
 // Wait for \p fd to become readable/writable, or for \p remaining to
-// elapse. Returns false when the wait ran out or the device hung up.
-bool waitReady(int fd, short events, std::chrono::nanoseconds remaining, const char* context)
+// elapse.
+WaitResult waitReady(int fd, short events, std::chrono::nanoseconds remaining, const char* context)
 {
    // Round up: a sub-millisecond remainder must not collapse to a
    // zero-length poll, which would spin until the deadline.
@@ -163,7 +181,7 @@ bool waitReady(int fd, short events, std::chrono::nanoseconds remaining, const c
    {
       if(errno == EINTR)
       {
-         return true; // the caller re-checks its own deadline
+         return WaitResult::Interrupted;
       }
       fail(context, errno);
    }
@@ -171,9 +189,13 @@ bool waitReady(int fd, short events, std::chrono::nanoseconds remaining, const c
    {
       fail(context, EIO);
    }
-   // A hangup with nothing left to collect ends the transfer here; the
-   // caller reports the short count, and the next call raises the error.
-   return (descriptor.revents & events) != 0;
+   // Bytes still buffered behind a hangup are collected first; the
+   // caller raises once a read finds nothing left.
+   if((descriptor.revents & events) == 0 && (descriptor.revents & POLLHUP) != 0)
+   {
+      failHungUp(context);
+   }
+   return ready == 0 ? WaitResult::TimedOut : WaitResult::Ready;
 }
 } // namespace
 
@@ -209,6 +231,7 @@ void SerialPort::open(const std::string& port, uint32_t baudrate)
    }
    applyLineDefaults(fd);
    _fd = fd;
+   _baudrate = baudrate;
 }
 
 void SerialPort::close()
@@ -231,6 +254,7 @@ size_t SerialPort::read(uint8_t* data, size_t size, milliseconds timeout)
 {
    const auto deadline = steady_clock::now() + timeout;
    size_t received = 0;
+   bool polledReadable = false;
    while(received < size)
    {
       const ssize_t count = ::read(_fd, data + received, size - received);
@@ -238,6 +262,10 @@ size_t SerialPort::read(uint8_t* data, size_t size, milliseconds timeout)
       {
          received += static_cast<size_t>(count);
          continue;
+      }
+      if(count == 0 && polledReadable)
+      {
+         failHungUp("reading from the serial port");
       }
       if(count < 0 && errno == EINTR)
       {
@@ -252,17 +280,23 @@ size_t SerialPort::read(uint8_t* data, size_t size, milliseconds timeout)
       // read, not EAGAIN, because VMIN and VTIME are both 0. A zero
       // timeout asks for exactly that much and stops here.
       const auto remaining = deadline - steady_clock::now();
-      if(remaining <= std::chrono::nanoseconds::zero()
-         || !waitReady(_fd, POLLIN, remaining, "waiting for serial input"))
+      if(remaining <= std::chrono::nanoseconds::zero())
       {
          break;
       }
+      const WaitResult result = waitReady(_fd, POLLIN, remaining, "waiting for serial input");
+      if(result == WaitResult::TimedOut)
+      {
+         break;
+      }
+      polledReadable = result == WaitResult::Ready;
    }
    return received;
 }
 
 size_t SerialPort::write(const uint8_t* data, size_t size, milliseconds timeout)
 {
+   const bool unbounded = timeout == milliseconds::zero();
    const auto deadline = steady_clock::now() + timeout;
    size_t sent = 0;
    while(sent < size)
@@ -282,9 +316,9 @@ size_t SerialPort::write(const uint8_t* data, size_t size, milliseconds timeout)
          fail("writing to the serial port", errno);
       }
 
-      const auto remaining = deadline - steady_clock::now();
+      const auto remaining = unbounded ? std::chrono::nanoseconds::max() : deadline - steady_clock::now();
       if(remaining <= std::chrono::nanoseconds::zero()
-         || !waitReady(_fd, POLLOUT, remaining, "waiting to send on the serial port"))
+         || waitReady(_fd, POLLOUT, remaining, "waiting to send on the serial port") == WaitResult::TimedOut)
       {
          break;
       }
@@ -292,8 +326,28 @@ size_t SerialPort::write(const uint8_t* data, size_t size, milliseconds timeout)
    return sent;
 }
 
-void SerialPort::drain()
+bool SerialPort::drain(milliseconds timeout)
 {
+   // tcdrain() alone has no deadline, and a pseudo-terminal drains only
+   // as fast as its peer reads, so a stalled socat would hang it. The
+   // output queue is watched against the deadline first; what tcdrain()
+   // still waits for after that is the adapter's own FIFO.
+#ifdef TIOCOUTQ
+   const bool unbounded = timeout == milliseconds::zero();
+   const auto deadline = steady_clock::now() + timeout;
+   const auto byteTime = std::chrono::microseconds(std::chrono::seconds(1)) * kWireBitsPerByte / _baudrate;
+   int queued = 0;
+   while(::ioctl(_fd, TIOCOUTQ, &queued) == 0 && queued > 0)
+   {
+      if(!unbounded && steady_clock::now() >= deadline)
+      {
+         return false;
+      }
+      std::this_thread::sleep_for(byteTime * queued);
+   }
+#else
+   (void)timeout;
+#endif
    while(::tcdrain(_fd) != 0)
    {
       if(errno != EINTR)
@@ -301,5 +355,6 @@ void SerialPort::drain()
          fail("draining the serial port", errno);
       }
    }
+   return true;
 }
 } // namespace Robotiq::detail

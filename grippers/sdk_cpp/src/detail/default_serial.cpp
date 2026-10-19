@@ -135,7 +135,10 @@ void DefaultSerial::write(const std::vector<uint8_t>& data)
       throw SerialIOException("write timeout: wrote " + std::to_string(written) + " of " + std::to_string(data.size())
                               + " bytes");
    }
-   _port->drain();
+   if(!_port->drain(_config.timeout))
+   {
+      throw SerialIOException("write timeout: the bytes written did not drain");
+   }
 }
 
 std::chrono::milliseconds DefaultSerial::getTimeout() const

@@ -192,11 +192,12 @@ size_t SerialPort::write(const uint8_t* data, size_t size, milliseconds timeout)
    return sent;
 }
 
-void SerialPort::drain()
+bool SerialPort::drain(milliseconds /*timeout*/)
 {
    if(!::FlushFileBuffers(_handle))
    {
       fail("draining the serial port", ::GetLastError());
    }
+   return true;
 }
 } // namespace Robotiq::detail

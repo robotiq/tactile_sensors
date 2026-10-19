@@ -38,11 +38,14 @@ public:
    // Bytes actually read — fewer than size when the deadline passed first.
    [[nodiscard]] size_t read(uint8_t* data, size_t size, std::chrono::milliseconds timeout);
 
-   // Bytes actually written; a short count means the write timed out.
+   // Bytes actually written; a short count means the write timed out. A
+   // zero timeout never times out.
    [[nodiscard]] size_t write(const uint8_t* data, size_t size, std::chrono::milliseconds timeout);
 
-   // Block until the bytes written have left the transmit buffer.
-   void drain();
+   // Block until the bytes written have left the transmit buffer; false
+   // when the timeout passed first. A zero timeout never times out, and
+   // Windows leaves the wait to its driver.
+   [[nodiscard]] bool drain(std::chrono::milliseconds timeout);
 
 private:
 #ifdef _WIN32
@@ -56,6 +59,7 @@ private:
    int64_t _writeTimeoutMs = -1;
 #else
    int _fd = -1;
+   uint32_t _baudrate = 0;
 #endif
 };
 } // namespace Robotiq::detail

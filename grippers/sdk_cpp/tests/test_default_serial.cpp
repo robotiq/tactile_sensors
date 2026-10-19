@@ -179,13 +179,21 @@ public:
    [[nodiscard]] const std::string& slavePath() const { return _slavePath; }
 
    // An open DefaultSerial on the slave end.
-   [[nodiscard]] std::unique_ptr<DefaultSerial> openSerial() const
+   [[nodiscard]] std::unique_ptr<DefaultSerial> openSerial(
+      std::chrono::milliseconds timeout = SerialConfig{}.timeout) const
    {
       SerialConfig config;
       config.port = _slavePath;
+      config.timeout = timeout;
       auto serial = std::make_unique<DefaultSerial>(std::move(config), std::make_shared<NullLogger>());
       serial->open();
       return serial;
+   }
+
+   void hangUp()
+   {
+      ::close(_master);
+      _master = -1;
    }
 
    void send(const std::vector<uint8_t>& data) const
@@ -274,6 +282,16 @@ TEST_F(PtySerialTest, write_reaches_the_peer)
    EXPECT_EQ(received.get(), request);
 }
 
+#ifdef __APPLE__
+// Only a macOS pty holds written bytes until the peer reads them.
+TEST_F(PtySerialTest, write_times_out_when_the_peer_never_reads)
+{
+   const auto serial = _pty.openSerial(20ms);
+
+   EXPECT_THROW(serial->write({0x09, 0x03, 0x07, 0xD0, 0x00, 0x03}), SerialIOException);
+}
+#endif
+
 TEST_F(PtySerialTest, read_waits_for_the_requested_bytes)
 {
    const std::vector<uint8_t> response = {0x09, 0x03, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -281,6 +299,14 @@ TEST_F(PtySerialTest, read_waits_for_the_requested_bytes)
    _pty.send(response);
 
    EXPECT_EQ(serial->read(response.size(), 500ms), response);
+}
+
+TEST_F(PtySerialTest, read_raises_when_the_peer_hangs_up)
+{
+   const auto serial = _pty.openSerial();
+   _pty.hangUp();
+
+   EXPECT_THROW((void)serial->read(1, 500ms), SerialIOException);
 }
 
 TEST_F(PtySerialTest, read_waits_for_bytes_that_have_not_arrived_yet)
