@@ -65,10 +65,12 @@ private:
    std::shared_ptr<Logger> _logger;
 };
 
+#ifdef __linux__
 // Symlinks (/dev/serial/by-id, socat links) are followed to the device
 // node, whose name is the sysfs entry. Empty when the port is not an FTDI
 // adapter.
 [[nodiscard]] std::string latencyTimerPath(const std::string& port,
                                            const std::string& sysfsDevices = "/sys/bus/usb-serial/devices");
+#endif
 
 } // namespace Robotiq::detail

@@ -5,12 +5,15 @@
 
 #include <Robotiq/detail/default_serial.hpp>
 
-#include <filesystem>
 #include <fstream>
 #include <memory>
-#include <system_error>
 #include <string>
 #include <utility>
+
+#ifdef __linux__
+#include <filesystem>
+#include <system_error>
+#endif
 
 #include <Robotiq/detail/default_logger.hpp>
 #include <Robotiq/gripper/logger.hpp>
@@ -20,6 +23,7 @@
 
 namespace Robotiq::detail {
 
+#ifdef __linux__
 std::string latencyTimerPath(const std::string& port, const std::string& sysfsDevices)
 {
    std::error_code error;
@@ -31,6 +35,7 @@ std::string latencyTimerPath(const std::string& port, const std::string& sysfsDe
    const std::filesystem::path attribute = std::filesystem::path(sysfsDevices) / device.filename() / "latency_timer";
    return std::filesystem::exists(attribute, error) ? attribute.string() : std::string();
 }
+#endif
 
 DefaultSerial::DefaultSerial(SerialConfig config, std::shared_ptr<Logger> logger)
    : _config(std::move(config))
@@ -65,14 +70,14 @@ void DefaultSerial::open()
    _port = std::move(port);
 
 #ifdef __linux__
-   const std::string timerPath = latencyTimerPath(_config.port);
-   if(_config.latencyTimerMs > 0 && timerPath.empty())
+   if(_config.latencyTimerMs > 0)
    {
-      _logger->log(Logger::Level::Debug, _config.port + " is not an FTDI adapter; no latency_timer to set.");
-   }
-   else if(_config.latencyTimerMs > 0)
-   {
-      if(applyLatencyTimer(timerPath))
+      const std::string timerPath = latencyTimerPath(_config.port);
+      if(timerPath.empty())
+      {
+         _logger->log(Logger::Level::Debug, _config.port + " is not an FTDI adapter; no latency_timer to set.");
+      }
+      else if(applyLatencyTimer(timerPath))
       {
          _logger->log(Logger::Level::Info,
                       "FTDI latency_timer set to " + std::to_string(_config.latencyTimerMs) + " ms on " + _config.port
@@ -172,7 +177,8 @@ bool DefaultSerial::applyLatencyTimer(const std::string& path) const
    {
       return false;
    }
-   out << _config.latencyTimerMs;
+   // sysfs rejects an out-of-range value only when the buffer reaches it.
+   out << _config.latencyTimerMs << std::flush;
    return out.good();
 #else
    // No sysfs on this platform; the FTDI latency timer is a driver setting

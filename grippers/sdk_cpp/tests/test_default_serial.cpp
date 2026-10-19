@@ -89,6 +89,7 @@ TEST(TestDefaultSerial, construction_config_round_trip)
 }
 
 #ifndef _WIN32
+#ifdef __linux__
 class LatencyTimerPath : public ::testing::Test
 {
 protected:
@@ -137,6 +138,7 @@ TEST_F(LatencyTimerPath, IsEmptyForAMissingPort)
 {
    EXPECT_EQ(lookup(_root / "dev/ttyUSB9"), "");
 }
+#endif
 
 using namespace std::chrono_literals;
 using ::testing::ElementsAre;

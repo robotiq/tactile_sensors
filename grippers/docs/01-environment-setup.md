@@ -3,7 +3,7 @@ This page covers setting up a project that uses the Robotiq gripper C++
 SDK as a dependency: installing prerequisites, bringing the SDK into your
 own build.
 
-CMake ≥ 3.16, Git, and a C++17 compiler (GCC, Clang or MSVC). The SDK
+CMake ≥ 3.16, Git, and a C++17 compiler (GCC, Clang or MSVC; on Linux, GCC 9 or Clang 9 or newer). The SDK
 pulls in no third-party library.
 
 [![Environment setup walkthrough](https://img.youtube.com/vi/J4jhFiG1VNE/0.jpg)](https://youtu.be/J4jhFiG1VNE)
