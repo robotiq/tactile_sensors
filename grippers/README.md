@@ -1,7 +1,6 @@
 <!-- docs-site:exclude -->
 # Robotiq Grippers C++ SDK
 
-📖 Full documentation: https://robotiq.github.io
 <!-- /docs-site:exclude -->
 
 C++ driver with functions to control `Robotiq` Adaptive Grippers: 2F85, 2F140 and Hand-E. It allows high communication frequency.
