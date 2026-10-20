@@ -126,7 +126,13 @@
 //! \ingroup utilities
 //! \brief Conversions between SI quantities (speed, opening) and the
 //! command/status blocks' 0..255 register values, scaled by a
-//! DeviceProfile.
+//! DeviceProfile, and the normalized position, which needs none.
+//!
+//! The normalized position, 0 = open to 1 = closed, is the preferred
+//! position mode: register / 255, in the register's own direction, exact
+//! both ways. It clamps to [0, 1] and yields nothing for NaN or infinity.
+//! A reading never lands exactly on 0 or 1, because the finger stops sit
+//! inside the register range.
 //!
 //! Every mapping here is linear and the gripper is not: the manual gives
 //! the 2F speed scale as approximate, and a register value is a setpoint,

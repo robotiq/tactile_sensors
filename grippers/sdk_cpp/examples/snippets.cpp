@@ -120,6 +120,22 @@ void objectDetectionCheck(Robotiq::Gripper& gripper)
    //! [status-object-detection-check]
 }
 
+double normalizedPosition(Robotiq::Gripper& gripper)
+{
+   //! [normalized-position]
+   namespace units = Robotiq::units;
+
+   constexpr double kPosition = 0.75; // 0 = open, 1 = closed
+
+   Robotiq::GripperCommand command = Robotiq::GripperCommand::defaults();
+   command.positionRequest = units::normalizedToRegister(kPosition).value();
+
+   double position = units::normalizedFromRegister(gripper.getStatus().position);
+   //! [normalized-position]
+   (void)command; // built to demonstrate the conversions above; never sent in this doc-only snippet
+   return position;
+}
+
 double siUnitConversion(Robotiq::Gripper& gripper)
 {
    //! [si-unit-conversion]

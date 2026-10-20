@@ -41,6 +41,20 @@ inline constexpr double kAmperesPerRegisterStep = 0.010;
 [[nodiscard]] std::optional<uint8_t> speedToRegister(double speed, const DeviceProfile& profile);
 
 //! \ingroup units
+//! Find the register value equivalent to a normalized position
+//! \param value Target position, 0 fully open to 1 fully closed. Clamped
+//!        to [0, 1] rather than rejected. Values round to the nearest
+//!        register.
+//! \return rPR, or std::nullopt if \p value is non-finite.
+[[nodiscard]] std::optional<uint8_t> normalizedToRegister(double value);
+
+//! \ingroup units
+//! Find the normalized position equivalent to a register value
+//! \param value The raw register value (gPO).
+//! \return The normalized position, value / 255.
+[[nodiscard]] double normalizedFromRegister(uint8_t value);
+
+//! \ingroup units
 //! Opening in m -> rPR.
 //! \warning Valid only while the gripper stays in parallel-finger mode:
 //!          profile.minOpening/maxOpening and the register endpoints are

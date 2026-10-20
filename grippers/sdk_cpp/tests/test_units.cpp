@@ -50,6 +50,49 @@ TEST(TestSpeedToRegister, the_hand_e_range_spans_the_whole_byte)
    EXPECT_FALSE(speedToRegister(-0.1, kHandE).has_value());
 }
 
+TEST(TestNormalizedToRegister, the_unit_span_maps_onto_the_whole_byte_open_to_closed)
+{
+   EXPECT_EQ(normalizedToRegister(0.0), 0); // fully open
+   EXPECT_EQ(normalizedToRegister(0.5), 128); // 127.5 steps
+   EXPECT_EQ(normalizedToRegister(1.0), 255); // fully closed
+}
+
+TEST(TestNormalizedToRegister, clamps_outside_the_unit_span)
+{
+   EXPECT_EQ(normalizedToRegister(-1e-4), 0);
+   EXPECT_EQ(normalizedToRegister(-2.0), 0);
+   EXPECT_EQ(normalizedToRegister(1.0 + 1e-4), 255);
+   EXPECT_EQ(normalizedToRegister(3.0), 255);
+}
+
+TEST(TestNormalizedToRegister, rejects_what_has_no_register_value)
+{
+   EXPECT_FALSE(normalizedToRegister(kNaN).has_value());
+   EXPECT_FALSE(normalizedToRegister(kInf).has_value());
+   EXPECT_FALSE(normalizedToRegister(-kInf).has_value());
+}
+
+TEST(TestNormalizedFromRegister, the_byte_ends_land_on_the_unit_span)
+{
+   EXPECT_DOUBLE_EQ(normalizedFromRegister(0), 0.0);
+   EXPECT_DOUBLE_EQ(normalizedFromRegister(255), 1.0);
+}
+
+TEST(TestNormalizedFromRegister, the_hand_e_stops_read_inside_the_unit_span)
+{
+   EXPECT_NEAR(normalizedFromRegister(kHandE.openPosition), 0.0118, 1e-4);
+   EXPECT_NEAR(normalizedFromRegister(kHandE.closedPosition), 0.9804, 1e-4);
+}
+
+TEST(TestNormalizedFromRegister, a_position_read_back_commands_the_same_value)
+{
+   for(int count = 0; count <= 0xFF; ++count)
+   {
+      const auto raw = static_cast<uint8_t>(count);
+      EXPECT_EQ(normalizedToRegister(normalizedFromRegister(raw)), raw) << "count " << count;
+   }
+}
+
 TEST(TestOpeningToRegister, the_hand_e_stroke_spans_its_register_band)
 {
    EXPECT_EQ(openingToRegister(0.050, kHandE), 3);

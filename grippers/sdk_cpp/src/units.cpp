@@ -31,6 +31,20 @@ std::optional<uint8_t> speedToRegister(double speed, const DeviceProfile& profil
    return registerFromSpan(speed, profile.minSpeed, profile.maxSpeed);
 }
 
+std::optional<uint8_t> normalizedToRegister(double value)
+{
+   if(!std::isfinite(value))
+   {
+      return std::nullopt;
+   }
+   return roundedRegister(std::clamp(value, 0.0, 1.0) * 0xFF);
+}
+
+double normalizedFromRegister(uint8_t value)
+{
+   return value / 255.0;
+}
+
 std::optional<uint8_t> openingToRegister(double opening, const DeviceProfile& profile)
 {
    const double span = profile.openingRange();
