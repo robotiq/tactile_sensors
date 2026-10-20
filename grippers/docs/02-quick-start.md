@@ -52,8 +52,17 @@ Robotiq::ConnectionConfig config;
 config.serial.port = argv[1]; // e.g. "COM4" on Windows, "/dev/ttyUSB0" on Linux, "/dev/tty.usbserial-XXXX" on macOS
 ```
 
-Run the built binary with your port, e.g. `./quick_start /dev/ttyUSB0`
-(Linux/macOS) or `quick_start.exe COM4` (Windows).
+Run the built binary with your port. Building this repository directly,
+as [Environment setup](01-environment-setup.md#try-it-on-your-gripper)
+describes, puts it here:
+
+```sh
+./build/examples/quick_start /dev/ttyUSB0
+```
+
+```powershell
+.\build\examples\Release\quick_start.exe COM4
+```
 
 ### Create a gripper object
 Create a gripper object using the previously created connection configuration.

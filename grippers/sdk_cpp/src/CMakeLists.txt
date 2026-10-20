@@ -40,10 +40,18 @@ if(GRIPPERS_BUILD_FAKE)
   )
 endif()
 
-# libserialport-backed transport: desktop only (see GRIPPERS_BUILD_DEFAULT_SERIAL).
+# The built-in serial transport: desktop only (see GRIPPERS_BUILD_DEFAULT_SERIAL).
+# Its OS half is one translation unit per platform family — the same TU
+# selection the hosted/freestanding split above uses.
 if(GRIPPERS_BUILD_DEFAULT_SERIAL)
   target_sources(grippers_objects PRIVATE
     default_serial_factory.cpp
     detail/default_serial.cpp
+    detail/serial_port.hpp
   )
+  if(WIN32)
+    target_sources(grippers_objects PRIVATE detail/win32/serial_port.cpp)
+  else()
+    target_sources(grippers_objects PRIVATE detail/posix/serial_port.cpp)
+  endif()
 endif()

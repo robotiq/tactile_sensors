@@ -16,36 +16,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install libserialport (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libserialport-dev
-
-      - name: Install libserialport (macOS)
-        if: runner.os == 'macOS'
-        run: brew install libserialport
-
-      # libserialport has no vcpkg port; MSYS2 packages it (UCRT64).
-      - name: Set up MSYS2 with libserialport (Windows)
-        if: runner.os == 'Windows'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          pacboy: toolchain:p cmake:p ninja:p pkgconf:p libserialport:p
-
+      # No prerequisites to install: the SDK builds against the OS serial
+      # API on every platform. Windows uses whatever MSVC the runner has,
+      # through CMake's default Visual Studio generator.
       - name: Configure, build, test
-        if: runner.os != 'Windows'
         run: |
           cmake -S sdk_cpp -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build -j 4
-          ctest --test-dir build --output-on-failure
-
-      - name: Configure, build, test (MSYS2)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: |
-          cmake -S sdk_cpp -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-          cmake --build build -j 4
-          ctest --test-dir build --output-on-failure
+          cmake --build build --config Release -j 4
+          ctest --test-dir build -C Release --output-on-failure
 
   # A bare-metal cross-compile of the freestanding profile. No runner can run
   # it, so this is a compile-only guard; cortex-m55 stands in for "a real MCU
@@ -179,8 +157,8 @@ jobs:
           done
 
   # The CMake wiring of the freestanding profile, with the host compiler: the
-  # configure must not require libserialport or Threads, and must select the
-  # freestanding TUs.
+  # configure must not require Threads, and must leave out the OS serial TU
+  # along with the rest of the hosted ones.
   freestanding-cmake:
     runs-on: ubuntu-latest
     steps:
@@ -232,7 +210,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y libserialport-dev gcovr
+        run: sudo apt-get update && sudo apt-get install -y gcovr
       - name: Configure
         run: >
           cmake -S sdk_cpp -B build -DCMAKE_BUILD_TYPE=Debug

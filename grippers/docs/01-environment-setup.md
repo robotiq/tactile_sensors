@@ -3,7 +3,8 @@ This page covers setting up a project that uses the Robotiq gripper C++
 SDK as a dependency: installing prerequisites, bringing the SDK into your
 own build.
 
-CMake ≥ 3.16, a C++17 compiler, libserialport.
+CMake ≥ 3.16, Git, and a C++17 compiler (GCC, Clang or MSVC; on Linux, GCC 9 or Clang 9 or newer). The SDK
+pulls in no third-party library.
 
 [![Environment setup walkthrough](https://img.youtube.com/vi/J4jhFiG1VNE/0.jpg)](https://youtu.be/J4jhFiG1VNE)
 
@@ -75,44 +76,55 @@ The environment to compile the C++ code of the driver differs depending on your 
 |----------|----------------|
 | Ubuntu/Debian | native terminal |
 | macOS | native terminal |
-| Windows | MSYS2 — see [Windows](#windows) below |
+| Windows | native terminal — see [Windows](#windows) below |
 
 ### Linux and macOS
 
-The installation of the libserialport library on Linux or macOS is straightforward.
-
-Install libserialport:
-```sh
-sudo apt install libserialport-dev   # Ubuntu/Debian
-brew install libserialport           # macOS
-```
+Nothing to install beyond a compiler and CMake. The serial port is
+driven through termios, which is part of the C library.
 
 ### Windows
 
-On Windows the libserialport library used by the C++ driver requires using
-MSYS2 for its compilation. MSYS2 is a Linux-like terminal which can run GCC,
-CMake and Ninja.
+The SDK talks to the COM port through the Windows API directly, so all
+you need is Microsoft's C++ toolchain, which CMake finds without being
+told where it is.
 
-1. Install MSYS2 from [msys2.org](https://www.msys2.org)
-   (or `winget install MSYS2.MSYS2`).
-2. Open the **MSYS2 UCRT64** shell from the Start menu.
-3. Install the toolchain and dependencies:
+1. Install the compiler. The command-line **Build Tools** are all this
+   SDK needs, and by far the lighter of the two ways to get them:
 
-   ```sh
-   # Synchronize package databases and upgrade all installed packages to their
-   # latest versions
-   pacman -Syu
-
-   # Install the core development tools for the 64-bit UCRT
-   # (Universal C Runtime) environment, skipping any packages that are already
-   # up to date (--needed)
-   pacman -S --needed \
-            mingw-w64-ucrt-x86_64-gcc \
-            mingw-w64-ucrt-x86_64-cmake \
-            mingw-w64-ucrt-x86_64-ninja \
-            mingw-w64-ucrt-x86_64-libserialport \
-            mingw-w64-ucrt-x86_64-gdb
+   ```powershell
+   winget install Microsoft.VisualStudio.2022.BuildTools --override "--passive --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
    ```
+
+   Paste that as a single line. The Visual Studio Installer opens and
+   installs Visual Studio Build Tools 2022 by itself, with nothing to
+   click; `--wait` holds the prompt until that finishes, so winget
+   reports success once the compiler is really there and not when the
+   small bootstrapper launched. Expect a multi-gigabyte download.
+
+   Microsoft asks
+   [2.3 GB and up](https://learn.microsoft.com/en-us/visualstudio/releases/2022/system-requirements)
+   for the Build Tools, against 20 to 50 GB for a typical full
+   [Visual Studio](https://visualstudio.microsoft.com/downloads/)
+   install. Reach for full Visual Studio only if you want the IDE for
+   other work: its **Desktop development with C++** workload carries
+   the same compiler, and everything below reads the same either way.
+2. Install CMake and Git:
+
+   ```powershell
+   winget install Kitware.CMake
+   winget install Git.Git
+   ```
+
+   Full Visual Studio already ships CMake, so skip that line if you
+   took the first option above. Git you need either way.
+3. Open a **new** PowerShell or Command Prompt window before building.
+
+   The installers put their tools on the system PATH, but a window
+   that was already open keeps the environment it started with — which
+   is why a first build otherwise stops at `cmake : The term 'cmake'
+   is not recognized`. An ordinary window is all you need; there is no
+   developer shell to hunt for.
 
 ## Compile from the terminal
 
@@ -152,14 +164,14 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
 
-> **Windows**: run from the **MSYS2 UCRT64** shell (Start menu), replacing
-> step 1 above with:
-> 
-> ```sh
-> cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-> ```
->
-> Step 2 (`cmake --build build -j`) is unchanged.
+**Windows**: CMake defaults there to the Visual Studio generator, which
+holds every configuration in one build directory. It ignores
+`CMAKE_BUILD_TYPE`, so pick the configuration when you build instead:
+
+```powershell
+cmake -S . -B build
+cmake --build build --config Release
+```
 
 Your application will then be compiled and you will be able to launch it
 passing whatever arguments your own application expects:
@@ -168,49 +180,73 @@ Example:
 
 ```sh
 ./build/quick_start /dev/ttyUSB0        # Linux/macOS
-./build/quick_start.exe COM3            # Windows
 ```
+
+```powershell
+.\build\Release\quick_start.exe COM3   # Windows
+```
+
+## Try it on your gripper
+
+The quickest way to confirm your toolchain, your adapter and your
+gripper all work together is to build this repository and run one of
+the examples it ships — no project of your own needed yet. Clone it
+anywhere; this is a throwaway check, not the copy you vendor.
+
+```sh
+git clone https://github.com/robotiq/grippers
+cmake -S grippers/sdk_cpp -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release -j
+```
+
+Carrying both `CMAKE_BUILD_TYPE` and `--config` makes one pair of
+commands work everywhere, since each generator ignores the one it has
+no use for.
+
+The unit tests need no hardware, so run them first: they tell a broken
+toolchain apart from a wiring problem.
+
+```sh
+ctest --test-dir build -C Release
+```
+
+Then plug the gripper in and run `move_gripper` with its port, found
+the way [Quick start](02-quick-start.md) describes.
+
+```sh
+./build/examples/move_gripper /dev/ttyUSB0
+```
+
+```powershell
+.\build\examples\Release\move_gripper.exe COM3
+```
+
+It activates the gripper and then opens and closes the fingers, so keep
+the jaws clear before starting it. The other examples are described in
+[examples/README.md](../sdk_cpp/examples/README.md).
 
 ## Instructions to set up VS Code
 
 1. Install the **C/C++** and **CMake Tools** extensions (both
    publisher `ms-vscode`).
-2. **Windows only** — as mentioned above, you need the MSYS2 GCC
-   toolchain.
-
-   Register a compilation kit once via Command Palette →
-   **CMake: Edit User-Local CMake Kits**, so it's offered in every
-   workspace on your machine:
-   
-   ```json
-   {
-     "name": "MSYS2 UCRT64 GCC",
-     "compilers": {
-       "C": "C:/msys64/ucrt64/bin/gcc.exe",
-       "CXX": "C:/msys64/ucrt64/bin/g++.exe"
-     },
-     "preferredGenerator": { "name": "Ninja" },
-     "cmakeSettings": {
-       "SERIALPORT_LIBRARY": "C:/msys64/ucrt64/lib/libserialport.a",
-       "CMAKE_EXE_LINKER_FLAGS": "-static -static-libgcc -static-libstdc++",
-       "CMAKE_CXX_STANDARD_LIBRARIES": "-lsetupapi -lcfgmgr32"
-     }
-   }
-   ```
-
-3. Command Palette → **CMake: Select a Kit**.
-   On Windows, pick the **MSYS2 UCRT64 GCC** kit registered above.
-   On Linux/macOS, pick whichever kit CMake Tools finds for your system compiler.
-4. **CMake: Configure**, then **CMake: Build** (or the matching buttons
+2. Command Palette → **CMake: Select a Kit**. CMake Tools scans for
+   what's installed, so on Windows pick the Visual Studio 2022 kit
+   whose name ends in `amd64` — the edition in it depends on whether
+   you installed the Build Tools or full Visual Studio. On Linux/macOS
+   pick whichever kit it finds for your system compiler. Nothing needs
+   registering by hand.
+3. **CMake: Configure**, then **CMake: Build** (or the matching buttons
    in the status bar at the bottom of the window).
-5. To run your own target, once it's built: select it as the active
-   target in the status bar's target picker, then click **Run** (▷)
-   in the status bar, or open a terminal and run the built executable
-   directly.
-   
-   If your program takes arguments (e.g. a serial port like `COM3`), set them
-   once in `cmake.debugConfig.args` in your own `.vscode/settings.json`
-   and the status bar's Run/Debug buttons will pass them automatically.
+4. To run your own target, once it's built: select it as the active
+   target in the status bar's target picker (this also happens
+   automatically the first time you build it), then click **Run** (▷)
+   in the status bar, or open a terminal and run the built `.exe`
+   directly. Either way, if your program takes arguments (e.g. a
+   serial port like `COM3`), set them once in `cmake.debugConfig.args`
+   in your own `.vscode/settings.json` (`.vscode/` is gitignored except
+   for `extensions.json`, so this file is yours alone — create it if it
+   doesn't exist yet) and the status bar's Run/Debug buttons will pass
+   them automatically.
 
    ```json
    {
@@ -243,6 +279,11 @@ Example:
 - **Windows**: the FTDI latency timer is a driver setting (Device Manager →
   COM port → Port Settings → Advanced → Latency Timer); set it to 1 ms for
   high-rate control.
+  To run what you built on another machine — a cell PC with no compiler on
+  it — either install the [Visual C++
+  Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe) there, or
+  configure with `-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded` to fold the
+  runtime into the executable and copy nothing but the `.exe`.
 - **macOS**: the FTDI latency timer defaults to 16 ms — capping the exchange
   rate near ~60 Hz — and macOS offers no way to lower it from the SDK. To run
   faster, install [FTDI's VCP driver](https://ftdichip.com/drivers/vcp-drivers/)
@@ -256,6 +297,20 @@ Example:
 - Factory-default link settings: 115200 baud, 8N1, Modbus slave 0x09.
 - Port naming: `/dev/ttyUSB0` on Linux, `COM3` on Windows,
   `/dev/tty.usbserial-XXXX` on macOS.
+
+### Gripper on a UR tool connector
+
+A gripper wired to a Universal Robots tool connector is driven from your computer, with the SDK built as above; nothing is compiled for or installed on the robot besides a URCap. The robot serves the tool's RS-485 on TCP port 54321, and `socat` turns it into a local serial port on the computer.
+
+1. On the robot, install the [RS485 URCap](https://github.com/UniversalRobots/Universal_Robots_ToolComm_Forwarder_URCap) and uninstall the Robotiq Grippers URCap, which otherwise holds the tool port.
+2. In Installation → General → Tool I/O, set *Controlled by* to *User*, select *Communication Interface* with 115200 baud, no parity, one stop bit, and set the tool output voltage to 24 V.
+3. On the computer that runs the SDK, forward the port and pass `/tmp/ttyUR` as the serial port:
+
+   ```sh
+   socat pty,link=/tmp/ttyUR,raw,ignoreeof,waitslave tcp:<robot-ip>:54321
+   ```
+
+The first status read may time out once while socat connects; the SDK retries it.
 
 ## CMake options
 
@@ -274,7 +329,7 @@ in detail).
 | `GRIPPERS_WARNINGS_AS_ERRORS` | `ON` when top-level, `OFF` via `add_subdirectory()` | Treats compiler warnings as errors. Only a request for warnings (not a build break) when consumed through `add_subdirectory()`, since a consumer's newer compiler may warn about something this project's own CI compiler does not. |
 | `GRIPPERS_HOSTED` | `ON` | Whether the target has a hosted C++ runtime (`std::thread`, `iostream`). `ON` compiles the `std::thread`-backed `Platform` (`makeDefaultPlatform()`) and the stderr default logger, and links `Threads::Threads`. |
 | `GRIPPERS_BUILD_FAKE` | follows `GRIPPERS_HOSTED` | Builds [`makeFakeGripper()`](03-how-it-works.md#without-a-gripper) and the fake device it drives. ~30 KB; only useful to hosted consumers, since the fake device needs the threaded exchange loop to run. |
-| `GRIPPERS_BUILD_DEFAULT_SERIAL` | follows `GRIPPERS_HOSTED` | Builds the libserialport-backed `DefaultSerial` and the `ConnectionConfig`-based constructors that use it. |
+| `GRIPPERS_BUILD_DEFAULT_SERIAL` | follows `GRIPPERS_HOSTED` | Builds the OS-backed `DefaultSerial` (termios on Linux/macOS, the Win32 comm API on Windows) and the `ConnectionConfig`-based constructors that use it. |
 
 "Top-level" means configuring `sdk_cpp` directly
 (`cmake -S sdk_cpp -B build ...`) rather than through
@@ -305,6 +360,5 @@ cmake -S sdk_cpp -B build -DGRIPPERS_BUILD_DEFAULT_SERIAL=OFF
 ```
 
 You'd flip GRIPPERS_BUILD_DEFAULT_SERIAL off, on an otherwise-hosted desktop
-build, if you're injecting your own `Serial` (e.g. talking to the gripper through
-something other than libserialport) and don't want the libserialport
-dependency at all.
+build, if you're injecting your own `Serial` — talking to the gripper
+over a TCP-to-serial bridge, say, rather than a local COM port.

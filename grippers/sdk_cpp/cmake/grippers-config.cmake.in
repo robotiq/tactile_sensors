@@ -2,14 +2,9 @@
 
 include(CMakeFindDependencyMacro)
 
-# The dependencies mirror how this package was built (a freestanding build
-# needs neither serialport nor Threads).
-if(@GRIPPERS_BUILD_DEFAULT_SERIAL@)
-  # Findserialport.cmake is installed next to this file; libserialport has no
-  # CMake package config of its own.
-  list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR})
-  find_dependency(serialport MODULE)
-endif()
+# The dependencies mirror how this package was built: the SDK carries no
+# third-party library of its own, and a freestanding build needs no Threads
+# either.
 if(@GRIPPERS_HOSTED@)
   find_dependency(Threads)
 endif()

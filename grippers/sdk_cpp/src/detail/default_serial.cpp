@@ -1,61 +1,41 @@
 // Copyright (c) 2023 PickNik, Inc.
-// Copyright (c) 2026 Robotiq, Inc. (libserialport rewrite)
+// Copyright (c) 2026 Robotiq, Inc.
 //
 // Licensed under the BSD-3-Clause license; see LICENSE for details.
 
 #include <Robotiq/detail/default_serial.hpp>
 
-#include <libserialport.h>
-
 #include <fstream>
+#include <memory>
 #include <string>
 #include <utility>
+
+#ifdef __linux__
+#include <filesystem>
+#include <system_error>
+#endif
 
 #include <Robotiq/detail/default_logger.hpp>
 #include <Robotiq/gripper/logger.hpp>
 #include <Robotiq/gripper/serial_io_exception.hpp>
 
+#include "detail/serial_port.hpp"
+
 namespace Robotiq::detail {
-namespace {
-//! Render a libserialport return code as a message and free any error state.
-std::string describeSpError(sp_return result)
-{
-   if(result == SP_ERR_FAIL)
-   {
-      char* message = sp_last_error_message();
-      std::string text = message != nullptr ? message : "unknown OS error";
-      sp_free_error_message(message);
-      return text;
-   }
-   switch(result)
-   {
-   case SP_ERR_ARG:
-      return "invalid argument";
-   case SP_ERR_MEM:
-      return "memory allocation failure";
-   case SP_ERR_SUPP:
-      return "operation not supported";
-   default:
-      return "error " + std::to_string(result);
-   }
-}
 
-//! Throw SerialIOException when a libserialport call fails.
-void check(sp_return result, const std::string& context)
+#ifdef __linux__
+std::string latencyTimerPath(const std::string& port, const std::string& sysfsDevices)
 {
-   if(result < SP_OK)
+   std::error_code error;
+   const std::filesystem::path device = std::filesystem::canonical(port, error);
+   if(error)
    {
-      throw SerialIOException(context + ": " + describeSpError(result));
+      return {};
    }
+   const std::filesystem::path attribute = std::filesystem::path(sysfsDevices) / device.filename() / "latency_timer";
+   return std::filesystem::exists(attribute, error) ? attribute.string() : std::string();
 }
-
-} // namespace
-
-std::string deviceBasename(const std::string& port)
-{
-   const auto slash = port.find_last_of('/');
-   return slash == std::string::npos ? port : port.substr(slash + 1);
-}
+#endif
 
 DefaultSerial::DefaultSerial(SerialConfig config, std::shared_ptr<Logger> logger)
    : _config(std::move(config))
@@ -70,7 +50,7 @@ DefaultSerial::~DefaultSerial()
 
 void DefaultSerial::open()
 {
-   if(_portHandle != nullptr)
+   if(_port != nullptr)
    {
       _logger->log(Logger::Level::Debug,
                    "open() called on " + _config.port + " but the port is already open; ignoring.");
@@ -83,32 +63,21 @@ void DefaultSerial::open()
    _logger->log(Logger::Level::Debug,
                 "opening serial port '" + _config.port + "' at " + std::to_string(_config.baudrate) + " baud");
 
-   struct sp_port* handle = nullptr;
-   if(sp_get_port_by_name(_config.port.c_str(), &handle) != SP_OK)
-   {
-      throw SerialIOException("no serial port named '" + _config.port + "' (is the device connected?)");
-   }
-   _portHandle = handle;
-   try
-   {
-      check(sp_open(_portHandle, SP_MODE_READ_WRITE), "opening serial port '" + _config.port + "'");
-      check(sp_set_baudrate(_portHandle, static_cast<int>(_config.baudrate)), "setting baud rate");
-      check(sp_set_bits(_portHandle, 8), "setting data bits");
-      check(sp_set_parity(_portHandle, SP_PARITY_NONE), "setting parity");
-      check(sp_set_stopbits(_portHandle, 1), "setting stop bits");
-      check(sp_set_flowcontrol(_portHandle, SP_FLOWCONTROL_NONE), "setting flow control");
-   }
-   catch(...)
-   {
-      sp_free_port(_portHandle);
-      _portHandle = nullptr;
-      throw;
-   }
+   // Published only once configured: a throw here leaves the connection
+   // closed rather than half-open.
+   auto port = std::make_unique<SerialPort>();
+   port->open(_config.port, _config.baudrate);
+   _port = std::move(port);
 
 #ifdef __linux__
    if(_config.latencyTimerMs > 0)
    {
-      if(applyLatencyTimer())
+      const std::string timerPath = latencyTimerPath(_config.port);
+      if(timerPath.empty())
+      {
+         _logger->log(Logger::Level::Debug, _config.port + " is not an FTDI adapter; no latency_timer to set.");
+      }
+      else if(applyLatencyTimer(timerPath))
       {
          _logger->log(Logger::Level::Info,
                       "FTDI latency_timer set to " + std::to_string(_config.latencyTimerMs) + " ms on " + _config.port
@@ -138,52 +107,43 @@ void DefaultSerial::open()
 
 bool DefaultSerial::isOpen() const
 {
-   return _portHandle != nullptr;
+   return _port != nullptr;
 }
 
 void DefaultSerial::close()
 {
-   if(_portHandle != nullptr)
-   {
-      sp_close(_portHandle);
-      sp_free_port(_portHandle);
-      _portHandle = nullptr;
-   }
+   _port.reset();
 }
 
 std::vector<uint8_t> DefaultSerial::read(size_t size, std::chrono::milliseconds timeout)
 {
-   if(_portHandle == nullptr)
+   if(_port == nullptr)
    {
       throw SerialIOException("read called on closed port");
    }
 
    std::vector<uint8_t> data(size);
-   const sp_return result =
-      timeout.count() == 0
-         ? sp_nonblocking_read(_portHandle, data.data(), size)
-         : sp_blocking_read(_portHandle, data.data(), size, static_cast<unsigned int>(timeout.count()));
-   check(result, timeout.count() == 0 ? "sp_nonblocking_read" : "sp_blocking_read");
-   data.resize(static_cast<size_t>(result));
+   data.resize(_port->read(data.data(), size, timeout));
    return data;
 }
 
 void DefaultSerial::write(const std::vector<uint8_t>& data)
 {
-   if(_portHandle == nullptr)
+   if(_port == nullptr)
    {
       throw SerialIOException("write called on closed port");
    }
 
-   const sp_return result =
-      sp_blocking_write(_portHandle, data.data(), data.size(), static_cast<unsigned int>(_config.timeout.count()));
-   check(result, "sp_blocking_write");
-   if(static_cast<size_t>(result) < data.size())
+   const size_t written = _port->write(data.data(), data.size(), _config.timeout);
+   if(written < data.size())
    {
-      throw SerialIOException("write timeout: wrote " + std::to_string(result) + " of " + std::to_string(data.size())
+      throw SerialIOException("write timeout: wrote " + std::to_string(written) + " of " + std::to_string(data.size())
                               + " bytes");
    }
-   check(sp_drain(_portHandle), "sp_drain");
+   if(!_port->drain(_config.timeout))
+   {
+      throw SerialIOException("write timeout: the bytes written did not drain");
+   }
 }
 
 std::chrono::milliseconds DefaultSerial::getTimeout() const
@@ -196,16 +156,9 @@ const SerialConfig& DefaultSerial::getConfig() const
    return _config;
 }
 
-bool DefaultSerial::applyLatencyTimer() const
+bool DefaultSerial::applyLatencyTimer(const std::string& path) const
 {
 #ifdef __linux__
-   const std::string base = deviceBasename(_config.port);
-   if(base.empty())
-   {
-      return false;
-   }
-   const std::string path = "/sys/bus/usb-serial/devices/" + base + "/latency_timer";
-
    // Read-before-write: sysfs is root-owned, so an unprivileged caller can't
    // write to it. If a privileged init (udev rule, container entrypoint) has
    // already pinned the value, skip the write — otherwise we'd emit a
@@ -224,11 +177,13 @@ bool DefaultSerial::applyLatencyTimer() const
    {
       return false;
    }
-   out << _config.latencyTimerMs;
+   // sysfs rejects an out-of-range value only when the buffer reaches it.
+   out << _config.latencyTimerMs << std::flush;
    return out.good();
 #else
    // No sysfs on this platform; the FTDI latency timer is a driver setting
    // (e.g. Windows device manager). Nothing to enforce programmatically.
+   (void)path;
    return false;
 #endif
 }

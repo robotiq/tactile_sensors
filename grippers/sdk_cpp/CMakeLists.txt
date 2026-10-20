@@ -39,35 +39,39 @@ option(GRIPPERS_HOSTED "Target has a hosted C++ runtime (std::thread, iostream)"
 # to leave it out.
 option(GRIPPERS_BUILD_FAKE "Build the fake gripper device" ${GRIPPERS_HOSTED})
 
-# The libserialport-backed DefaultSerial is a desktop convenience. Turn it OFF
-# for bare-metal / freestanding targets (e.g. arm-none-eabi microcontrollers)
-# that inject their own Serial implementation; this drops the libserialport
-# dependency and the ConnectionConfig-based constructors that build a DefaultSerial.
-option(GRIPPERS_BUILD_DEFAULT_SERIAL "Build the libserialport-backed DefaultSerial" ${GRIPPERS_HOSTED})
+# The OS-backed DefaultSerial is a desktop convenience. Turn it OFF for
+# bare-metal / freestanding targets (e.g. arm-none-eabi microcontrollers)
+# that inject their own Serial implementation; this drops the platform
+# serial code and the ConnectionConfig-based constructors that build a
+# DefaultSerial.
+option(GRIPPERS_BUILD_DEFAULT_SERIAL "Build the OS-backed DefaultSerial" ${GRIPPERS_HOSTED})
 
 if(GRIPPERS_BUILD_DEFAULT_SERIAL AND NOT GRIPPERS_HOSTED)
-  message(FATAL_ERROR "GRIPPERS_BUILD_DEFAULT_SERIAL needs a hosted runtime (libserialport is a desktop library); set it OFF for freestanding targets")
+  message(FATAL_ERROR "GRIPPERS_BUILD_DEFAULT_SERIAL needs a hosted runtime (it speaks to a desktop OS serial API); set it OFF for freestanding targets")
 endif()
 if(GRIPPERS_BUILD_FAKE AND NOT GRIPPERS_HOSTED)
   message(FATAL_ERROR "GRIPPERS_BUILD_FAKE needs a hosted runtime (the fake gripper serves the threaded exchange loop)")
-endif()
-
-# --- libserialport ------------------------------------------------------
-# Resolved through cmake/Findserialport.cmake — the same module the
-# installed grippers-config.cmake uses, so the lookup logic lives once.
-if(GRIPPERS_BUILD_DEFAULT_SERIAL)
-  list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
-  find_package(serialport MODULE REQUIRED)
 endif()
 
 # --- warnings -----------------------------------------------------------
 # Every C++ target this project compiles links this privately: the library, the
 # tests and the examples. It is not exported, so consumers of the installed SDK
 # never see it. Vendored C (third_party/) keeps its own warning state.
+#
+# MSVC reads -Wall as /Wall — every informational warning, unbuildable under
+# /WX — so the flags are per-compiler. /utf-8 because the sources carry UTF-8
+# in string literals and MSVC otherwise reads them in the system codepage.
 add_library(grippers_warnings INTERFACE)
+if(MSVC)
+  set(GRIPPERS_WARNING_FLAGS /W4 /permissive- /utf-8)
+  set(GRIPPERS_WARNING_ERROR_FLAG /WX)
+else()
+  set(GRIPPERS_WARNING_FLAGS -Wall -Wextra)
+  set(GRIPPERS_WARNING_ERROR_FLAG -Werror)
+endif()
 target_compile_options(grippers_warnings INTERFACE
-  $<$<COMPILE_LANGUAGE:CXX>:-Wall;-Wextra>
-  $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<BOOL:${GRIPPERS_WARNINGS_AS_ERRORS}>>:-Werror>
+  $<$<COMPILE_LANGUAGE:CXX>:${GRIPPERS_WARNING_FLAGS}>
+  $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<BOOL:${GRIPPERS_WARNINGS_AS_ERRORS}>>:${GRIPPERS_WARNING_ERROR_FLAG}>
 )
 
 # --- SDK library --------------------------------------------------------
@@ -134,13 +138,6 @@ target_link_libraries(grippers_sdk
   PRIVATE $<BUILD_INTERFACE:grippers_objects>
 )
 
-# The objects need libserialport's headers to compile and both forms need its
-# symbols to link, so it goes on each of them privately.
-if(GRIPPERS_BUILD_DEFAULT_SERIAL)
-  target_link_libraries(grippers_objects PRIVATE serialport::serialport)
-  target_link_libraries(grippers_sdk PRIVATE serialport::serialport)
-endif()
-
 # Either form can end up inside someone's shared library, so the objects have to
 # be position independent whatever the consumer sets globally. The archive used to
 # get this by accident, from the consumer's own CMAKE_POSITION_INDEPENDENT_CODE.
@@ -149,6 +146,16 @@ set_target_properties(grippers_objects grippers_sdk PROPERTIES POSITION_INDEPEND
 add_subdirectory(include/Robotiq)
 add_subdirectory(src)
 add_subdirectory(third_party/nanomodbus)
+
+# Vendored upstream C, compiled as we received it: its narrowing conversions
+# are not ours to fix, and MSVC's /W4 raises a couple of dozen of them. The
+# COMPILE_LANGUAGE:CXX guard above is meant to keep our warning flags off it,
+# but the Visual Studio generator gives a target one set of compile options
+# for every language in it, so that guard does not survive there. This sits
+# here rather than beside the source because a source property only reaches
+# targets defined in the same directory as the property itself.
+set_source_files_properties(third_party/nanomodbus/nanomodbus.c
+  PROPERTIES COMPILE_OPTIONS "$<IF:$<C_COMPILER_ID:MSVC>,/W0,-w>")
 
 # --- examples -----------------------------------------------------------
 # Examples and tests exercise the DefaultSerial (and through it the hosted
@@ -206,7 +213,6 @@ write_basic_package_version_file(
 install(FILES
   ${CMAKE_CURRENT_BINARY_DIR}/grippers-config.cmake
   ${CMAKE_CURRENT_BINARY_DIR}/grippers-config-version.cmake
-  cmake/Findserialport.cmake
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/grippers
 )
 

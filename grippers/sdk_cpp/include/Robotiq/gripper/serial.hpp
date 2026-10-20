@@ -16,7 +16,7 @@ namespace Robotiq {
 //! extension point.
 //!
 //! The driver talks to the hardware through an implementation of this
-//! interface: the built-in libserialport transport on a desktop, an
+//! interface: the built-in OS serial transport on a desktop, an
 //! application's own (a TCP-serial bridge, an MCU UART/DMA transport),
 //! or a scripted connection in tests. Link parameters (port, baud rate,
 //! timeout, ...) are fixed at construction of the implementation — see

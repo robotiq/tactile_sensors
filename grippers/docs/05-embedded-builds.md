@@ -24,8 +24,7 @@ baked in:
   — open/read/write/close on a byte stream.
 
 On desktop, you never see this seam: `Gripper(config)` quietly builds a
-`std::thread`-backed `Platform` and a libserialport-backed `Serial` for
-you. On a microcontroller, neither of those exist, so you supply your
+`std::thread`-backed `Platform` and an OS-backed `Serial` for you. On a microcontroller, neither of those exist, so you supply your
 own implementation of one or both — the SDK's own logic (the exchange
 loop, the Modbus framing, the typed command/status decoding) doesn't
 change at all.
@@ -129,10 +128,9 @@ cmake -S sdk_cpp -B build-freestanding \
   `<thread>` or `Threads::Threads`. Use the platform-taking constructor
   and supply your own `Platform` (path 1) or skip `Gripper` for
   `GripperModbusClient` (path 2).
-- **`GRIPPERS_BUILD_DEFAULT_SERIAL=OFF`** leaves out the
-  libserialport-backed `Serial`, and the libserialport dependency along
-  with it — there's no desktop serial port on a microcontroller anyway.
-  Supply your own `Serial` over your UART.
+- **`GRIPPERS_BUILD_DEFAULT_SERIAL=OFF`** leaves out the OS-backed
+  `Serial` — there's no desktop serial port on a microcontroller
+  anyway. Supply your own `Serial` over your UART.
 
 `GRIPPERS_BUILD_FAKE` turns itself off automatically when
 `GRIPPERS_HOSTED=OFF` (it needs the threaded exchange loop to have
