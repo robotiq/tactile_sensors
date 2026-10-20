@@ -6,9 +6,13 @@
 
 #include <cstdint>
 #include <limits>
+#include <memory>
+#include <tuple>
 
 #include <Robotiq/gripper/device_profile.hpp>
 #include <Robotiq/gripper/units.hpp>
+
+#include "test_utils.hpp"
 
 namespace Robotiq::test {
 
@@ -63,6 +67,27 @@ TEST(TestNormalizedToRegister, clamps_outside_the_unit_span)
    EXPECT_EQ(normalizedToRegister(-2.0), 0);
    EXPECT_EQ(normalizedToRegister(1.0 + 1e-4), 255);
    EXPECT_EQ(normalizedToRegister(3.0), 255);
+}
+
+TEST(TestNormalizedToRegister, warns_when_it_clamps)
+{
+   const auto logger = std::make_shared<CollectingLogger>();
+   EXPECT_EQ(normalizedToRegister(1.5, logger), 255);
+   EXPECT_EQ(normalizedToRegister(-0.5, logger), 0);
+   ASSERT_EQ(logger->lines.size(), 2u);
+   EXPECT_EQ(logger->lines[0].first, Logger::Level::Warn);
+   EXPECT_TRUE(logger->contains("outside [0, 1]"));
+}
+
+TEST(TestNormalizedToRegister, is_silent_inside_the_unit_span)
+{
+   const auto logger = std::make_shared<CollectingLogger>();
+   for(const double value : {0.0, 0.5, 1.0})
+   {
+      std::ignore = normalizedToRegister(value, logger);
+   }
+   std::ignore = normalizedToRegister(kNaN, logger);
+   EXPECT_TRUE(logger->lines.empty());
 }
 
 TEST(TestNormalizedToRegister, rejects_what_has_no_register_value)

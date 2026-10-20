@@ -5,9 +5,14 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 
 #include <Robotiq/gripper/device_profile.hpp>
+
+namespace Robotiq {
+class Logger;
+} // namespace Robotiq
 
 namespace Robotiq::units {
 
@@ -45,8 +50,11 @@ inline constexpr double kAmperesPerRegisterStep = 0.010;
 //! \param value Target position, 0 fully open to 1 fully closed. Clamped
 //!        to [0, 1] rather than rejected. Values round to the nearest
 //!        register.
+//! \param logger Where a clamp is reported, as a warning: a value outside
+//!        [0, 1] usually means a caller bug. The default logger when null.
 //! \return rPR, or std::nullopt if \p value is non-finite.
-[[nodiscard]] std::optional<uint8_t> normalizedToRegister(double value);
+[[nodiscard]] std::optional<uint8_t> normalizedToRegister(double value,
+                                                          const std::shared_ptr<Logger>& logger = nullptr);
 
 //! \ingroup units
 //! Find the normalized position equivalent to a register value

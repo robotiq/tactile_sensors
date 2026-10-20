@@ -117,14 +117,15 @@ Each of these bits is set with `command.action.set(Robotiq::ActionRequestBit::<n
 
 ### Commanding a normalized position
 
-The preferred way to command a position is a normalized value from 0 (fully
-open) to 1 (fully closed). It is a direct scaling of the position register
+A position can be commanded as a normalized value from 0 (fully open) to 1
+(fully closed). It is a direct scaling of the position register
 (`register / 255`), in the same direction as the register and the URCap %.
 
 It needs no gripper profile: registers 0 and 255 drive the fingers to their
 stops on every model and fingertip, so the value means the same everywhere.
 The conversion is exact, so a position read back and sent again commands the
-same register. A value outside [0, 1] is clamped to the nearest end.
+same register. A value outside [0, 1] is clamped to the nearest end, with a
+warning in the log.
 
 <!-- snippet: snippets.cpp normalized-position -->
 ```cpp
