@@ -51,6 +51,8 @@ TEST(TestToString, enum_names_are_usable_at_compile_time)
    static_assert(toString(ActivationState::InProgress) == "InProgress");
    static_assert(toString(ObjectDetection::DetectedWhileClosing) == "DetectedWhileClosing");
    static_assert(toString(GripperFault::ActivationRequired) == "ActivationRequired");
+   static_assert(toString(GripperFault::BrakeProblem) == "BrakeProblem");
+   static_assert(toString(GripperFault::BlockedAtStart) == "BlockedAtStart");
    static_assert(toString(ControllerFault::EmergencyStop) == "EmergencyStop");
    static_assert(toString(static_cast<GripperFault>(0x06)) == "Unrecognized");
    static_assert(toString(ConnectionState::Faulted) == "Faulted");

@@ -105,6 +105,10 @@ namespace Robotiq {
    {
    case GripperFault::None:
       return "None";
+   case GripperFault::BrakeProblem:
+      return "BrakeProblem";
+   case GripperFault::BlockedAtStart:
+      return "BlockedAtStart";
    case GripperFault::ActionDelayed:
       return "ActionDelayed";
    case GripperFault::ActivationRequired:

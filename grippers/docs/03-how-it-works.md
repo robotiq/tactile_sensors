@@ -238,6 +238,8 @@ uint8_t gCU = status.current;
 | Value | Meaning |
 |---|---|
 | `None` (`0x00`) | No fault (solid blue status LED). |
+| `BrakeProblem` (`0x03`) | Brake problem (Hand-E).¹ |
+| `BlockedAtStart` (`0x04`) | The fingers did not move after a Go To command: the requested position was not reached and no object was detected. The next motion command clears it (Hand-E). |
 | `ActionDelayed` (`0x05`) | Action delayed: the activation (re-activation) must be completed prior to performing the action. |
 | `ActivationRequired` (`0x07`) | The activation bit (rACT) must be set prior to performing the action. |
 | `OverTemperature` (`0x08`) | Maximum operating temperature exceeded (≥ 85 °C internally); let it cool down (below 80 °C). |

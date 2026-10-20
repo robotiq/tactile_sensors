@@ -16,6 +16,9 @@ namespace Robotiq {
 enum class GripperFault : uint8_t
 {
    None = 0x00, //!< No fault (solid blue LED)
+   BrakeProblem = 0x03, //!< Brake problem (Hand-E).
+   BlockedAtStart = 0x04, //!< The fingers did not move after a Go To command: the requested position was not reached
+                          //!< and no object was detected. The next motion command clears it (Hand-E).
    ActionDelayed =
       0x05, //!< Action delayed, the activation (re-activation) must be completed prior to performing the action.
    ActivationRequired = 0x07, //!< The activation bit must be set prior to performing the action.
@@ -68,12 +71,14 @@ enum class FaultSeverity : uint8_t
    {
    case GripperFault::None:
       return FaultSeverity::None;
+   case GripperFault::BlockedAtStart:
    case GripperFault::ActionDelayed:
    case GripperFault::ActivationRequired:
       return FaultSeverity::Warning;
    case GripperFault::OverTemperature:
    case GripperFault::NoCommunication:
       return FaultSeverity::Minor;
+   case GripperFault::BrakeProblem:
    case GripperFault::UnderVoltage:
    case GripperFault::AutomaticReleaseInProgress:
    case GripperFault::InternalFault:
