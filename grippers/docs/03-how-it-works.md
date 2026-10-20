@@ -115,6 +115,39 @@ Each of these bits is set with `command.action.set(Robotiq::ActionRequestBit::<n
 | rATR | `AutoRelease` | Normal. | Emergency auto-release. |
 | rARD | `AutoReleaseOpenDirection` | Closing auto-release direction. | Opening auto-release direction. |
 
+### Commanding a normalized position
+
+A position can be commanded as a normalized value from 0 (fully open) to 1
+(fully closed). It is a direct scaling of the position register
+(`register / 255`), in the same direction as the register and the URCap %.
+
+It needs no gripper profile: registers 0 and 255 drive the fingers to their
+stops on every model and fingertip, so the value means the same everywhere.
+The conversion is exact, so a position read back and sent again commands the
+same register. A value outside [0, 1] is clamped to the nearest end, with a
+warning in the log.
+
+<!-- snippet: snippets.cpp normalized-position -->
+```cpp
+namespace units = Robotiq::units;
+
+constexpr double kPosition = 0.75; // 0 = open, 1 = closed
+
+Robotiq::GripperCommand command = Robotiq::GripperCommand::defaults();
+command.positionRequest = units::normalizedToRegister(kPosition).value();
+
+double position = units::normalizedFromRegister(gripper.getStatus().position);
+```
+
+`normalizedToRegister` yields nothing only for NaN or infinity, so `.value()`
+above is safe for a constant.
+
+> **Note:**
+> A position read back never lands exactly on 0 or 1. The finger stops sit
+> inside the register range (counts 3 and 250 on a Hand-E, about 0.01 and
+> 0.98), so a gripper commanded to 1 settles short of it. To know a motion is
+> done, wait on the object status (`waitForMotionEnd`), not on an end value.
+
 ### Commanding in SI units
 
 The SDK offers the capability to set position and speed in SI units rather than

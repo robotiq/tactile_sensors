@@ -4,8 +4,12 @@
 
 #include <Robotiq/gripper/units.hpp>
 
+#include <Robotiq/detail/default_logger.hpp>
+#include <Robotiq/gripper/logger.hpp>
+
 #include <algorithm>
 #include <cmath>
+#include <string>
 
 namespace Robotiq::units {
 
@@ -29,6 +33,28 @@ std::optional<uint8_t> registerFromSpan(double value, double minimum, double max
 std::optional<uint8_t> speedToRegister(double speed, const DeviceProfile& profile)
 {
    return registerFromSpan(speed, profile.minSpeed, profile.maxSpeed);
+}
+
+std::optional<uint8_t> normalizedToRegister(double value, const std::shared_ptr<Logger>& logger)
+{
+   if(!std::isfinite(value))
+   {
+      return std::nullopt;
+   }
+   const double clamped = std::clamp(value, 0.0, 1.0);
+   if(clamped != value)
+   {
+      const std::shared_ptr<Logger> sink = logger ? logger : detail::makeDefaultLogger();
+      sink->log(Logger::Level::Warn,
+                "normalized position " + std::to_string(value) + " is outside [0, 1]; clamped to "
+                   + std::to_string(clamped));
+   }
+   return roundedRegister(clamped * 0xFF);
+}
+
+double normalizedFromRegister(uint8_t value)
+{
+   return value / 255.0;
 }
 
 std::optional<uint8_t> openingToRegister(double opening, const DeviceProfile& profile)
