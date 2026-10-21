@@ -20,6 +20,7 @@ namespace {
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 constexpr double kInf = std::numeric_limits<double>::infinity();
 const DeviceProfile& k2F85 = profiles::k2F85;
+const DeviceProfile& k2F140 = profiles::k2F140;
 const DeviceProfile& kHandE = profiles::kHandE;
 using namespace Robotiq::units;
 } // namespace
@@ -35,6 +36,17 @@ TEST(TestDeviceProfile, the_2f85_carries_the_manual_ranges_and_the_measured_regi
    EXPECT_DOUBLE_EQ(k2F85.registerPositionRange(), 227.0);
 }
 
+TEST(TestDeviceProfile, the_2f140_carries_the_manual_ranges_and_the_measured_register_band)
+{
+   EXPECT_DOUBLE_EQ(k2F140.minSpeed, 0.030);
+   EXPECT_DOUBLE_EQ(k2F140.maxSpeed, 0.250);
+   EXPECT_DOUBLE_EQ(k2F140.minOpening, 0.0);
+   EXPECT_DOUBLE_EQ(k2F140.maxOpening, 0.140);
+   EXPECT_EQ(k2F140.openPosition, 3);
+   EXPECT_EQ(k2F140.closedPosition, 230);
+   EXPECT_DOUBLE_EQ(k2F140.registerPositionRange(), 227.0);
+}
+
 TEST(TestDeviceProfile, the_hand_e_carries_the_manual_ranges_and_the_measured_register_band)
 {
    EXPECT_DOUBLE_EQ(kHandE.minSpeed, 0.020);
@@ -44,6 +56,14 @@ TEST(TestDeviceProfile, the_hand_e_carries_the_manual_ranges_and_the_measured_re
    EXPECT_EQ(kHandE.openPosition, 3);
    EXPECT_EQ(kHandE.closedPosition, 250);
    EXPECT_DOUBLE_EQ(kHandE.registerPositionRange(), 247.0);
+}
+
+TEST(TestSpeedToRegister, the_2f140_range_spans_the_whole_byte)
+{
+   EXPECT_EQ(speedToRegister(0.030, k2F140), 0);
+   EXPECT_EQ(speedToRegister(0.250, k2F140), 255);
+   EXPECT_EQ(speedToRegister(0.3, k2F140), 255);
+   EXPECT_FALSE(speedToRegister(-0.1, k2F140).has_value());
 }
 
 TEST(TestSpeedToRegister, the_hand_e_range_spans_the_whole_byte)
@@ -116,6 +136,23 @@ TEST(TestNormalizedFromRegister, a_position_read_back_commands_the_same_value)
       const auto raw = static_cast<uint8_t>(count);
       EXPECT_EQ(normalizedToRegister(normalizedFromRegister(raw)), raw) << "count " << count;
    }
+}
+
+TEST(TestOpeningToRegister, the_2f140_stroke_spans_its_register_band)
+{
+   EXPECT_EQ(openingToRegister(0.140, k2F140), 3);
+   EXPECT_EQ(openingToRegister(0.0, k2F140), 230);
+   EXPECT_EQ(openingToRegister(0.070, k2F140), 117); // 113.5 steps
+   EXPECT_EQ(openingToRegister(0.150, k2F140), 3);
+   EXPECT_EQ(openingToRegister(-1e-4, k2F140), 230);
+}
+
+TEST(TestOpeningFromRegister, the_2f140_band_spans_its_stroke)
+{
+   EXPECT_DOUBLE_EQ(openingFromRegister(3, k2F140).value(), 0.140);
+   EXPECT_DOUBLE_EQ(openingFromRegister(230, k2F140).value(), 0.0);
+   EXPECT_DOUBLE_EQ(openingFromRegister(0, k2F140).value(), 0.140);
+   EXPECT_DOUBLE_EQ(openingFromRegister(255, k2F140).value(), 0.0);
 }
 
 TEST(TestOpeningToRegister, the_hand_e_stroke_spans_its_register_band)
