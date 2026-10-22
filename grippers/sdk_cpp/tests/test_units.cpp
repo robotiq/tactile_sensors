@@ -7,7 +7,9 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <ostream>
 #include <tuple>
+#include <vector>
 
 #include <Robotiq/gripper/device_profile.hpp>
 #include <Robotiq/gripper/units.hpp>
@@ -20,59 +22,101 @@ namespace {
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 constexpr double kInf = std::numeric_limits<double>::infinity();
 const DeviceProfile& k2F85 = profiles::k2F85;
-const DeviceProfile& k2F140 = profiles::k2F140;
 const DeviceProfile& kHandE = profiles::kHandE;
 using namespace Robotiq::units;
 } // namespace
 
-TEST(TestDeviceProfile, the_2f85_carries_the_manual_ranges_and_the_measured_register_band)
+// Each shipped profile: its manual ranges, its measured band, and an opening
+// between the ends with the register it rounds to.
+struct ShippedProfile
 {
-   EXPECT_DOUBLE_EQ(k2F85.minSpeed, 0.020);
-   EXPECT_DOUBLE_EQ(k2F85.maxSpeed, 0.150);
-   EXPECT_DOUBLE_EQ(k2F85.minOpening, 0.0);
-   EXPECT_DOUBLE_EQ(k2F85.maxOpening, 0.085);
-   EXPECT_EQ(k2F85.openPosition, 3);
-   EXPECT_EQ(k2F85.closedPosition, 230);
-   EXPECT_DOUBLE_EQ(k2F85.registerPositionRange(), 227.0);
+   const char* name;
+   const DeviceProfile& profile;
+   double minSpeed;
+   double maxSpeed;
+   double maxOpening;
+   uint8_t openPosition;
+   uint8_t closedPosition;
+   double midOpening;
+   uint8_t midPosition;
+};
+
+// Without this gtest dumps the raw parameter bytes into the test listing
+// ctest reads.
+void PrintTo(const ShippedProfile& shipped, std::ostream* out)
+{
+   *out << shipped.name;
 }
 
-TEST(TestDeviceProfile, the_2f140_carries_the_manual_ranges_and_the_measured_register_band)
+const std::vector<ShippedProfile>& shippedProfiles()
 {
-   EXPECT_DOUBLE_EQ(k2F140.minSpeed, 0.030);
-   EXPECT_DOUBLE_EQ(k2F140.maxSpeed, 0.250);
-   EXPECT_DOUBLE_EQ(k2F140.minOpening, 0.0);
-   EXPECT_DOUBLE_EQ(k2F140.maxOpening, 0.140);
-   EXPECT_EQ(k2F140.openPosition, 3);
-   EXPECT_EQ(k2F140.closedPosition, 230);
-   EXPECT_DOUBLE_EQ(k2F140.registerPositionRange(), 227.0);
+   static const std::vector<ShippedProfile> kShipped = {
+      {"k2F85", profiles::k2F85, 0.020, 0.150, 0.085, 3, 230, 0.0425, 117}, // 113.5 steps
+      {"k2F140", profiles::k2F140, 0.030, 0.250, 0.140, 3, 230, 0.070, 117}, // 113.5 steps
+      {"kHandE", profiles::kHandE, 0.020, 0.150, 0.050, 3, 250, 0.025, 127}, // 123.5 steps
+   };
+   return kShipped;
 }
 
-TEST(TestDeviceProfile, the_hand_e_carries_the_manual_ranges_and_the_measured_register_band)
+class ShippedProfileTest : public ::testing::TestWithParam<ShippedProfile>
 {
-   EXPECT_DOUBLE_EQ(kHandE.minSpeed, 0.020);
-   EXPECT_DOUBLE_EQ(kHandE.maxSpeed, 0.150);
-   EXPECT_DOUBLE_EQ(kHandE.minOpening, 0.0);
-   EXPECT_DOUBLE_EQ(kHandE.maxOpening, 0.050);
-   EXPECT_EQ(kHandE.openPosition, 3);
-   EXPECT_EQ(kHandE.closedPosition, 250);
-   EXPECT_DOUBLE_EQ(kHandE.registerPositionRange(), 247.0);
+};
+
+TEST_P(ShippedProfileTest, carries_the_manual_ranges_and_the_measured_register_band)
+{
+   const ShippedProfile& shipped = GetParam();
+   EXPECT_DOUBLE_EQ(shipped.profile.minSpeed, shipped.minSpeed);
+   EXPECT_DOUBLE_EQ(shipped.profile.maxSpeed, shipped.maxSpeed);
+   EXPECT_DOUBLE_EQ(shipped.profile.minOpening, 0.0);
+   EXPECT_DOUBLE_EQ(shipped.profile.maxOpening, shipped.maxOpening);
+   EXPECT_EQ(shipped.profile.openPosition, shipped.openPosition);
+   EXPECT_EQ(shipped.profile.closedPosition, shipped.closedPosition);
+   EXPECT_DOUBLE_EQ(shipped.profile.registerPositionRange(), shipped.closedPosition - shipped.openPosition);
 }
 
-TEST(TestSpeedToRegister, the_2f140_range_spans_the_whole_byte)
+TEST_P(ShippedProfileTest, the_speed_range_spans_the_whole_byte)
 {
-   EXPECT_EQ(speedToRegister(0.030, k2F140), 0);
-   EXPECT_EQ(speedToRegister(0.250, k2F140), 255);
-   EXPECT_EQ(speedToRegister(0.3, k2F140), 255);
-   EXPECT_FALSE(speedToRegister(-0.1, k2F140).has_value());
+   const ShippedProfile& shipped = GetParam();
+   EXPECT_EQ(speedToRegister(shipped.minSpeed, shipped.profile), 0);
+   EXPECT_EQ(speedToRegister(shipped.maxSpeed, shipped.profile), 255);
+   EXPECT_EQ(speedToRegister(shipped.maxSpeed + 0.05, shipped.profile), 255);
+   EXPECT_FALSE(speedToRegister(-0.1, shipped.profile).has_value());
 }
 
-TEST(TestSpeedToRegister, the_hand_e_range_spans_the_whole_byte)
+TEST_P(ShippedProfileTest, the_stroke_spans_the_register_band)
 {
-   EXPECT_EQ(speedToRegister(0.020, kHandE), 0);
-   EXPECT_EQ(speedToRegister(0.150, kHandE), 255);
-   EXPECT_EQ(speedToRegister(0.3, kHandE), 255);
-   EXPECT_FALSE(speedToRegister(-0.1, kHandE).has_value());
+   const ShippedProfile& shipped = GetParam();
+   EXPECT_EQ(openingToRegister(shipped.maxOpening, shipped.profile), shipped.openPosition);
+   EXPECT_EQ(openingToRegister(0.0, shipped.profile), shipped.closedPosition);
+   EXPECT_EQ(openingToRegister(shipped.midOpening, shipped.profile), shipped.midPosition);
+   EXPECT_EQ(openingToRegister(shipped.maxOpening + 0.01, shipped.profile), shipped.openPosition);
+   EXPECT_EQ(openingToRegister(-1e-4, shipped.profile), shipped.closedPosition);
 }
+
+TEST_P(ShippedProfileTest, the_register_band_spans_the_stroke)
+{
+   const ShippedProfile& shipped = GetParam();
+   EXPECT_DOUBLE_EQ(openingFromRegister(shipped.openPosition, shipped.profile).value(), shipped.maxOpening);
+   EXPECT_DOUBLE_EQ(openingFromRegister(shipped.closedPosition, shipped.profile).value(), 0.0);
+   EXPECT_DOUBLE_EQ(openingFromRegister(0, shipped.profile).value(), shipped.maxOpening);
+   EXPECT_DOUBLE_EQ(openingFromRegister(255, shipped.profile).value(), 0.0);
+}
+
+TEST_P(ShippedProfileTest, inside_the_band_a_position_read_back_commands_the_same_value)
+{
+   const ShippedProfile& shipped = GetParam();
+   for(int count = shipped.openPosition; count <= shipped.closedPosition; ++count)
+   {
+      const auto raw = static_cast<uint8_t>(count);
+      EXPECT_EQ(openingToRegister(openingFromRegister(raw, shipped.profile).value(), shipped.profile), raw)
+         << "count " << count;
+   }
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryShippedProfile,
+                         ShippedProfileTest,
+                         ::testing::ValuesIn(shippedProfiles()),
+                         [](const ::testing::TestParamInfo<ShippedProfile>& info) { return info.param.name; });
 
 TEST(TestNormalizedToRegister, the_unit_span_maps_onto_the_whole_byte_open_to_closed)
 {
@@ -138,40 +182,6 @@ TEST(TestNormalizedFromRegister, a_position_read_back_commands_the_same_value)
    }
 }
 
-TEST(TestOpeningToRegister, the_2f140_stroke_spans_its_register_band)
-{
-   EXPECT_EQ(openingToRegister(0.140, k2F140), 3);
-   EXPECT_EQ(openingToRegister(0.0, k2F140), 230);
-   EXPECT_EQ(openingToRegister(0.070, k2F140), 117); // 113.5 steps
-   EXPECT_EQ(openingToRegister(0.150, k2F140), 3);
-   EXPECT_EQ(openingToRegister(-1e-4, k2F140), 230);
-}
-
-TEST(TestOpeningFromRegister, the_2f140_band_spans_its_stroke)
-{
-   EXPECT_DOUBLE_EQ(openingFromRegister(3, k2F140).value(), 0.140);
-   EXPECT_DOUBLE_EQ(openingFromRegister(230, k2F140).value(), 0.0);
-   EXPECT_DOUBLE_EQ(openingFromRegister(0, k2F140).value(), 0.140);
-   EXPECT_DOUBLE_EQ(openingFromRegister(255, k2F140).value(), 0.0);
-}
-
-TEST(TestOpeningToRegister, the_hand_e_stroke_spans_its_register_band)
-{
-   EXPECT_EQ(openingToRegister(0.050, kHandE), 3);
-   EXPECT_EQ(openingToRegister(0.0, kHandE), 250);
-   EXPECT_EQ(openingToRegister(0.025, kHandE), 127); // 126.5 steps
-   EXPECT_EQ(openingToRegister(0.060, kHandE), 3);
-   EXPECT_EQ(openingToRegister(-1e-4, kHandE), 250);
-}
-
-TEST(TestOpeningFromRegister, the_hand_e_band_spans_its_stroke)
-{
-   EXPECT_DOUBLE_EQ(openingFromRegister(3, kHandE).value(), 0.050);
-   EXPECT_DOUBLE_EQ(openingFromRegister(250, kHandE).value(), 0.0);
-   EXPECT_DOUBLE_EQ(openingFromRegister(0, kHandE).value(), 0.050);
-   EXPECT_DOUBLE_EQ(openingFromRegister(255, kHandE).value(), 0.0);
-}
-
 TEST(TestRegisterFromSpan, maps_the_span_onto_the_whole_byte)
 {
    EXPECT_EQ(registerFromSpan(20.0, 20.0, 235.0), 0);
@@ -220,12 +230,6 @@ TEST(TestSpeedToRegister, rejects_what_has_no_register_value)
    EXPECT_FALSE(speedToRegister(0.1, broken).has_value());
 }
 
-TEST(TestOpeningToRegister, the_position_ends_land_on_the_register_band)
-{
-   EXPECT_EQ(openingToRegister(0.085, k2F85), 3); // fully open
-   EXPECT_EQ(openingToRegister(0.0, k2F85), 230); // fully closed
-}
-
 TEST(TestOpeningToRegister, rounds_to_the_nearest_value)
 {
    EXPECT_EQ(openingToRegister(0.020, k2F85), 177); // 176.59 steps
@@ -269,12 +273,6 @@ TEST(TestOpeningFromRegister, the_register_band_ends_land_on_the_position_span)
    EXPECT_NEAR(openingFromRegister(177, k2F85).value(), 0.019846, 1e-6);
 }
 
-TEST(TestOpeningFromRegister, values_outside_the_band_read_as_the_position_ends)
-{
-   EXPECT_DOUBLE_EQ(openingFromRegister(0, k2F85).value(), 0.085);
-   EXPECT_DOUBLE_EQ(openingFromRegister(255, k2F85).value(), 0.0);
-}
-
 TEST(TestOpeningFromRegister, a_closed_gripper_settling_short_of_closed_register_reads_slightly_open)
 {
    EXPECT_NEAR(openingFromRegister(228, k2F85).value(), 0.00075, 1e-5);
@@ -295,15 +293,6 @@ TEST(TestOpeningFromRegister, rejects_a_profile_with_no_register_band)
    broken.closedPosition = broken.openPosition;
    EXPECT_FALSE(openingFromRegister(broken.openPosition, broken).has_value());
    EXPECT_FALSE(openingFromRegister(255, broken).has_value());
-}
-
-TEST(TestOpeningFromRegister, inside_the_band_a_position_read_back_commands_the_same_value)
-{
-   for(int count = k2F85.openPosition; count <= k2F85.closedPosition; ++count)
-   {
-      const auto raw = static_cast<uint8_t>(count);
-      EXPECT_EQ(openingToRegister(openingFromRegister(raw, k2F85).value(), k2F85), raw) << "count " << count;
-   }
 }
 
 TEST(TestEffortToRegister, the_unit_span_maps_onto_the_whole_byte)
