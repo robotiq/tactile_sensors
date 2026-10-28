@@ -54,6 +54,7 @@ const std::vector<ShippedProfile>& shippedProfiles()
       {"k2F85", profiles::k2F85, 0.020, 0.150, 0.085, 3, 230, 0.0425, 117}, // 113.5 steps
       {"k2F140", profiles::k2F140, 0.030, 0.250, 0.140, 3, 230, 0.070, 117}, // 113.5 steps
       {"kHandE", profiles::kHandE, 0.020, 0.150, 0.050, 3, 250, 0.025, 127}, // 123.5 steps
+      {"kHandEC10", profiles::kHandEC10, 0.014, 0.107, 0.040, 3, 250, 0.020, 127}, // 123.5 steps
    };
    return kShipped;
 }

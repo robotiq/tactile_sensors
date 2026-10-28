@@ -3,7 +3,7 @@
 
 <!-- /docs-site:exclude -->
 
-C++ driver with functions to control `Robotiq` Adaptive Grippers: 2F85, 2F140 and Hand-E. It allows high communication frequency.
+C++ driver with functions to control `Robotiq` Adaptive Grippers: 2F85, 2F140, Hand-E and Hand-E C10. It allows high communication frequency.
 
 > **Note:**
 > With the default baudrate of the gripper the maximum achievable communication

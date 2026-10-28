@@ -65,6 +65,23 @@ inline constexpr DeviceProfile k2F140{0.030, 0.250, 0.0, 0.140, 3, 230};
 //! \warning Assumes that the gripper is in parallel-finger mode.
 inline constexpr DeviceProfile kHandE{0.020, 0.150, 0.0, 0.050, 3, 250};
 
+//! \ingroup units
+//! \brief The profile for the Hand-E C10 (three concentric fingers)
+//!
+//! Opening is the diameter between the fingertips: 0.040 m at rPR 0 (manual
+//! 4.3.4), the same 0.16 mm per count as the manual's diametral resolution.
+//! Speed is the manual's 14 to 107 mm/s finger speed, read as the rate the
+//! opening changes, as on the other models; that reading is not confirmed
+//! on a C10.
+//!
+//! \warning openPosition and closedPosition are NOT measured: they are the
+//!          Hand-E's (3 and 250), which the C10's 40 mm over 0.16 mm per count
+//!          agrees with to within a count. Measure them on a C10 as described
+//!          on DeviceProfile before relying on position conversions.
+//!
+//! \warning Assumes that the gripper is in parallel-finger mode.
+inline constexpr DeviceProfile kHandEC10{0.014, 0.107, 0.0, 0.040, 3, 250};
+
 } // namespace profiles
 
 } // namespace Robotiq

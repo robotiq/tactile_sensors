@@ -157,7 +157,7 @@ It works with gripper profiles which gather gripper specifications and SI
 units conversion functions. The mappings are linear and approximate.
 
 Some gripper profiles are provided for convenience: `profiles::k2F85`,
-`profiles::k2F140` and `profiles::kHandE`, each for the standard fingers. You
+`profiles::k2F140`, `profiles::kHandE` and `profiles::kHandEC10`, each for the standard fingers. The C10's register endpoints are the Hand-E's, not yet measured on a C10. You
 may have to create your own profile if for example you are using custom fingers
 and the close and open position are different from the default profiles.
 
