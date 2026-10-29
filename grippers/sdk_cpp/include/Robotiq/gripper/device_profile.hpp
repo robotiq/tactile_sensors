@@ -65,6 +65,12 @@ inline constexpr DeviceProfile k2F140{0.030, 0.250, 0.0, 0.140, 3, 230};
 //! \warning Assumes that the gripper is in parallel-finger mode.
 inline constexpr DeviceProfile kHandE{0.020, 0.150, 0.0, 0.050, 3, 250};
 
+//! \ingroup units
+//! \brief The measured profile for the Hand-E C10
+//!
+//! Opening is the diameter between the three fingertips.
+inline constexpr DeviceProfile kHandEC10{0.014, 0.107, 0.0, 0.040, 3, 250};
+
 } // namespace profiles
 
 } // namespace Robotiq
