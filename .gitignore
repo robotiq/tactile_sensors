@@ -5,4 +5,4 @@ temp_files/
 .claude/
 DEPENDENCIES.md
 
-.venv/
+.venv/__pycache__/
