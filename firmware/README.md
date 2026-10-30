@@ -82,6 +82,22 @@ was detected as another one, or couldn't be detected at all.
 7. Checks the chip again against the bootloader, flashes the firmware,
    verifies the application checksum and exits the bootloader
 
+## Tests
+
+`tests/` runs the script against a simulated hub: no hardware, `hidapi` or
+`pyserial` needed. It covers firmware selection, `.cyacd` parsing, the reply
+parser, the hardware revision detection, every refusal of the command line,
+the bootloader wait and flashing. GitHub Actions runs it on every change to
+`firmware/`.
+
+```
+pip install pytest
+python -m pytest firmware/tests
+```
+
+It can't catch what only real hardware shows (reset times, USB permissions):
+test on a hub of each hardware revision before releasing.
+
 ## License
 
 `bootloader_host.py` is a derivative of
