@@ -65,11 +65,15 @@ DEVICE_INFO_HUB_TYPE = 0x03
 DEVICE_INFO_HUB_SERIAL_PREFIX = b"TH1"
 
 # The hub and its fingers always share the same hardware revision, and each revision runs its own
-# firmware family (major version). Finger serial numbers start with 21xxx on 2.1 and 22xxx on 2.2.
+# firmware family (major version). Read it from the finger label: TSF140-21xxx is 2.1, TSF140-22xxx is 2.2.
 FIRMWARE_FAMILY = {
     "2.1": 1,
     "2.2": 2,
 }
+HW_REV_HINT = "Read it from the finger label: TSF140-21xxx is 2.1, TSF140-22xxx is 2.2."
+
+# The hub takes a while to reset after USB_COMMAND_ENTER_BOOTLOADER: about 22 s measured on a hub running 2.2.0
+BOOTLOADER_WAIT_TIMEOUT = 30
 
 
 def parse_version(version_str):
@@ -444,21 +448,35 @@ def request_usb_reply(serial_device, command, timeout=1.0):
     while time.time() < deadline:
         buffer += serial_device.read(serial_device.in_waiting or 1)
 
-        # Parse every complete packet in the buffer, dropping bytes until a start byte
+        # Parse every complete packet in the buffer, dropping bytes until a start byte. The flush above can cut a
+        # stream packet, and a 0x9A in its tail would be taken as a header with a bogus length: only accept a header
+        # carrying the command we asked for, otherwise drop one byte and rescan.
         while True:
             start = buffer.find(USB_PACKET_START_BYTE)
             if start < 0:
                 buffer.clear()
                 break
             del buffer[:start]
+            if len(buffer) >= 3 and buffer[2] != command:
+                del buffer[:1]
+                continue
             if len(buffer) < 4 or len(buffer) < 4 + buffer[3]:
                 break
-            packet_command, data = buffer[2], bytes(buffer[4:4 + buffer[3]])
-            del buffer[:4 + buffer[3]]
-            if packet_command == command:
-                return data
+            return bytes(buffer[4:4 + buffer[3]])
 
     return None
+
+
+def drain_input(serial_device, quiet=0.05, limit=0.5):
+    """Reads and discards input until the port stays quiet for `quiet` seconds, for at most `limit` seconds."""
+    deadline = time.time() + limit
+    last_data = time.time()
+    while time.time() < deadline and time.time() - last_data < quiet:
+        if serial_device.in_waiting:
+            serial_device.read(serial_device.in_waiting)
+            last_data = time.time()
+        else:
+            time.sleep(0.005)
 
 
 def read_hub_device_info(serial_device):
@@ -484,11 +502,12 @@ def read_hub_device_info(serial_device):
 def detect_hardware_revision(serial_device, old_vid_pid):
     """Detects the hardware revision of a Master Hub running its application.
 
-    :returns: (hardware revision or None if it can't be told, firmware version running or None)
+    :returns: hardware revision, or None if it can't be told
     """
-    # Stop any sensor stream left running so it doesn't hide the replies
+    # Stop any sensor stream left running so it doesn't hide the replies. The hub doesn't ack this command, so
+    # wait for the packets already in flight to land, then the port to go quiet.
     serial_device.write(make_usb_packet(USB_COMMAND_AUTOSEND_ASYNC_SENSORS, b"\x00"))
-    time.sleep(0.1)
+    drain_input(serial_device)
 
     reply = request_usb_reply(serial_device, USB_COMMAND_GET_FIRMWARE_VERSION)
     running_version = parse_version(reply.split(b"\x00")[0].decode("ascii", "replace")) if reply else None
@@ -496,14 +515,14 @@ def detect_hardware_revision(serial_device, old_vid_pid):
 
     # The old VID/PID predates hardware revision 2.2
     if old_vid_pid:
-        return "2.1", running_version
+        return "2.1"
 
     if running_version is None:
         sys.stderr.write("Error: The device did not report its firmware version.\n")
-        return None, None
+        return None
 
     if running_version[0] == FIRMWARE_FAMILY["2.1"]:
-        return "2.1", running_version
+        return "2.1"
 
     if running_version[0] == FIRMWARE_FAMILY["2.2"]:
         status, info = read_hub_device_info(serial_device)
@@ -515,11 +534,11 @@ def detect_hardware_revision(serial_device, old_vid_pid):
         else:
             sys.stderr.write("Error: The hub EEPROM holds unexpected device info (hardware version {}, "
                              "serial number {}).\n".format(info[0].hex(), info[1].decode("ascii", "replace")))
-            return None, running_version
-        return "2.2", running_version
+            return None
+        return "2.2"
 
     sys.stderr.write("Error: Unknown firmware family {}.\n".format(format_version(running_version)))
-    return None, running_version
+    return None
 
 
 def confirm_force(reasons):
@@ -530,12 +549,38 @@ def confirm_force(reasons):
         sys.stderr.write("  - {}\n".format(reason))
     sys.stderr.write("Flashing firmware made for another hardware revision can leave the hub and its fingers\n"
                      "unusable. The hub also reprograms the fingers with the firmware it carries.\n"
-                     "Only continue if Robotiq support told you to.\n")
+                     "Only continue if Robotiq support told you to.\n"
+                     "Type FORCE to continue: ")
+    sys.stderr.flush()
     try:
-        answer = input("Type FORCE to continue: ")
+        answer = input("")
     except EOFError:
         answer = ""
     return answer.strip() == "FORCE"
+
+
+def load_firmware(path):
+    """Reads and parses a .cyacd file, or exits when it can't be read or is corrupt."""
+    try:
+        with open(path, "r") as firmware_file:
+            firmware = Cyacd(firmware_file)
+            firmware.parse()
+    except (OSError, ValueError, IndexError, AssertionError) as error:
+        sys.stderr.write("Error: Can't read firmware file {}: {}. Nothing was flashed.\n".format(
+            path, str(error) or "corrupt file"))
+        sys.exit(1)
+    return firmware
+
+
+def wait_for_bootloader(vid, pid, timeout=BOOTLOADER_WAIT_TIMEOUT, interval=0.5):
+    """Polls for the bootloader HID device, returns True once it is enumerated, False after timeout seconds."""
+    deadline = time.time() + timeout
+    while True:
+        if any(device["vendor_id"] == vid and device["product_id"] == pid for device in hid.enumerate()):
+            return True
+        if time.time() >= deadline:
+            return False
+        time.sleep(interval)
 
 
 def main():
@@ -547,8 +592,8 @@ def main():
     parser.add_argument("--latest", action="store_true",
                         help="Kept for compatibility: flashing the latest firmware is now the default")
     parser.add_argument("--hw-rev", choices=sorted(FIRMWARE_FAMILY), default=None,
-                        help="Hardware revision, required when the hub is already in its bootloader "
-                             "(finger serial numbers: 21xxx = 2.1, 22xxx = 2.2)")
+                        help="Hardware revision of the hub, 2.1 or 2.2 (e.g. --hw-rev 2.2). Required when the hub "
+                             "is already in its bootloader and nothing can be detected. " + HW_REV_HINT)
     parser.add_argument("--force", action="store_true",
                         help="Skip the hardware compatibility check (dangerous, asks for confirmation)")
     args = parser.parse_args()
@@ -556,28 +601,32 @@ def main():
     vid = BOOTLOADER_VID
     pid = BOOTLOADER_PID
 
-    ret = False
-
     # Search for a device in application mode
     old_vid_pid = False
     serial_device = open_serial_by_vid_pid(MASTER_HUB_APP_VID, MASTER_HUB_APP_PID)
     if not serial_device:
         serial_device = open_serial_by_vid_pid(MASTER_HUB_APP_VID_OLD, MASTER_HUB_APP_PID_OLD)
         old_vid_pid = serial_device is not None
+    app_running = bool(serial_device and serial_device.is_open)
 
     # Detect the hardware revision while the application is still running
     hw_rev = None
-    if serial_device and serial_device.is_open:
+    if app_running:
         sys.stderr.write("Device found on {}.\n".format(serial_device.port))
         serial_device.timeout = 0.1
-        hw_rev, _ = detect_hardware_revision(serial_device, old_vid_pid)
+        hw_rev = detect_hardware_revision(serial_device, old_vid_pid)
     else:
         sys.stderr.write("No device in application mode found. The hardware revision can't be detected.\n")
 
+    # An explicit --hw-rev wins, but needs --force when it contradicts the detection or stands in for a failed one
     force_reasons = []
-    if hw_rev and args.hw_rev and hw_rev != args.hw_rev:
-        force_reasons.append("--hw-rev {} doesn't match the detected hardware revision {}".format(args.hw_rev, hw_rev))
-    hw_rev = hw_rev or args.hw_rev
+    if args.hw_rev:
+        if hw_rev and hw_rev != args.hw_rev:
+            force_reasons.append("--hw-rev {} doesn't match the detected hardware revision {}".format(args.hw_rev, hw_rev))
+        elif app_running and hw_rev is None:
+            force_reasons.append("the hardware revision of the running hub couldn't be detected, so --hw-rev {} "
+                                 "can't be checked".format(args.hw_rev))
+        hw_rev = args.hw_rev
     if hw_rev:
         sys.stderr.write("Hardware revision: {}\n".format(hw_rev))
 
@@ -594,8 +643,7 @@ def main():
                 format_version(firmware_version), hw_rev, FIRMWARE_FAMILY[hw_rev]))
     else:
         if hw_rev is None:
-            sys.stderr.write("Error: Unknown hardware revision. Pass --hw-rev 2.1 or 2.2 "
-                             "(finger serial numbers: 21xxx = 2.1, 22xxx = 2.2).\n")
+            sys.stderr.write("Error: Unknown hardware revision. Pass --hw-rev 2.1 or 2.2. {}\n".format(HW_REV_HINT))
             sys.exit(1)
         firmware_file = find_latest_firmware(FIRMWARE_FAMILY[hw_rev])
         if not firmware_file:
@@ -604,6 +652,14 @@ def main():
             sys.exit(1)
 
     sys.stderr.write("Firmware: {}\n".format(os.path.basename(firmware_file)))
+
+    # Read the firmware and check it is for this chip before rebooting, so a bad file can't strand the hub
+    firmware = load_firmware(firmware_file)
+    if (firmware.silicon_id != JTAG_ID) or (firmware.silicon_revision != DEVICE_REV):
+        sys.stderr.write("Error: Firmware is for silicon 0x{:08X} rev {}, the Master Hub is 0x{:08X} rev {}. "
+                         "Nothing was flashed.\n".format(firmware.silicon_id, firmware.silicon_revision,
+                                                         JTAG_ID, DEVICE_REV))
+        sys.exit(1)
 
     if force_reasons:
         if not args.force:
@@ -615,68 +671,52 @@ def main():
             sys.stderr.write("Aborted. Nothing was flashed.\n")
             sys.exit(1)
 
-    filename = firmware_file
-
     # Reboot the device into bootloader
-    if serial_device and serial_device.is_open:
-        sys.stderr.write("Rebooting into bootloader...\n")
+    if app_running:
+        if sys.platform.startswith("linux") and os.geteuid() != 0:
+            sys.stderr.write("Warning: Not running as root. On Linux the bootloader USB device is usually root-only: "
+                             "if it can't be opened, the hub stays in its bootloader. Run with sudo or add a udev "
+                             "rule (see README.md).\n")
+        sys.stderr.write("Rebooting into bootloader, this takes about 20 seconds...\n")
         serial_device.write(make_usb_packet(USB_COMMAND_ENTER_BOOTLOADER))
         serial_device.close()
-        time.sleep(1)
     else:
         sys.stderr.write("Looking for bootloader directly...\n")
 
-    # Wait for the bootloader HID device to appear (may take a few seconds after reboot)
-    found = False
-    for attempt in range(5):
-        for enumerated in hid.enumerate():
-            if enumerated["vendor_id"] == vid and enumerated["product_id"] == pid:
-                found = True
-                break
-        if found:
-            break
-        sys.stderr.write("Waiting for bootloader device to appear (attempt {}/5)...\n".format(attempt + 1))
-        time.sleep(1)
-
-    if found:
-        # Connect to the device's bootloader
-        try:
-            bootloader = Bootloader(vid, pid)
-        except OSError:
-            sys.exit(1)
-        ret = bootloader.enter_bootloader()
-        if not ret:
-            sys.stderr.write("Unable to communicate with bootloader!\n")
-            sys.exit(1)
-
-        # Load the firmware file
-        firmware = Cyacd(open(filename, 'r'))
-        firmware.parse()
-
-        # Make sure the firmware is being flashed to the correct chip
-        if (bootloader.jtag_id != firmware.silicon_id) or (bootloader.device_revision != firmware.silicon_revision):
-            sys.stderr.write("Error: Firmware is for silicon 0x{:08X} rev {}, device is 0x{:08X} rev {}. Nothing was flashed.\n".format(
-                firmware.silicon_id, firmware.silicon_revision, bootloader.jtag_id, bootloader.device_revision))
-            bootloader.exit_bootloader()
-            sys.exit(1)
-
-        sys.stderr.write("Programming firmware application...\n")
-        ret = bootloader.flash(firmware)
-        if not ret:
-            sys.stderr.write("Error while programming! The device stays in bootloader: run again with --hw-rev.\n")
-            sys.exit(1)
-
-        if not bootloader.verify_checksum():
-            sys.stderr.write("Error: Application checksum is invalid! The device stays in bootloader: run again with --hw-rev.\n")
-            sys.exit(1)
-
-        bootloader.exit_bootloader()
-
-        sys.stderr.write("Device programmed successfully!\n")
-
-    else:
-        sys.stderr.write("Bootloader not found!\n")
+    if not wait_for_bootloader(vid, pid):
+        sys.stderr.write("Bootloader not found after {} seconds!\n".format(BOOTLOADER_WAIT_TIMEOUT))
+        if app_running:
+            sys.stderr.write("If the hub has reached its bootloader since, run again with --hw-rev {}.\n".format(hw_rev))
         sys.exit(1)
+
+    # Connect to the device's bootloader
+    try:
+        bootloader = Bootloader(vid, pid)
+    except OSError:
+        sys.exit(1)
+    if not bootloader.enter_bootloader():
+        sys.stderr.write("Unable to communicate with bootloader!\n")
+        sys.exit(1)
+
+    # Make sure the firmware is being flashed to the correct chip
+    if (bootloader.jtag_id != firmware.silicon_id) or (bootloader.device_revision != firmware.silicon_revision):
+        sys.stderr.write("Error: Firmware is for silicon 0x{:08X} rev {}, device is 0x{:08X} rev {}. Nothing was flashed.\n".format(
+            firmware.silicon_id, firmware.silicon_revision, bootloader.jtag_id, bootloader.device_revision))
+        bootloader.exit_bootloader()
+        sys.exit(1)
+
+    sys.stderr.write("Programming firmware application...\n")
+    if not bootloader.flash(firmware):
+        sys.stderr.write("Error while programming! The device stays in bootloader: run again with --hw-rev.\n")
+        sys.exit(1)
+
+    if not bootloader.verify_checksum():
+        sys.stderr.write("Error: Application checksum is invalid! The device stays in bootloader: run again with --hw-rev.\n")
+        sys.exit(1)
+
+    bootloader.exit_bootloader()
+
+    sys.stderr.write("Device programmed successfully!\n")
 
 
 if __name__ == "__main__":
