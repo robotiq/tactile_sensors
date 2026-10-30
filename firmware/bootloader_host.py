@@ -450,7 +450,8 @@ def request_usb_reply(serial_device, command, timeout=1.0):
 
         # Parse every complete packet in the buffer, dropping bytes until a start byte. The flush above can cut a
         # stream packet, and a 0x9A in its tail would be taken as a header with a bogus length: only accept a header
-        # carrying the command we asked for, otherwise drop one byte and rescan.
+        # carrying the command we asked for, otherwise drop one byte and rescan. The CRC byte can't help: firmware
+        # 1.1.5 and later send 0, but up to 1.1.3 it is whatever was on the hub's stack.
         while True:
             start = buffer.find(USB_PACKET_START_BYTE)
             if start < 0:

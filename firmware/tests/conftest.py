@@ -56,6 +56,7 @@ class Hub:
         self.device_info = device_info()  # 0xE4 reply data, None for no reply
         self.flush_leftover = b""         # bytes the input buffer still holds right after a flush
         self.before_reply = b""           # bytes sent ahead of each reply
+        self.reply_crc = 0x00             # CRC byte of the replies: 0 since 1.1.5, stack garbage up to 1.1.3
         self.reset_delay = 22.0           # seconds from 0xE2 to the bootloader enumerating, None for never
         self.bootloader_at = None
         self.hid_open_error = False
@@ -104,7 +105,7 @@ class FakeSerial:
                  bh.USB_COMMAND_GET_DEVICES_INFO: self.hub.device_info}.get(command)
         if reply is not None:
             self.buffer += self.hub.before_reply
-            self.buffer += bytes([bh.USB_PACKET_START_BYTE, 0x00, command, len(reply)]) + reply
+            self.buffer += bytes([bh.USB_PACKET_START_BYTE, self.hub.reply_crc, command, len(reply)]) + reply
         if command == bh.USB_COMMAND_ENTER_BOOTLOADER and self.hub.reset_delay is not None:
             self.hub.bootloader_at = self.hub.clock.now + self.hub.reset_delay
 

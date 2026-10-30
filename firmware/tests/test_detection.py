@@ -22,6 +22,13 @@ def test_reply_is_found_behind_a_cut_stream_packet_holding_a_start_byte(hub, ser
     assert bh.request_usb_reply(serial_device, bh.USB_COMMAND_GET_FIRMWARE_VERSION) == b"2.2.0\x00"
 
 
+def test_reply_with_a_non_zero_crc_byte_is_found(hub, serial_device):
+    # Firmware up to 1.1.3 sends whatever was on its stack as the CRC byte
+    hub.reply_crc = 0xA7
+
+    assert bh.request_usb_reply(serial_device, bh.USB_COMMAND_GET_FIRMWARE_VERSION) == b"2.2.0\x00"
+
+
 def test_no_reply_times_out(hub, serial_device):
     hub.version = None
 
