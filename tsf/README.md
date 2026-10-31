@@ -9,7 +9,7 @@ The TSF-85 provides per-finger data at 1 kHz over USB:
 
 For generating synthetic tactile maps of the sensor, checkout this [TSF-85 Isaac Sim Extension](https://github.com/Lab-CORO/TSF-85).
 
-## Repository Structure
+## Structure
 
 ```
 ├── sdk_cpp/             C++ SDK for direct sensor access
@@ -23,7 +23,7 @@ For generating synthetic tactile maps of the sensor, checkout this [TSF-85 Isaac
 Lightweight C++ library with a threaded, callback-based API. A good starting point for developing with the tactile sensors. Includes a terminal visualizer (`Quick_start.cpp`) and diagnostic tools. See [sdk_cpp/README.md](sdk_cpp/README.md).
 
 ```bash
-cd sdk_cpp
+cd tsf/sdk_cpp
 bash setup_and_run.sh
 ```
 
@@ -35,13 +35,13 @@ Python scripts for quick connection testing and a browser-based sensor viewer. N
 
 Linux and macOS:
 ```bash
-cd sensor_quickstart
+cd tsf/sensor_quickstart
 ./run_quick_connect.sh
 ```
 
 Windows:
 ```batch
-cd sensor_quickstart
+cd tsf/sensor_quickstart
 run_quick_connect.bat
 ```
 
@@ -49,13 +49,13 @@ run_quick_connect.bat
 
 Linux and macOS:
 ```bash
-cd sensor_quickstart
+cd tsf/sensor_quickstart
 ./run_web_viewer.sh
 ```
 
 Windows:
 ```batch
-cd sensor_quickstart
+cd tsf/sensor_quickstart
 run_web_viewer.bat
 ```
 
@@ -75,7 +75,7 @@ Platform utilities for device setup:
 
 ## License
 
-This project is licensed under the BSD 3-Clause License. See [LICENSE](LICENSE) for details.
+This project is licensed under the BSD 3-Clause License. See [LICENSE](../LICENSE) for details.
 
 **Exception:** `firmware/bootloader_host.py` is a derivative of
 [cyrozap/Cypress-HID-Bootloader-Host](https://github.com/cyrozap/Cypress-HID-Bootloader-Host)

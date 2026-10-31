@@ -6,13 +6,13 @@ Lightweight cross-platform tool to test TSF-85 connections.
 
 ### Linux
 ```bash
-cd sensor_quickstart
+cd tsf/sensor_quickstart
 ./run_quick_connect.sh
 ```
 
 ### Windows
 ```batch
-cd sensor_quickstart
+cd tsf/sensor_quickstart
 run_quick_connect.bat
 ```
 
@@ -26,13 +26,13 @@ A browser-based dashboard: tactile heatmaps, dynamic time-series with FFT, IMU p
 
 ### Linux and macOS
 ```bash
-cd sensor_quickstart
+cd tsf/sensor_quickstart
 ./run_web_viewer.sh
 ```
 
 ### Windows
 ```batch
-cd sensor_quickstart
+cd tsf/sensor_quickstart
 run_web_viewer.bat
 ```
 
