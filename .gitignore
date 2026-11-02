@@ -6,3 +6,4 @@ temp_files/
 DEPENDENCIES.md
 
 .venv/
+.idea/

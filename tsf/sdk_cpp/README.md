@@ -282,7 +282,7 @@ Your callback() <-------           Call callback()
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the BSD 3-Clause conditions are met.
 
-See [LICENSE](../LICENSE) for details.
+See [LICENSE](../../LICENSE) for details.
 
 ## Credits
 

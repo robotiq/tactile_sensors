@@ -1,0 +1,84 @@
+# TSF-85 Tactile Sensor
+
+SDK, sensor I/O, and quickstart tools for the Robotiq TSF-85 tactile sensor.
+
+The TSF-85 provides per-finger data at 1 kHz over USB:
+- **28-element tactile array** (7x4 grid) per finger — updated at 60 Hz
+- **IMU** (accelerometer, gyroscope, magnetometer)
+- **Dynamic tactile** sensor
+
+For generating synthetic tactile maps of the sensor, checkout this [TSF-85 Isaac Sim Extension](https://github.com/Lab-CORO/TSF-85).
+
+## Structure
+
+```
+├── sdk_cpp/             C++ SDK for direct sensor access
+├── sensor_quickstart/   Python quick-connect and web viewer
+├── firmware/            Standalone GPL-3.0 bootloader/flashing tool (see firmware/LICENSE)
+└── utils/               Device setup and platform utilities
+```
+
+### [sdk_cpp](sdk_cpp/)
+
+Lightweight C++ library with a threaded, callback-based API. A good starting point for developing with the tactile sensors. Includes a terminal visualizer (`Quick_start.cpp`) and diagnostic tools. See [sdk_cpp/README.md](sdk_cpp/README.md).
+
+```bash
+cd tsf/sdk_cpp
+bash setup_and_run.sh
+```
+
+### [sensor_quickstart](sensor_quickstart/)
+
+Python scripts for quick connection testing and a browser-based sensor viewer. No build step required. See [sensor_quickstart/README.md](sensor_quickstart/README.md).
+
+**Terminal monitor:**
+
+Linux and macOS:
+```bash
+cd tsf/sensor_quickstart
+./run_quick_connect.sh
+```
+
+Windows:
+```batch
+cd tsf/sensor_quickstart
+run_quick_connect.bat
+```
+
+**Web viewer** (real-time heatmaps, dynamic FFT, IMU plots — opens in browser at `http://localhost:8080`):
+
+Linux and macOS:
+```bash
+cd tsf/sensor_quickstart
+./run_web_viewer.sh
+```
+
+Windows:
+```batch
+cd tsf/sensor_quickstart
+run_web_viewer.bat
+```
+
+### [utils](utils/)
+
+Platform utilities for device setup:
+- **Linux**: udev rules, device detection, permission scripts
+- **Windows**: WSL, USB passthrough, Docker Desktop setup
+
+## Requirements
+
+| Component | Dependencies |
+|-----------|-------------|
+| sdk_cpp | C++11 compiler, CMake 3.10+, libserialport |
+| sensor_quickstart | Python 3.10+ (installed by the launch scripts if missing) |
+| tactile_sensor_ui | Qt, CMake (or Docker) |
+
+## License
+
+This project is licensed under the BSD 3-Clause License. See [LICENSE](../LICENSE) for details.
+
+**Exception:** `firmware/bootloader_host.py` is a derivative of
+[cyrozap/Cypress-HID-Bootloader-Host](https://github.com/cyrozap/Cypress-HID-Bootloader-Host)
+and is licensed under the GNU General Public License v3.0, not BSD-3-Clause. See
+[firmware/LICENSE](firmware/LICENSE). It is a standalone firmware-flashing tool;
+the SDK and other components neither import nor link it.
