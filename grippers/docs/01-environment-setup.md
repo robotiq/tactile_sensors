@@ -9,7 +9,7 @@ pulls in no third-party library.
 [![Environment setup walkthrough](https://img.youtube.com/vi/J4jhFiG1VNE/0.jpg)](https://youtu.be/J4jhFiG1VNE)
 
 ## Bring the SDK into your project
-Add the **grippers** complete repository (or just `sdk_cpp/`) as a git submodule inside your own project.
+Add the **robotiq-sdk** repository as a git submodule inside your own project. The grippers SDK is its `grippers/` folder; a submodule always brings the whole repository, and the SDK's CMake reads the version from the repository's root `VERSION` file.
 
 Navigate to the project folder:
 
@@ -22,22 +22,22 @@ git init
 Add the sdk as a submodule of your project using git:
 
 ```bash
-git submodule add https://github.com/robotiq/grippers third_party/grippers
+git submodule add https://github.com/robotiq/robotiq-sdk third_party/robotiq-sdk
 ```
 
-This creates a folder named "grippers" inside the "third_party" folder of your project.
+This creates a folder named "robotiq-sdk" inside the "third_party" folder of your project. The grippers SDK is in its `grippers/` folder.
 
 Check out the latest release (Linux) :
 
 ```bash
 # 1. Navigate into the submodule
-cd third_party/grippers
+cd third_party/robotiq-sdk
 
 # 2. Fetch all the latest release tags
 git fetch --tags
 
 # 3. Find the most recent tag and save it to a variable
-LATEST_TAG=$(git describe --tags $(git rev-list --tags --max-count=1))
+LATEST_TAG=$(git describe --tags --match 'v*' $(git rev-list --tags='v*' --max-count=1))
 
 # 4. Check out that specific version
 git checkout $LATEST_TAG
@@ -46,9 +46,9 @@ git checkout $LATEST_TAG
 Check out the latest release (Windows) :
 
 ```PowerShell
-cd third_party\grippers
+cd third_party\robotiq-sdk
 git fetch --tags
-$LatestTag = git tag --sort=-v:refname | Select-Object -First 1
+$LatestTag = git tag -l "v*" --sort=-v:refname | Select-Object -First 1
 git checkout $LatestTag
 ```
 
@@ -57,11 +57,11 @@ git checkout $LatestTag
 > You can later on update the checkout version.
 >
 > ```sh
-> cd third_party/grippers
+> cd third_party/robotiq-sdk
 > git fetch
 > git checkout <new-tag-or-commit>
 > cd ../..
-> git add third_party/grippers
+> git add third_party/robotiq-sdk
 > ```
 
 The SDK's own `CMakeLists.txt` also exposes a few build-configuration
@@ -142,7 +142,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # 4. Include the third-party gripper library directory
-add_subdirectory(third_party/grippers/sdk_cpp)
+add_subdirectory(third_party/robotiq-sdk/grippers/sdk_cpp)
 
 # 5. Tell CMake to create your executable program ("quick_start") from main.cpp
 add_executable(quick_start main.cpp)
@@ -194,8 +194,8 @@ the examples it ships — no project of your own needed yet. Clone it
 anywhere; this is a throwaway check, not the copy you vendor.
 
 ```sh
-git clone https://github.com/robotiq/grippers
-cmake -S grippers/sdk_cpp -B build -DCMAKE_BUILD_TYPE=Release
+git clone https://github.com/robotiq/robotiq-sdk
+cmake -S robotiq-sdk/grippers/sdk_cpp -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release -j
 ```
 
@@ -332,12 +332,12 @@ in detail).
 | `GRIPPERS_BUILD_DEFAULT_SERIAL` | follows `GRIPPERS_HOSTED` | Builds the OS-backed `DefaultSerial` (termios on Linux/macOS, the Win32 comm API on Windows) and the `ConnectionConfig`-based constructors that use it. |
 
 "Top-level" means configuring `sdk_cpp` directly
-(`cmake -S sdk_cpp -B build ...`) rather than through
+(`cmake -S sdk_cpp -B build ...`, from `grippers/`) rather than through
 `add_subdirectory()` — that's the case when building the SDK repository
 itself, not when consuming it, so it doesn't apply to the
 [vendoring setup](#bring-the-sdk-into-your-project) above: when your
 own project pulls the SDK in with
-`add_subdirectory(path/to/grippers/sdk_cpp)`, GRIPPERS_BUILD_EXAMPLES,
+`add_subdirectory(path/to/robotiq-sdk/grippers/sdk_cpp)`, GRIPPERS_BUILD_EXAMPLES,
 GRIPPERS_BUILD_TESTS, and GRIPPERS_WARNINGS_AS_ERRORS all default to OFF
 automatically, so your build doesn't also compile this repo's example and
 test binaries, or break on a warning only your compiler raises; turn any

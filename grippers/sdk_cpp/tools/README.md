@@ -61,7 +61,7 @@ pseudo-code), opt out explicitly instead of leaving it unmarked:
 
 ### Running it locally
 
-From the repo root (paths are resolved relative to the current directory,
+From `grippers/` (paths are resolved relative to the current directory,
 same as CI):
 
 ```sh
