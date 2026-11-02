@@ -9,7 +9,7 @@ setters and getters.
   handling. Read alongside that guide.
 - `move_gripper` — activate, close, and open a gripper through
   `Gripper`'s typed accessors, with error handling and logging. See the
-  [walkthrough](../../docs/04-robust-example-walkthrough.md).
+  [walkthrough](../../docs/05-robust-example-walkthrough.md).
 - `exchange_log` — one CSV row per exchange cycle, taken in step with the
   cycle through `waitForExchangeCount()`: timestamp, exchange count, and the command
   and status blocks of that exchange, while the gripper opens at full
