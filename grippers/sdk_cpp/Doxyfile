@@ -50,7 +50,7 @@ XML_OUTPUT             = doxygen-xml
 QUIET                  = YES
 WARN_IF_UNDOCUMENTED   = YES
 
-# Enforced in CI (see .github/workflows/ci.yml): print every warning, then
+# Enforced in CI (see .github/workflows/grippers.yml at the robotiq-sdk root): print every warning, then
 # exit non-zero if there were any, instead of stopping at the first one.
 WARN_AS_ERROR          = FAIL_ON_WARNINGS
 

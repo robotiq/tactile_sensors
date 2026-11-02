@@ -69,7 +69,7 @@ python3 sdk_cpp/tools/check_doc_snippets.py docs/*.md
 ```
 
 This is exactly what the `doc-snippets` CI job runs
-(`.github/workflows/ci.yml`), and it works as-is in Bash (Linux/macOS, or
+(`.github/workflows/grippers.yml`), and it works as-is in Bash (Linux/macOS, or
 Git Bash on Windows) because the shell expands `docs/*.md` into the actual
 file list before `python3` ever sees it.
 
@@ -119,7 +119,7 @@ rerun the command above to confirm.
 ### Elsewhere this same convention shows up
 
 - This repo's own CI: the `doc-snippets` job in
-  `.github/workflows/ci.yml`.
+  `.github/workflows/grippers.yml`.
 - The docs website (`robotiq.github.io`) independently re-runs this exact
   script — the copy vendored in this repo at whatever commit its submodule
   is pinned to — as part of its own build (`scripts/check-doc-snippets.js`,
@@ -161,4 +161,4 @@ On a gap, it lists every offending symbol and exits non-zero:
 ```
 
 This is what the `api-docs` CI job runs right after `doxygen Doxyfile`
-(`.github/workflows/ci.yml`).
+(`.github/workflows/grippers.yml`).

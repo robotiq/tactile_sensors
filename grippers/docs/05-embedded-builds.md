@@ -79,7 +79,7 @@ because they *don't* fail loudly — they just hang:
   disassembles `libstdc++`'s `chrono.o` to find out which call your
   specific toolchain/multilib needs (see the "Assert the steady_clock
   backing" step in
-  [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) and
+  [`.github/workflows/grippers.yml`](../../.github/workflows/grippers.yml)) and
   implements it in
   [`ports/threadx/link_test/newlib_glue.c`](../sdk_cpp/ports/threadx/link_test/newlib_glue.c)
   — do the same check for your target rather than assuming.
@@ -143,7 +143,7 @@ for the full table.
 For an actual cross-compile, add your toolchain's flags on top. The
 flags this repo's CI uses to compile-check the core for a Cortex-M55
 target (from the `cortex-m55` job in
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) are a
+[`.github/workflows/grippers.yml`](../../.github/workflows/grippers.yml)) are a
 reasonable starting point:
 
 ```sh

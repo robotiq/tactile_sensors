@@ -1,10 +1,19 @@
-name: CI
+name: grippers
 
+# No path filters: grippers-ci-gate is a required check on main, and a
+# workflow skipped by a path filter would leave it pending on every PR that
+# touches only another product.
 on:
   push:
     branches: [main]
     tags: ['v*']
   pull_request:
+
+# The SDK lives in grippers/ of robotiq-sdk: every run step starts there, so
+# the paths below are relative to grippers/.
+defaults:
+  run:
+    working-directory: grippers
 
 jobs:
   build-and-test:
@@ -190,10 +199,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y doxygen graphviz
       - name: Generate API docs
         run: doxygen Doxyfile
-        working-directory: sdk_cpp
+        working-directory: grippers/sdk_cpp
       - name: Check every symbol is grouped or explicitly excluded
         run: python3 tools/check_doc_groups.py
-        working-directory: sdk_cpp
+        working-directory: grippers/sdk_cpp
 
   # Plain markdown docs (outside Doxygen's \snippet reach) opt individual
   # code fences into the same guarantee via a marker comment; see
@@ -228,8 +237,8 @@ jobs:
         with:
           name: coverage
           path: |
-            coverage.xml
-            coverage.html
+            grippers/coverage.xml
+            grippers/coverage.html
 
   # The one status check branch protection requires. Depends on every job
   # above, so the rule never has to change when jobs are added or renamed:
@@ -245,8 +254,13 @@ jobs:
   #   coverage            gcovr report
   #   api-docs            Doxygen build (WARN_AS_ERROR)
   #   doc-snippets        markdown code fences checked against tagged source
-  ci-gate:
+  grippers-ci-gate:
     if: always()
+    # No checkout in this job, so grippers/ does not exist here: run from
+    # the workspace instead of the workflow default.
+    defaults:
+      run:
+        working-directory: .
     needs: [build-and-test, cortex-m55, threadx-link, freestanding-cmake, format, coverage, api-docs, doc-snippets]
     runs-on: ubuntu-latest
     steps:
