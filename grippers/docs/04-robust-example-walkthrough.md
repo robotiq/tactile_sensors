@@ -1,0 +1,212 @@
+# Robust example walkthrough
+
+[Quick start](02-quick-start.md) shows the bare minimum to move a
+gripper and intentionally skips error handling. [`move_gripper.cpp`](../sdk_cpp/examples/move_gripper.cpp)
+is the same connect → activate → command → wait → status flow made
+robust, using the functions from [How it works](03-how-it-works.md);
+the parts every example needs — connecting, activating, moving — live
+in [`gripper_events.cpp`](../sdk_cpp/examples/gripper_events.cpp), which it calls. This
+page doesn't re-walk that flow — it covers what's different about the
+robust version and why.
+
+## Argument handling
+
+<!-- snippet: move_gripper.cpp argument-handling -->
+```cpp
+if(argc < 2)
+{
+   std::cerr << "Usage: " << argv[0] << " <port> [baudrate]\n";
+   return EXIT_FAILURE;
+}
+```
+
+The port is required; the baudrate is optional and defaults to
+`ConnectionConfig`'s own default (115200) if omitted. The accepted range
+is bounded at both ends:
+
+<!-- snippet: move_gripper.cpp baudrate-bounds -->
+```cpp
+constexpr unsigned long kMinBaudrate = 1;
+constexpr unsigned long kMaxBaudrate = 1000000;
+```
+
+When a baudrate is given, it's parsed and range-checked against those
+bounds before use:
+
+<!-- snippet: move_gripper.cpp baudrate-parse-and-check -->
+```cpp
+const unsigned long parsed = std::stoul(argv[2]);
+if(parsed < kMinBaudrate || parsed > kMaxBaudrate)
+{
+   throw std::out_of_range("baudrate outside the supported range");
+}
+```
+
+The lower bound matters: `std::stoul("-1")` doesn't throw — it silently
+wraps to a huge unsigned value that the `< kMinBaudrate` check catches.
+
+## Reporting a failed connection
+
+Constructing `Gripper` can throw (`SerialIOException` or
+`DriverException` — see [Error handling](03-how-it-works.md#error-handling)).
+`connectGripper()` catches it once, right at construction, and turns it
+into a checklist instead of a raw exception message:
+
+<!-- snippet: gripper_events.cpp connection-error-checklist -->
+```cpp
+catch(const std::exception& ex)
+{
+   std::cerr << "Error: " << ex.what() << "\n\n"
+             << "Could not open a gripper on '" << config.serial.port << "'. Check that:\n"
+             << "  - the gripper is connected and powered;\n"
+             << "  - the port name is correct (Linux /dev/ttyUSB0, macOS /dev/tty.usbserial-*, Windows COM3);\n"
+             << "  - you have permission to use it (Linux: join the 'dialout' group).\n";
+   return nullptr;
+}
+```
+
+That checklist covers the three things that actually cause this
+exception in practice: nothing plugged in, the wrong port name for the
+platform, and (Linux only) not being in the `dialout` group — see
+[Serial port notes](01-environment-setup.md#serial-port-notes).
+
+## Naming the loggers
+
+The SDK logs through an injectable `Logger`. The example creates one,
+named `"example"`, for its own narration ("Activating...", "Opening...",
+"Closing..."):
+
+<!-- snippet: move_gripper.cpp logger-example-name -->
+```cpp
+auto logger = std::make_shared<Robotiq::StderrLogger>("example");
+```
+
+...and `connectGripper()` passes a second, separately-named `"robotiq"`
+instance to the `Gripper` constructor, for the SDK's own internal logging:
+
+<!-- snippet: gripper_events.cpp logger-robotiq-name -->
+```cpp
+return std::make_unique<Gripper>(
+   config,
+   std::make_shared<Robotiq::StderrLogger>("robotiq")); // opens and starts exchanging
+```
+
+Both still write to the same stream (stderr), so this isn't about
+separating *where* the lines go — it's what keeps them told apart once
+they're there: a reader (or a log aggregator) can tell the SDK's own
+diagnostic lines apart from the example's own progress messages, instead
+of both landing unlabeled and easy to confuse with each other.
+
+## Handling a fault at activation
+
+`activateOrRecover()` handles the case where
+activation can't proceed at all because a fault is already latched:
+
+<!-- snippet: gripper_events.cpp activation-recovery -->
+```cpp
+ActivationResult activation = Robotiq::activate(gripper);
+if(activation == ActivationResult::FaultLatched)
+{
+   // Recovery releases any grip and sweeps the fingers, so the SDK
+   // never runs it implicitly; the examples have no part to drop.
+   logger.log(Robotiq::Logger::Level::Warn, "fault latched; recovering (the fingers will move)");
+   activation = Robotiq::recoverFromFault(gripper);
+}
+```
+
+<!-- snippet: gripper_events.cpp activation-final-check -->
+```cpp
+if(activation != ActivationResult::Activated && activation != ActivationResult::AlreadyActive)
+{
+   logger.log(Robotiq::Logger::Level::Error, withStatus("activation failed or timed out", gripper));
+   return false;
+}
+```
+
+## Checking SI unit conversions before asserting
+
+In `main()`, the speed and force conversions are checked before use:
+
+<!-- snippet: move_gripper.cpp speed-optional-check -->
+```cpp
+const std::optional<uint8_t> speed = Robotiq::units::speedToRegister(kSpeed, k2F85);
+const std::optional<uint8_t> force = Robotiq::units::effortToRegister(kEffort);
+if(!speed || !force)
+{
+   logger->log(Robotiq::Logger::Level::Error, "the requested speed or effort has no register value");
+   return EXIT_FAILURE;
+}
+command.speed = *speed;
+command.force = *force;
+```
+
+`moveTo()` does the same for the opening it's asked to reach:
+
+<!-- snippet: gripper_events.cpp opening-optional-check -->
+```cpp
+const std::optional<uint8_t> position = Robotiq::units::openingToRegister(openingMetres, profile);
+if(!position)
+{
+   logger.log(Robotiq::Logger::Level::Error, "the requested opening has no register value");
+   return false;
+}
+```
+
+...and for the reverse conversion, reading the settled position back out as
+an opening once motion has finished:
+
+<!-- snippet: gripper_events.cpp opening-from-register-optional-check -->
+```cpp
+const std::optional<double> opening = Robotiq::units::openingFromRegister(settled->status.position, profile);
+if(!opening)
+{
+   logger.log(Robotiq::Logger::Level::Error,
+              withStatus("the settled position has no opening in this profile", gripper));
+   return false;
+}
+```
+
+Every one of these fails closed: a bad conversion logs an error and returns
+instead of sending a register value that was never actually validated
+against the profile.
+
+## The `moveTo()` helper's three waits
+
+Sending a `GoTo` command doesn't mean the move is done, or even that
+the gripper received it. `moveTo()` waits in three stages, each
+catching a different phase of the movement sequence.
+
+<!-- snippet: gripper_events.cpp move-to-three-waits -->
+```cpp
+if(!Robotiq::setCommandAndWaitForExchange(gripper, command, 1s))
+{
+   logger.log(Robotiq::Logger::Level::Error, withStatus("no exchange carried the command", gripper));
+   return false;
+}
+// Object detection can lag the command by a few cycles: give the motion
+// a moment to start (returns early once it does). A short move can be
+// over before it is ever seen moving, so this one is only advisory.
+if(!Robotiq::waitForObjectDetection(gripper, ObjectDetection::Moving, 200ms))
+{
+   logger.log(Robotiq::Logger::Level::Debug, "no motion seen within 200 ms; it may already be done");
+}
+const std::optional<StampedExchange> settled = Robotiq::waitForMotionEnd(gripper, 5s);
+if(!settled)
+{
+   logger.log(Robotiq::Logger::Level::Error, withStatus("the motion never settled", gripper));
+   return false;
+}
+```
+
+1. **Wait for an exchange to carry the command** (`setCommandAndWaitForExchange()`) —
+   confirms the gripper actually received this command, as opposed to
+   it being lost or still in flight. A timeout here fails the move.
+2. **Wait (briefly) to see `objectDetection() == Moving`** (`waitForObjectDetection()`) —
+   advisory only, and its own timeout is *not* treated as failure.
+   `objectDetection()` can lag the command by a few exchange cycles, and
+   a short move can finish before it's ever observed mid-motion — so
+   "never saw it moving" doesn't mean anything went wrong.
+3. **Wait for the fingers to stop** (`waitForMotionEnd()`) — the
+   actual completion: either the gripper reached the requested
+   position, or it stopped early on a detected object. A timeout here
+   fails the move.
