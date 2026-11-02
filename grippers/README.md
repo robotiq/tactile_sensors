@@ -29,6 +29,12 @@ Submit here:
 
 ## Versioning
 
+The grippers SDK shares the version of the whole robotiq-sdk repository,
+kept in its root [VERSION](../VERSION) file: see "Versioning" in the
+[root README](../README.md). Releases up to 1.3.0 were made in
+[Robotiq/grippers](https://github.com/Robotiq/grippers); robotiq-sdk starts
+at 3.0.0.
+
 [Semantic versioning](https://semver.org) from 1.0.0 on: patch releases fix
 bugs, minor releases add API, and a breaking change to the documented API takes
 a major release. The documented API is what this README and the headers under

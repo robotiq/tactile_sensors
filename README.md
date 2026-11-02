@@ -11,6 +11,14 @@ Public SDKs, quickstart tools and firmware utilities for Robotiq products, one f
 
 Each product folder has its own README with requirements, build steps and quickstart commands.
 
+## Versioning
+
+The whole repository shares one version, kept in the [VERSION](VERSION) file. Every SDK's CMake project reads it, and each release tags the repository as `vX.Y.Z`. The first robotiq-sdk release is 3.0.0, above every earlier tag of the TSF-85 and grippers repositories.
+
+Versions follow [semantic versioning](https://semver.org): a patch release fixes bugs, and a minor release adds API to any SDK. A breaking change to a documented API is deprecated first, and lands only in a planned major release of the whole repository, so users move up a major version rarely. What counts as the documented API is defined in each product's README.
+
+The grippers CMake package keeps `SameMajorVersion` compatibility: `find_package(grippers 3)` accepts every 3.x release.
+
 ## License
 
 This repository is licensed under the BSD 3-Clause License. See [LICENSE](LICENSE) for details.
