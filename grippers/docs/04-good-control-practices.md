@@ -100,10 +100,10 @@ Grip an object as follows:
 - After an object is detected, do not change the position request. It
   should stay at 0 or 255. Changing the position target clears the object
   detection status and forces the gripper to retry a grip.
-- Stopping and starting the gripper (clearing and resetting
+- Stopping and starting the gripper (clearing then setting
   `ActionRequestBit::GoTo`) resets the object detection.
 - If you want to adjust the force after the gripper has detected an
-  object, reset the object detection status by clearing and resetting
+  object, reset the object detection status by clearing then setting
   `ActionRequestBit::GoTo` with the new force and speed parameters. A
   re-grip from contact cannot reach the maximum grip force, which comes
   from the impact force — but it can still increase the grip force when
@@ -119,9 +119,10 @@ Grip an object as follows:
   same. They only apply while the fingers are still moving towards the
   target. To apply new values after a stop, change the position request or
   toggle `ActionRequestBit::GoTo`.
-- Do not rely on `objectDetection()` to detect a slip during Re-grasp.
-  While the fingers move to re-grasp, it stays at
-  `ObjectDetection::DetectedWhileClosing`.
+- Do not rely on `objectDetection()` to detect a slip during Re-grasp:
+  it stays at `ObjectDetection::DetectedWhileClosing` for as long as the
+  fingers move to re-grasp. To detect a slip, watch for a change of
+  `GripperStatus::position` during that state instead.
 
 ---
 
