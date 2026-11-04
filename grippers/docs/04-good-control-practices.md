@@ -35,7 +35,8 @@ different model or custom fingers shifts them.
   path to it, rather than micromanaging it with constantly-varying position
   requests. Sending different position commands at high frequency is fine
   only when:
-  - small displacement requests are executed at slow speed; or
+  - small displacement requests (roughly 10 position counts or less — well
+    under the ~1 cm preposition gap below) are executed at slow speed; or
   - a position request of 0 or 255 is held constant once committed to a
     grip, with the high-frequency variation used only to preposition the
     fingers before that final 0/255 command.
@@ -109,11 +110,13 @@ Grip an object as follows:
   from the impact force — but it can still increase the grip force when
   the first grip was made with low speed and force, and the parameters are
   increased after object detection.
-- Understand that the Re-grasp speed is independent from the speed
-  parameter. If you want a faster Re-grasp, clear the object detection by
-  changing the position target (for example from 254 to 255) with the
-  speed and force you want. Any position change starts a new grip, with
-  the impact mechanism.
+- Understand that the Re-grasp speed follows the speed parameter only up
+  to a point: up to about 120 it matches normal motion speed, but above
+  that it does not get any faster. Raising the speed parameter further is
+  not an effective way to get a faster Re-grasp. If you want a faster
+  Re-grasp, clear the object detection by changing the position target
+  (for example from 254 to 255) with the speed and force you want. Any
+  position change starts a new grip, with the impact mechanism.
 - Speed and force changes are ignored once the fingers have stopped
   (object detected or target reached) if the position request stays the
   same. They only apply while the fingers are still moving towards the
