@@ -32,14 +32,16 @@ jobs:
           cmake --build build --config Release -j 4
 
   # The Python tools on the oldest Python the launchers accept and on a
-  # current one: byte-compile everything, then run the web viewer on
-  # synthetic data (tools/smoke_web_viewer.py).
+  # current one, on the three systems the launchers target (.sh, _mac.sh,
+  # .bat): byte-compile everything, then run the web viewer on synthetic
+  # data (tools/smoke_web_viewer.py).
   python:
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python: ['3.10', '3.13']
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

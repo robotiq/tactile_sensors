@@ -21,6 +21,7 @@ import re
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -47,14 +48,17 @@ JS_DATA_FILES = re.compile(r"""['"]([\w./-]+\.(?:bin|json))['"]""")
 
 
 def free_port_pair():
-    """A port P with P+1 also free: the viewer serves HTTP on P, websocket on P+1."""
+    """A port P with P+1 also free: the viewer serves HTTP on P, websocket on P+1.
+
+    Probed on every interface, as the viewer binds them.
+    """
     for _ in range(50):
         with socket.socket() as s:
-            s.bind(("127.0.0.1", 0))
+            s.bind(("", 0))
             port = s.getsockname()[1]
         try:
             with socket.socket() as s:
-                s.bind(("127.0.0.1", port + 1))
+                s.bind(("", port + 1))
             return port
         except OSError:
             continue
@@ -113,17 +117,31 @@ def wait_for_page(base, viewer):
             raise AssertionError(f"viewer exited early with code {viewer.returncode}")
         try:
             status, body = get(base + "/")
-            if status == 200:
-                return body.decode()
-        except OSError:
+        except OSError:  # not listening yet
             time.sleep(0.2)
+            continue
+        if status != 200:
+            raise AssertionError(f"{base}/: HTTP {status}")
+        return body.decode()
     raise AssertionError(f"no page at {base}/ after {START_TIMEOUT_S:.0f} s")
+
+
+def open_websocket(ws_url, deadline):
+    """Connect, retrying while refused: the viewer starts its websocket server
+    after its HTTP server, so the page can answer before the websocket does."""
+    while True:
+        try:
+            return connect(ws_url, open_timeout=5)
+        except OSError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.2)
 
 
 def check_frames(ws_url):
     """Read frames until every finger shows tactile data, not just zeros."""
     deadline = time.monotonic() + FRAME_TIMEOUT_S
-    with connect(ws_url, open_timeout=5) as ws:
+    with open_websocket(ws_url, deadline) as ws:
         while time.monotonic() < deadline:
             try:
                 msg = json.loads(ws.recv(timeout=max(0.1, deadline - time.monotonic())))
@@ -143,12 +161,22 @@ def check_frames(ws_url):
 def main():
     port = free_port_pair()
     base = f"http://127.0.0.1:{port}"
-    env = dict(os.environ, PYTHONUNBUFFERED="1", BROWSER="true")  # never open a browser
+    # BROWSER=true: never open a browser. UTF-8: the viewer prints dashes,
+    # which a Windows code page may not encode.
+    env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8",
+               BROWSER="true")
+    # A file, not a pipe: a viewer that prints more than a pipe holds would
+    # block on its print, and fail as "no tactile data" instead of showing
+    # what it printed.
+    log = tempfile.TemporaryFile()
     viewer = subprocess.Popen(
         [sys.executable, "quick_connect.py", "--sim", "--port", str(port)],
-        cwd=QUICKSTART, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True)
-    output = ""
+        cwd=QUICKSTART, env=env, stdout=log, stderr=subprocess.STDOUT)
+
+    def output():
+        log.seek(0)
+        return log.read().decode("utf-8", "replace")
+
     try:
         page = wait_for_page(base, viewer)
         files = check_assets(page, base)
@@ -157,10 +185,10 @@ def main():
         check_frames(f"ws://127.0.0.1:{port + 1}")
         print("websocket: tactile data on every finger")
 
-        output = viewer.communicate(timeout=EXIT_TIMEOUT_S)[0]
+        viewer.wait(timeout=EXIT_TIMEOUT_S)
         if viewer.returncode != 0:
             raise AssertionError(f"viewer exited with code {viewer.returncode}")
-        if "Traceback" in output:
+        if "Traceback" in output():
             raise AssertionError("the viewer printed a traceback")
         print("viewer exited cleanly after the last client left")
         return 0
@@ -168,14 +196,15 @@ def main():
         print(f"FAIL: {exc}", file=sys.stderr)
         if viewer.poll() is None:
             viewer.kill()
-        if not output:
-            output = viewer.communicate()[0]
+        viewer.wait()
         print("--- viewer output ---", file=sys.stderr)
-        print(output, file=sys.stderr)
+        print(output(), file=sys.stderr)
         return 1
     finally:
         if viewer.poll() is None:
             viewer.kill()
+            viewer.wait()
+        log.close()
 
 
 if __name__ == "__main__":
