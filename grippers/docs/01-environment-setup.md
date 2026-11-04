@@ -319,7 +319,7 @@ The first status read may time out once while socat connects; the SDK retries it
 adjust them when you're consuming the SDK differently: as a dependency
 that shouldn't build its own examples/tests, or on a target that
 doesn't have a hosted C++ runtime (see
-[Embedded / bare-metal builds](05-embedded-builds.md) for that case
+[Embedded / bare-metal builds](06-embedded-builds.md) for that case
 in detail).
 
 | Option | Default | What it controls |
@@ -362,3 +362,7 @@ cmake -S sdk_cpp -B build -DGRIPPERS_BUILD_DEFAULT_SERIAL=OFF
 You'd flip GRIPPERS_BUILD_DEFAULT_SERIAL off, on an otherwise-hosted desktop
 build, if you're injecting your own `Serial` — talking to the gripper
 over a TCP-to-serial bridge, say, rather than a local COM port.
+
+---
+
+**Next:** [Quick start →](02-quick-start.md)

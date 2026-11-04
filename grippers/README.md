@@ -20,8 +20,9 @@ as STM32 microcontrollers.
 - [Environment setup](docs/01-environment-setup.md)
 - [Quick start](docs/02-quick-start.md)
 - [How it works](docs/03-how-it-works.md)
-- [Robust example walkthrough](docs/04-robust-example-walkthrough.md)
-- [Embedded / bare-metal builds](docs/05-embedded-builds.md).
+- [Good control practices](docs/04-good-control-practices.md)
+- [Robust example walkthrough](docs/05-robust-example-walkthrough.md)
+- [Embedded / bare-metal builds](docs/06-embedded-builds.md).
 
 ## Feature requests and bug reports
 Submit here:

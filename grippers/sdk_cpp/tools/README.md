@@ -99,7 +99,7 @@ MISMATCH docs\02-quick-start.md:45 [quick_start.cpp qs-create-gripper] has drift
 -Robotiq::Gripper gripper = Robotiq::Gripper(config);
 +Robotiq::Gripper gripper(config);
 
-MISSING SNIPPET docs\04-robust-example-walkthrough.md:12: ```cpp fence has no <!-- snippet: --> marker (and isn't marked <!-- snippet: exempt -->)
+MISSING SNIPPET docs\05-robust-example-walkthrough.md:12: ```cpp fence has no <!-- snippet: --> marker (and isn't marked <!-- snippet: exempt -->)
 ```
 
 Fix it by editing whichever side is wrong — the markdown fence or the

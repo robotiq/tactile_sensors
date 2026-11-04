@@ -210,3 +210,7 @@ if(!settled)
    actual completion: either the gripper reached the requested
    position, or it stopped early on a detected object. A timeout here
    fails the move.
+
+---
+
+**Next:** [Embedded / bare-metal builds →](06-embedded-builds.md)

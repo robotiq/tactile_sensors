@@ -136,3 +136,7 @@ uint8_t currentPosition = gripper.getStatus().position;
 // Print retrieved status
 std::cout << "Current position : " << static_cast<int>(currentPosition) << std::endl;
 ```
+
+---
+
+**Next:** [How it works →](03-how-it-works.md)

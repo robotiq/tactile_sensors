@@ -190,7 +190,7 @@ double openingMetres = units::openingFromRegister(gripper.getStatus().position, 
 These conversions return `std::optional` and yield nothing for a quantity with
 no defensible register value, so `.value()` above is safe only because `k2F85`
 is a well-formed profile. A hand-written profile deserves a check; see
-`moveTo()` in the [Robust example walkthrough](04-robust-example-walkthrough.md#checking-si-unit-conversions-before-asserting).
+`moveTo()` in the [Robust example walkthrough](05-robust-example-walkthrough.md#checking-si-unit-conversions-before-asserting).
 
 ## Status
 
@@ -612,5 +612,9 @@ Passing your own `Logger` lets you route
 these lines — and your own application's — through one sink instead of
 two independently-timed sources that could interleave confusingly, the
 same pattern
-[`move_gripper.cpp` uses](04-robust-example-walkthrough.md#naming-the-loggers)
+[`move_gripper.cpp` uses](05-robust-example-walkthrough.md#naming-the-loggers)
 for its own narration.
+
+---
+
+**Next:** [Good control practices →](04-good-control-practices.md)
