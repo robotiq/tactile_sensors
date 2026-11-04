@@ -17,6 +17,7 @@ Exits 0 when all of that holds, 1 otherwise. Run from anywhere:
 
 import json
 import os
+import random
 import re
 import socket
 import subprocess
@@ -47,18 +48,24 @@ JS_IMPORTS = re.compile(r"""(?:\bfrom|\bimport)\s*\(?\s*['"]([^'"]+)['"]""")
 JS_DATA_FILES = re.compile(r"""['"]([\w./-]+\.(?:bin|json))['"]""")
 
 
+# Below the ephemeral ranges of Linux (32768+), macOS and Windows (49152+):
+# Windows hands out ephemeral ports in sequence, so a port next to one the
+# system just picked would go to this test's own HTTP requests before the
+# viewer could bind its websocket there.
+PORT_RANGE = (20000, 32000)
+
+
 def free_port_pair():
     """A port P with P+1 also free: the viewer serves HTTP on P, websocket on P+1.
 
     Probed on every interface, as the viewer binds them.
     """
     for _ in range(50):
-        with socket.socket() as s:
-            s.bind(("", 0))
-            port = s.getsockname()[1]
+        port = random.randrange(*PORT_RANGE)
         try:
-            with socket.socket() as s:
-                s.bind(("", port + 1))
+            for p in (port, port + 1):
+                with socket.socket() as s:
+                    s.bind(("", p))
             return port
         except OSError:
             continue
