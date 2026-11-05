@@ -3,7 +3,9 @@ debugtools/
 /.vscode/
 /tsf/**/.vscode/
 temp_files/
-/.claude/
+# Local Claude Code settings; the root skills are shared.
+/.claude/*
+!/.claude/skills/
 /tsf/**/.claude/
 DEPENDENCIES.md
 
