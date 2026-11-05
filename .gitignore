@@ -1,8 +1,10 @@
 sensor_logs/
 debugtools/
-.vscode/
+/.vscode/
+/tsf/**/.vscode/
 temp_files/
-.claude/
+/.claude/
+/tsf/**/.claude/
 DEPENDENCIES.md
 
 .venv/

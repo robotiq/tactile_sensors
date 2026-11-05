@@ -1,0 +1,354 @@
+// Copyright (c) 2026 Robotiq, Inc.
+//
+// Licensed under the BSD-3-Clause license; see LICENSE for details.
+
+// Doc-only source: every //! [tag] region below backs a \snippet reference
+// from a header's \code{.cpp} example (see EXAMPLE_PATH in ../Doxyfile).
+// Nothing here is called from main() below — main() only exists so this
+// compiles to a program; being compiled by GRIPPERS_BUILD_EXAMPLES, and thus
+// checked by every normal build, is the whole point. Concepts already
+// demonstrated by quick_start.cpp/move_gripper.cpp are tagged there instead;
+// this file is only for the ones with no other home.
+
+#include <Robotiq/gripper.hpp>
+#include <Robotiq/gripper/wait.hpp>
+#include <Robotiq/gripper/device_profile.hpp>
+#include <Robotiq/gripper/fake/gripper_factory.hpp>
+#include <Robotiq/gripper/stderr_logger.hpp>
+#include <Robotiq/gripper/units.hpp>
+
+#include <chrono>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <iostream>
+
+using namespace std::chrono_literals;
+
+void configureConnection()
+{
+   //! [configure-connection]
+   Robotiq::ConnectionConfig config;
+   config.serial.port = "/dev/ttyUSB0"; // no default; every other field below is
+   config.serial.baudrate = 115200;
+   config.serial.timeout = 500ms;
+   config.serial.latencyTimerMs = 1;
+   config.modbusSlaveAddress = 0x09;
+   config.connectionFrequency = 100.0; // Hz
+   //! [configure-connection]
+}
+
+void commandActionBits()
+{
+   //! [command-action-bits]
+   // Command object sent to the gripper.
+   Robotiq::GripperCommand command = Robotiq::GripperCommand::defaults();
+
+   // Command building blocks
+   // ACTION - Activate - rACT
+   command.action.set(Robotiq::ActionRequestBit::Activate, true);
+   // ACTION - Goto - rGTO
+   command.action.set(Robotiq::ActionRequestBit::GoTo, true);
+   // ACTION - Auto Release - rATR
+   command.action.set(Robotiq::ActionRequestBit::AutoRelease, false);
+   // ACTION - Auto Release Open Direction - rARD
+   command.action.set(Robotiq::ActionRequestBit::AutoReleaseOpenDirection, true);
+   // POSITION REQUEST - Position Request - rPR
+   command.positionRequest = 100;
+   // SPEED - Speed - rSP
+   command.speed = 255;
+   // FORCE - Force - rFR
+   command.force = 255;
+   //! [command-action-bits]
+}
+
+// Every field statusGripperStatusFields() below reads out, bundled up so
+// the function can return them all — the point of the example is the
+// nine accessor calls, not this struct.
+struct StatusFields
+{
+   Robotiq::ObjectDetection gOBJ;
+   Robotiq::ActivationState gSTA;
+   bool gGTO;
+   bool gACT;
+   Robotiq::ControllerFault kFLT;
+   Robotiq::GripperFault gFLT;
+   uint8_t gPR;
+   uint8_t gPO;
+   uint8_t gCU;
+};
+
+StatusFields statusGripperStatusFields(Robotiq::Gripper& gripper)
+{
+   //! [status-gripper-status-fields]
+   // Status object received from the gripper
+   Robotiq::GripperStatus status = gripper.getStatus();
+
+   // Status building blocks
+   // GRIPPER STATUS - Object detection - gOBJ
+   Robotiq::ObjectDetection gOBJ = status.gripperStatus.objectDetection();
+   // GRIPPER STATUS - Activation State - gSTA
+   Robotiq::ActivationState gSTA = status.gripperStatus.activationState();
+   // GRIPPER STATUS - Goto Enabled - gGTO
+   bool gGTO = status.gripperStatus.goToEnabled();
+   // GRIPPER STATUS - Activated - gACT
+   bool gACT = status.gripperStatus.activated();
+   // FAULT STATUS - Controller Fault - kFLT
+   Robotiq::ControllerFault kFLT = status.faultStatus.controllerFault();
+   // FAULT STATUS - Gripper Fault - gFLT
+   Robotiq::GripperFault gFLT = status.faultStatus.gripperFault();
+   // POS REQUEST ECHO - Position Request Echo - gPR
+   uint8_t gPR = status.positionRequestEcho;
+   // POSITION - Position - gPO
+   uint8_t gPO = status.position;
+   // CURRENT - Current - gCU
+   uint8_t gCU = status.current;
+   //! [status-gripper-status-fields]
+   return {gOBJ, gSTA, gGTO, gACT, kFLT, gFLT, gPR, gPO, gCU};
+}
+
+void objectDetectionCheck(Robotiq::Gripper& gripper)
+{
+   //! [status-object-detection-check]
+   Robotiq::ObjectDetection gOBJ = gripper.getStatus().gripperStatus.objectDetection();
+   if(gOBJ == Robotiq::ObjectDetection::Moving)
+   {
+      // fingers are still moving towards the requested position
+   }
+   //! [status-object-detection-check]
+}
+
+double normalizedPosition(Robotiq::Gripper& gripper)
+{
+   //! [normalized-position]
+   namespace units = Robotiq::units;
+
+   constexpr double kPosition = 0.75; // 0 = open, 1 = closed
+
+   Robotiq::GripperCommand command = Robotiq::GripperCommand::defaults();
+   command.positionRequest = units::normalizedToRegister(kPosition).value();
+
+   double position = units::normalizedFromRegister(gripper.getStatus().position);
+   //! [normalized-position]
+   (void)command; // built to demonstrate the conversions above; never sent in this doc-only snippet
+   return position;
+}
+
+double siUnitConversion(Robotiq::Gripper& gripper)
+{
+   //! [si-unit-conversion]
+   using Robotiq::profiles::k2F85;
+   namespace units = Robotiq::units;
+
+   constexpr double kSpeed = 0.150; // m/s
+   constexpr double kOpening = 0.040; // m
+   constexpr double kEffort = 0.5;
+
+   Robotiq::GripperCommand command = Robotiq::GripperCommand::defaults();
+   command.speed = units::speedToRegister(kSpeed, k2F85).value();
+   command.force = units::effortToRegister(kEffort).value();
+   command.positionRequest = units::openingToRegister(kOpening, k2F85).value();
+
+   double openingMetres = units::openingFromRegister(gripper.getStatus().position, k2F85).value();
+   //! [si-unit-conversion]
+   (void)command; // built to demonstrate the conversions above; never sent in this doc-only snippet
+   return openingMetres;
+}
+
+void actionRequestBits()
+{
+   //! [action-request-bits]
+   Robotiq::GripperCommand command = Robotiq::GripperCommand::defaults();
+   command.action.set(Robotiq::ActionRequestBit::GoTo); // start moving (same as set(GoTo, true))
+   command.action.set(Robotiq::ActionRequestBit::AutoRelease, false); // ...but not an emergency release
+   //! [action-request-bits]
+}
+
+//! [gripper-status-flags]
+bool gripperStatusFlags(Robotiq::Gripper& gripper)
+{
+   Robotiq::GripperStatus status = gripper.getStatus();
+   bool activated = status.gripperStatus.activated(); // gACT flag
+   bool goTo = status.gripperStatus.goToEnabled(); // gGTO flag
+   if(status.gripperStatus.activationState() == Robotiq::ActivationState::Complete
+      && status.gripperStatus.objectDetection() != Robotiq::ObjectDetection::Moving)
+   {
+      // motion has settled
+   }
+   return activated && goTo;
+}
+//! [gripper-status-flags]
+
+//! [motion-settled-example]
+void motionSettledExample(Robotiq::Gripper& gripper)
+{
+   Robotiq::GripperStatus status = gripper.getStatus();
+   if(status.gripperStatus.objectDetection() != Robotiq::ObjectDetection::Moving)
+   {
+      // motion has settled
+   }
+}
+//! [motion-settled-example]
+
+std::string statusToString(Robotiq::Gripper& gripper)
+{
+   //! [status-to-string]
+   std::string rendered = Robotiq::toString(gripper.getStatus());
+   std::cout << rendered << std::endl;
+   //! [status-to-string]
+   return rendered;
+}
+
+void faultSeverityCheck(Robotiq::Gripper& gripper)
+{
+   //! [fault-severity-check]
+   Robotiq::FaultStatus fault = gripper.getStatus().faultStatus;
+   if(Robotiq::severity(fault.gripperFault()) == Robotiq::FaultSeverity::Major)
+   {
+      Robotiq::recoverFromFault(gripper);
+   }
+   //! [fault-severity-check]
+}
+
+//! [uart-logger]
+void uartWrite(std::string_view) {} // stands in for a real UART driver
+
+class UartLogger : public Robotiq::Logger
+{
+public:
+   void log(Level level, std::string_view message) override
+   {
+      if(level >= Level::Warn)
+      {
+         uartWrite("!! ");
+      }
+      uartWrite(message);
+   }
+};
+
+void useCustomLogger()
+{
+   auto logger = std::make_shared<UartLogger>();
+   Robotiq::ConnectionConfig config;
+   config.serial.port = "/dev/ttyUSB0";
+   Robotiq::Gripper gripper(config, logger);
+}
+//! [uart-logger]
+
+void makeFakeGripperUsage()
+{
+   //! [make-fake-gripper]
+   auto gripper = Robotiq::makeFakeGripper(); // no hardware needed
+   Robotiq::activate(*gripper);
+   //! [make-fake-gripper]
+}
+
+//! [wait-for-exchange]
+bool waitForMotionEndByHand(Robotiq::Gripper& gripper)
+{
+   // Each wake-up sees the newest exchange; the ones in between are not needed here.
+   while(std::optional<Robotiq::StampedExchange> exchange = gripper.waitForExchange(1s))
+   {
+      if(exchange->status.gripperStatus.objectDetection() != Robotiq::ObjectDetection::Moving)
+      {
+         return true;
+      }
+   }
+   return false; // no exchange completed within the timeout
+}
+//! [wait-for-exchange]
+
+void autoreleaseThenMove(Robotiq::Gripper& gripper)
+{
+   //! [autorelease-then-move]
+   // Build and set an autorelease command
+   Robotiq::GripperCommand command = Robotiq::GripperCommand::defaults();
+   command.action.set(Robotiq::ActionRequestBit::AutoRelease);
+   gripper.setCommand(command);
+
+   // Build and set a command to move the gripper to the position 100
+   command.action.set(Robotiq::ActionRequestBit::GoTo);
+   command.positionRequest = 100;
+   gripper.setCommand(command);
+   //! [autorelease-then-move]
+}
+
+void autoreleaseThenMoveWithWait(Robotiq::Gripper& gripper)
+{
+   //! [autorelease-then-move-with-wait]
+   // Build and set an autorelease command, and wait for a cycle to carry it
+   Robotiq::GripperCommand command = Robotiq::GripperCommand::defaults();
+   command.action.set(Robotiq::ActionRequestBit::AutoRelease);
+   if(!Robotiq::setCommandAndWaitForExchange(gripper, command, 10s))
+   {
+      return; // no cycle carried it before the timeout
+   }
+
+   // Build and set a command to move the gripper to the position 100
+   command.action.set(Robotiq::ActionRequestBit::GoTo);
+   command.positionRequest = 100;
+   gripper.setCommand(command);
+   //! [autorelease-then-move-with-wait]
+}
+
+std::optional<Robotiq::StampedExchange> waitForMotionToComplete(Robotiq::Gripper& gripper,
+                                                                const Robotiq::GripperCommand& command)
+{
+   //! [named-waits]
+   // Hand the command over and wait for an exchange to carry it, then for
+   // the fingers to stop; each wait returns the exchange that ended it.
+   if(!Robotiq::setCommandAndWaitForExchange(gripper, command, 1s))
+   {
+      std::cerr << "no exchange carried the command within 1 s\n";
+   }
+   std::optional<Robotiq::StampedExchange> stopped = Robotiq::waitForMotionEnd(gripper, 5s);
+   if(!stopped)
+   {
+      std::cerr << "the fingers were still moving after 5 s\n";
+   }
+   //! [named-waits]
+   return stopped;
+}
+
+std::optional<Robotiq::StampedExchange> waitForHalfwayClosed(Robotiq::Gripper& gripper)
+{
+   //! [wait-for-exchange-predicate]
+   // A condition no named wait covers: the fingers passing a position.
+   std::optional<Robotiq::StampedExchange> halfway = Robotiq::waitFor(
+      gripper,
+      [](const Robotiq::StampedExchange& exchange) { return exchange.status.position >= 128; },
+      10s);
+   //! [wait-for-exchange-predicate]
+   return halfway;
+}
+
+Robotiq::ActivationResult activateOnly(Robotiq::Gripper& gripper)
+{
+   //! [activate-only]
+   Robotiq::ActivationResult result = Robotiq::activate(gripper);
+   //! [activate-only]
+   return result;
+}
+
+Robotiq::ActivationResult recoverFromFaultOnly(Robotiq::Gripper& gripper)
+{
+   //! [recover-from-fault-only]
+   Robotiq::ActivationResult result = Robotiq::recoverFromFault(gripper);
+   //! [recover-from-fault-only]
+   return result;
+}
+
+void basicLoggerInjection(Robotiq::ConnectionConfig& config)
+{
+   //! [basic-logger-injection]
+   auto logger = std::make_shared<Robotiq::StderrLogger>();
+   Robotiq::Gripper gripper(config, logger);
+   //! [basic-logger-injection]
+}
+
+int main()
+{
+   return 0;
+}

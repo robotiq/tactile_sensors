@@ -1,5 +1,14 @@
 cmake_minimum_required(VERSION 3.10)
-project(RobotiqTactileSensorSDK VERSION 2.1.0 LANGUAGES CXX)
+
+# One version for the whole robotiq-sdk repository, kept in its root VERSION
+# file (see the root README, "Versioning").
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/RobotiqSdkVersion.cmake" OPTIONAL
+        RESULT_VARIABLE ROBOTIQ_SDK_VERSION_MODULE)
+if(NOT ROBOTIQ_SDK_VERSION_MODULE)
+  message(FATAL_ERROR "robotiq-sdk cmake/RobotiqSdkVersion.cmake not found: build this SDK from a full robotiq-sdk checkout")
+endif()
+
+project(RobotiqTactileSensorSDK VERSION ${ROBOTIQ_SDK_VERSION} LANGUAGES CXX)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 11)
