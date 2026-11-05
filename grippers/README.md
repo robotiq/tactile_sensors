@@ -36,10 +36,8 @@ kept in its root [VERSION](../VERSION) file: see "Versioning" in the
 [Robotiq/grippers](https://github.com/Robotiq/grippers); robotiq-sdk starts
 at 3.0.0.
 
-[Semantic versioning](https://semver.org) from 1.0.0 on: patch releases fix
-bugs, minor releases add API, and a breaking change to the documented API takes
-a major release. The documented API is what this README and the headers under
-`Robotiq/gripper/` describe — `Gripper`, the command/status blocks,
+The documented API, which that policy covers, is what this README and the
+headers under `Robotiq/gripper/` describe — `Gripper`, the command/status blocks,
 `ConnectionConfig`, `Serial`, `Platform`, `Logger`, the `toString()` free
 functions, `DeviceProfile` and the SI unit conversions, and
 `GripperModbusClient` for the no-thread path. The text `toString()` renders is
