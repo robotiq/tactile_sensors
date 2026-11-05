@@ -9,6 +9,7 @@ import math
 import os
 import re
 import signal
+import socketserver
 import sys
 import threading
 import time
@@ -757,7 +758,7 @@ class WebViewer:
         handler = partial(QuietHTTPHandler, directory=str(web_dir))
         # One thread per request, so a browser loading the large vendored
         # Plotly does not hold up the other files, or other viewers.
-        httpd = ThreadingHTTPServer(("0.0.0.0", self.port), handler)
+        httpd = ViewerHTTPServer(("0.0.0.0", self.port), handler)
         http_thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         http_thread.start()
         print(f"  HTTP server:      http://localhost:{self.port}")
@@ -793,6 +794,15 @@ class QuietHTTPHandler(SimpleHTTPRequestHandler):
             # unchanged file is answered with a short 304 Not Modified.
             self.send_header("Cache-Control", "no-cache")
         super().end_headers()
+
+
+class ViewerHTTPServer(ThreadingHTTPServer):
+    def server_bind(self):
+        # HTTPServer.server_bind looks up this machine's full host name, which
+        # nothing here uses and which can stall for tens of seconds where
+        # reverse DNS is slow, as on some Macs: the page would not load.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
 
 def run_web_viewer(monitor, port=8080, ft_source=None, open_browser=True,
