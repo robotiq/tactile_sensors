@@ -49,7 +49,7 @@ Run `.claude/skills/release/preflight.sh`. Check:
 - **Main is green** and you work from the latest `origin/main`. If not green, stop.
 - **Working tree** clean; otherwise use a fresh worktree, not stash.
 - **Open PRs**: for each one, ask the user whether it belongs in this release. If yes, it must merge (and main go green again) first. A release PR already open: use it, do not open another; continue at step 3.
-- **PRs merged since the last tag**: show the list, grouped by product (`grippers/`, `tsf/`, repository-wide). The script reads "Merge pull request #N" subjects; if a PR was squash/rebase-merged it is missed, so also read `git log --oneline <last-tag>..origin/main`.
+- **PRs merged since the last tag**: show the list, grouped by product (`grippers/`, `tsf/`, repository-wide). The script reads "Merge pull request #N" and squash "Title (#N)" subjects; a rebase-merged PR is missed, so also read `git log --oneline <last-tag>..origin/main`.
 
 Nothing since the tag → stop.
 
@@ -59,7 +59,7 @@ Principle: **a release is major only when a setup that worked on the previous re
 
 Inputs to go through, for each SDK:
 - **grippers:** the public header diff (`preflight.sh --full-diff`; the documented API is `grippers/README.md` plus `Robotiq/gripper/` and `gripper.hpp`, `detail/` is not public).
-- **tsf:** the C++ SDK headers (`tsf/sdk_cpp/*.h`), and the behaviour of the user-facing tools: the launchers, `quick_connect.py` and the web viewer options, the firmware flashing tool. What counts as documented is in the tsf READMEs.
+- **tsf:** the C++ SDK headers (`tsf/sdk_cpp/*.h`), and the behaviour of the user-facing tools: the launchers, `quick_connect.py` and the web viewer options, the firmware flashing tool. preflight.sh lists the files of these tools that changed; what counts as documented is in the tsf READMEs.
 - Every merged PR from step 1, and the build/CI inputs preflight lists (`VERSION`, `cmake/`, each `sdk_cpp/CMakeLists.txt`, `.github/`).
 
 - Additions only → **minor**.
