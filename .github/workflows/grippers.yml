@@ -72,7 +72,7 @@ jobs:
   # which a compile cannot check: unresolved symbols, the unwinder -fexceptions
   # drags in, and the libc backing of steady_clock only appear at link time.
   # Everything here comes from public sources — no ST tooling, which is why
-  # signing and flashing stay out of CI (see mono_firmware for those).
+  # signing and flashing a real image stay out of CI.
   threadx-link:
     runs-on: ubuntu-latest
     env:

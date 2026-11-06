@@ -11,7 +11,7 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 M=$(gh pr view "$n" --json mergeCommit,state -q 'select(.state=="MERGED")|.mergeCommit.oid')
 [ -n "$M" ] || fail "PR #$n is not merged"
 git merge-base --is-ancestor "$M" origin/main || fail "$M is not on origin/main"
-git show "$M:sdk_cpp/CMakeLists.txt" | grep -q "^project(grippers VERSION $v " || fail "VERSION at $M is not $v"
+[ "$(git show "$M:VERSION" | tr -d '\r')" = "$v" ] || fail "VERSION at $M is not $v"
 echo "merge commit: $(git log --oneline -1 "$M")"
 
 if [ "${3:-}" = --verify ]; then
@@ -19,11 +19,11 @@ if [ "${3:-}" = --verify ]; then
   [ "$(git cat-file -t "$t")" = tag ] || fail "$t is not annotated"
   gh release view "$t" --json isDraft,isPrerelease,name -q '"release: \(.name) draft=\(.isDraft) prerelease=\(.isPrerelease)"'
   [ "$(gh release view "$t" --json isDraft -q .isDraft)" = false ] || fail "release is a draft"
-  # The tag push runs CI too (ci.yml, tags v*). A cancelled or failed run needs a look.
+  # The tag push runs CI too (grippers.yml and tsf.yml, tags v*). A cancelled or failed run needs a look.
   echo "CI runs on the tag:"
-  gh run list --branch "$t" -L 5 --json name,status,conclusion,url \
+  gh run list --branch "$t" -L 10 --json name,status,conclusion,url \
     -q '.[]|"  \(.conclusion // .status)\t\(.name)\t\(.url)"'
-  gh run list --branch "$t" -L 5 --json conclusion,status -q '[.[]|select(.status!="completed" or .conclusion!="success")]|length' \
+  gh run list --branch "$t" -L 10 --json conclusion,status -q '[.[]|select(.status!="completed" or .conclusion!="success")]|length' \
     | grep -qx 0 || echo "WARNING: tag CI is not all green: re-run a cancelled job (gh run rerun), report a real failure to the user"
   echo "OK: $t -> $M, annotated, VERSION $v, release published"; exit 0
 fi
@@ -33,6 +33,6 @@ prev=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$M^1")
 echo "previous tag: $prev ($(git cat-file -t "$prev"))"
 [ "$(git rev-list --count "$M..origin/main")" = 0 ] || echo "note: main moved past $M; still tag $M"
 echo; echo "Commands to run after an explicit OK:"
-echo "  git tag -a $t $M -m \"Grippers C++ SDK $v\""
+echo "  git tag -a $t $M -m \"robotiq-sdk $v\""
 echo "  git push origin $t"
-echo "  gh release create $t --verify-tag --title \"Grippers C++ SDK $v\" --notes-file <notes>"
+echo "  gh release create $t --verify-tag --latest --title \"robotiq-sdk $v\" --notes-file <notes>"

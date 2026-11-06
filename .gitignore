@@ -3,7 +3,11 @@ debugtools/
 /.vscode/
 /tsf/**/.vscode/
 temp_files/
-/.claude/
+# Local Claude Code settings and personal skills; only the release skill is shared.
+/.claude/*
+!/.claude/skills/
+/.claude/skills/*
+!/.claude/skills/release/
 /tsf/**/.claude/
 DEPENDENCIES.md
 
