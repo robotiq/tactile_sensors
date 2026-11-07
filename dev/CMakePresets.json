@@ -1,0 +1,34 @@
+{
+  "version": 4,
+  "configurePresets": [
+    {
+      "name": "ide",
+      "displayName": "Workspace (all C++ SDKs)",
+      "description": "Every C++ SDK of robotiq-sdk as one project.",
+      "binaryDir": "${sourceDir}/../build/ide",
+      "installDir": "${sourceDir}/../build/ide/prefix",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "ide",
+      "configurePreset": "ide"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "ide",
+      "configurePreset": "ide",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 8
+      }
+    }
+  ]
+}
