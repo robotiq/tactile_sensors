@@ -13,3 +13,9 @@ DEPENDENCIES.md
 
 .venv/
 .idea/
+
+# dev/ IDE aggregate: its build tree and per-user IDE state.
+/build/
+/dev/CMakeUserPresets.json
+/dev/.qtcreator/
+/dev/*.user

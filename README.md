@@ -13,6 +13,8 @@ Public SDKs, quickstart tools and firmware utilities for Robotiq products, one f
 
 Each product folder has its own README with requirements, build steps and quickstart commands.
 
+To work on every C++ SDK at once, open [dev/CMakeLists.txt](dev/CMakeLists.txt) in your IDE with its `ide` preset. It is a developer convenience only: each SDK still builds on its own.
+
 ## Versioning
 
 The whole repository shares one version, kept in the [VERSION](VERSION) file. Every SDK's CMake project reads it, and each release tags the repository as `vX.Y.Z`. The first robotiq-sdk release is 3.0.0, above every earlier tag of the TSF-85 and grippers repositories.
